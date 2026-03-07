@@ -151,10 +151,38 @@ export const useTypingIndicator = (userId?: string) => {
   return { isTyping, typingUsers, startTyping, stopTyping };
 };
 
-export const useRealtimeMessages = () => {
+// Helper for notifications
+const showNotification = (message: MessageDoc) => {
+  if (!('Notification' in window)) return;
+  
+  if (Notification.permission === 'granted') {
+    new Notification('New Voice Message', {
+      body: `New message from ${message.sender_id}`,
+      // You might want to add an icon here
+      // icon: '/icon.png'
+    });
+  } else if (Notification.permission !== 'denied') {
+    Notification.requestPermission().then(permission => {
+      if (permission === 'granted') {
+        new Notification('New Voice Message', {
+          body: `New message from ${message.sender_id}`,
+        });
+      }
+    });
+  }
+};
+
+export const useRealtimeMessages = (selectedUser: string | null) => {
   const queryClient = useQueryClient();
   const { userId: currentUserId } = useAuthStore();
   const { socket } = useSocketStore();
+
+  // Request notification permission on mount
+  useEffect(() => {
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission();
+    }
+  }, []);
 
   useEffect(() => {
     if (!socket) return;
@@ -184,6 +212,14 @@ export const useRealtimeMessages = () => {
       // Emit delivery receipt if we are the receiver
       if (message.receiver_id === currentUserId) {
         socket.emit(EVENTS.VOICE_MESSAGE_DELIVERED, { message_id: message.id });
+        
+        // Show notification if:
+        // 1. The app is in background (document.hidden)
+        // OR
+        // 2. The message is NOT from the currently selected user
+        if (document.hidden || message.sender_id !== selectedUser) {
+          showNotification(message);
+        }
       }
     };
 
@@ -205,5 +241,5 @@ export const useRealtimeMessages = () => {
       socket.off(EVENTS.RECEIVE_VOICE_MESSAGE, handleReceiveMessage);
       socket.off(EVENTS.VOICE_MESSAGE_STATUS, handleMessageStatus);
     };
-  }, [queryClient, currentUserId, socket]);
+  }, [queryClient, currentUserId, socket, selectedUser]);
 };

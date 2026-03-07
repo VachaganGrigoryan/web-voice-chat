@@ -9,7 +9,7 @@ export const useChat = () => {
   
   // Initialize socket and subscriptions
   useSocket();
-  useRealtimeMessages();
+  useRealtimeMessages(selectedUser);
   const { onlineUsers, setOnlineUsers } = usePresence();
 
   // Initial fetch of online users (fallback/initial population)
