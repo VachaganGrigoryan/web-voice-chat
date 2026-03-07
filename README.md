@@ -98,15 +98,10 @@ docs/screenshots
 
 ## Chat Interface
 
-![Chat UI](docs/screenshots/chat.png)
+![Home UI](docs/screenshots/chat.png)
 
-*Realtime voice chat interface*
-
----
-
-## Mobile Interface
-
-![Mobile UI](docs/screenshots/mobile.png)
+![Chat UI](docs/screenshots/chat-v2.png)
+![Recording UI](docs/screenshots/chat-v3.png)
 
 *Mobile optimized layout with fixed voice button*
 
