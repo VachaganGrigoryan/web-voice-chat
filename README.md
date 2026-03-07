@@ -21,7 +21,7 @@ https://chat.vachagan.dev
 https://voice-chat.vachagan.dev/docs
 
 **Health Check**  
-https://voice-chat.vachagan.dev/health/live
+[https://voice-chat.vachagan.dev/health/live](https://voice-chat.vachagan.dev/health/ready)
 
 ---
 
