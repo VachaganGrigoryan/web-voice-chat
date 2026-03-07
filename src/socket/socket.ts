@@ -1,10 +1,11 @@
-import { io, Socket } from 'socket.io-client';
+import { Socket } from 'socket.io-client';
 import { create } from 'zustand';
-import { useAuthStore } from '@/store/authStore';
-import { EVENTS, SOCKET_URL } from './events';
+import { EVENTS } from './events';
 import { useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { MessageDoc } from '@/api/types';
+import { socketClient } from './socketClient';
+import { useAuthStore } from '@/store/authStore';
 
 interface SocketState {
   socket: Socket | null;
@@ -31,101 +32,49 @@ export const useSocketStore = create<SocketState>((set) => ({
     })),
 }));
 
-let socketInstance: Socket | null = null;
-
-export const initializeSocket = () => {
-  const token = useAuthStore.getState().accessToken;
-
-  if (!token) {
-    console.warn('Cannot connect socket: No token');
-    return null;
-  }
-
-  if (socketInstance && socketInstance.connected) {
-    return socketInstance;
-  }
-
-  if (socketInstance) {
-    socketInstance.auth = { token };
-    socketInstance.connect();
-    return socketInstance;
-  }
-
-  socketInstance = io(SOCKET_URL, {
-    path: '/socket.io',
-    auth: {
-      token,
-    },
-    transports: ['websocket'],
-    autoConnect: true,
-    reconnection: true,
-  });
-
-  const { setIsConnected, setOnlineUsers, setTypingUser } = useSocketStore.getState();
-
-  socketInstance.on(EVENTS.CONNECT, () => {
-    console.log('Socket connected:', socketInstance?.id);
+// Sync socket events to store
+const setupSocketSync = () => {
+  socketClient.onConnect((socket) => {
+    const { setIsConnected, setOnlineUsers, setTypingUser, setSocket } = useSocketStore.getState();
+    
+    setSocket(socket);
     setIsConnected(true);
-  });
 
-  socketInstance.on(EVENTS.DISCONNECT, () => {
-    console.log('Socket disconnected');
-    setIsConnected(false);
-  });
+    socket.on(EVENTS.DISCONNECT, () => {
+      setIsConnected(false);
+    });
 
-  socketInstance.on(EVENTS.CONNECT_ERROR, (err) => {
-    console.error('Socket connection error:', err);
-    setIsConnected(false);
-  });
+    socket.on(EVENTS.USER_ONLINE, ({ user_id }: { user_id: string }) => {
+      const currentUsers = useSocketStore.getState().onlineUsers;
+      if (!currentUsers.includes(user_id)) {
+        setOnlineUsers([...currentUsers, user_id]);
+      }
+    });
 
-  // Presence events
-  socketInstance.on(EVENTS.USER_ONLINE, ({ user_id }: { user_id: string }) => {
-    const currentUsers = useSocketStore.getState().onlineUsers;
-    if (!currentUsers.includes(user_id)) {
-      setOnlineUsers([...currentUsers, user_id]);
-    }
-  });
+    socket.on(EVENTS.USER_OFFLINE, ({ user_id }: { user_id: string }) => {
+      const currentUsers = useSocketStore.getState().onlineUsers;
+      setOnlineUsers(currentUsers.filter((id) => id !== user_id));
+    });
 
-  socketInstance.on(EVENTS.USER_OFFLINE, ({ user_id }: { user_id: string }) => {
-    const currentUsers = useSocketStore.getState().onlineUsers;
-    setOnlineUsers(currentUsers.filter((id) => id !== user_id));
-  });
+    socket.on(EVENTS.SERVER_TYPING_START, ({ user_id }: { user_id: string }) => {
+      setTypingUser(user_id, true);
+    });
 
-  // Typing events
-  socketInstance.on(EVENTS.SERVER_TYPING_START, ({ user_id }: { user_id: string }) => {
-    setTypingUser(user_id, true);
+    socket.on(EVENTS.SERVER_TYPING_STOP, ({ user_id }: { user_id: string }) => {
+      setTypingUser(user_id, false);
+    });
   });
-
-  socketInstance.on(EVENTS.SERVER_TYPING_STOP, ({ user_id }: { user_id: string }) => {
-    setTypingUser(user_id, false);
-  });
-
-  useSocketStore.getState().setSocket(socketInstance);
-  return socketInstance;
 };
 
-export const disconnectSocket = () => {
-  if (socketInstance) {
-    socketInstance.disconnect();
-    socketInstance = null;
-    useSocketStore.getState().setSocket(null);
-    useSocketStore.getState().setIsConnected(false);
-  }
-};
+// Initialize sync
+setupSocketSync();
 
-export const getSocket = () => socketInstance;
+// Export getSocket for legacy compatibility if needed
+export const getSocket = () => socketClient.getSocket();
 
 // Hooks
-
 export const useSocket = () => {
   const { socket, isConnected } = useSocketStore();
-  
-  useEffect(() => {
-    if (!socket) {
-      initializeSocket();
-    }
-  }, [socket]);
-
   return { socket, isConnected };
 };
 
@@ -137,15 +86,16 @@ export const usePresence = () => {
 
 export const useTypingIndicator = (userId?: string) => {
   const typingUsers = useSocketStore((state) => state.typingUsers);
+  const socket = useSocketStore((state) => state.socket);
   
   const isTyping = userId ? !!typingUsers[userId] : false;
   
   const startTyping = (receiverId: string) => {
-    socketInstance?.emit(EVENTS.CLIENT_TYPING_START, { receiver_id: receiverId });
+    socket?.emit(EVENTS.CLIENT_TYPING_START, { receiver_id: receiverId });
   };
 
   const stopTyping = (receiverId: string) => {
-    socketInstance?.emit(EVENTS.CLIENT_TYPING_STOP, { receiver_id: receiverId });
+    socket?.emit(EVENTS.CLIENT_TYPING_STOP, { receiver_id: receiverId });
   };
 
   return { isTyping, typingUsers, startTyping, stopTyping };
@@ -158,8 +108,6 @@ const showNotification = (message: MessageDoc) => {
   if (Notification.permission === 'granted') {
     new Notification('New Voice Message', {
       body: `New message from ${message.sender_id}`,
-      // You might want to add an icon here
-      // icon: '/icon.png'
     });
   } else if (Notification.permission !== 'denied') {
     Notification.requestPermission().then(permission => {
@@ -177,7 +125,6 @@ export const useRealtimeMessages = (selectedUser: string | null) => {
   const { userId: currentUserId } = useAuthStore();
   const { socket } = useSocketStore();
 
-  // Request notification permission on mount
   useEffect(() => {
     if ('Notification' in window && Notification.permission === 'default') {
       Notification.requestPermission();
@@ -188,12 +135,10 @@ export const useRealtimeMessages = (selectedUser: string | null) => {
     if (!socket) return;
 
     const handleReceiveMessage = (message: MessageDoc) => {
-      // Determine conversation partner ID
       const conversationPartnerId = message.sender_id === currentUserId 
         ? message.receiver_id 
         : message.sender_id;
 
-      // Update React Query cache
       queryClient.setQueryData(['messages', conversationPartnerId], (old: any) => {
         if (!old) return { pages: [{ data: [message], meta: { next_cursor: null } }], pageParams: [undefined] };
         
@@ -209,14 +154,9 @@ export const useRealtimeMessages = (selectedUser: string | null) => {
         };
       });
 
-      // Emit delivery receipt if we are the receiver
       if (message.receiver_id === currentUserId) {
         socket.emit(EVENTS.VOICE_MESSAGE_DELIVERED, { message_id: message.id });
         
-        // Show notification if:
-        // 1. The app is in background (document.hidden)
-        // OR
-        // 2. The message is NOT from the currently selected user
         if (document.hidden || message.sender_id !== selectedUser) {
           showNotification(message);
         }
@@ -224,13 +164,6 @@ export const useRealtimeMessages = (selectedUser: string | null) => {
     };
 
     const handleMessageStatus = ({ message_id, status }: { message_id: string, status: 'delivered' | 'read' }) => {
-      // We need to find the message in the cache and update it
-      // This is tricky because we don't know which conversation it belongs to easily
-      // So we might need to invalidate queries or iterate through active conversations
-      
-      // For simplicity, we'll invalidate all message queries for now, or try to update if we can find it
-      // A better approach would be to have a normalized cache or know the conversation ID
-      
       queryClient.invalidateQueries({ queryKey: ['messages'] });
     };
 

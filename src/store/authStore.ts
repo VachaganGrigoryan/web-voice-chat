@@ -1,6 +1,6 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
-import { jwtDecode } from 'jwt-decode';
+import { tokenStore } from '@/auth/tokenStore';
+import { sessionManager } from '@/auth/session';
 
 interface AuthState {
   accessToken: string | null;
@@ -13,47 +13,52 @@ interface AuthState {
   logout: () => void;
 }
 
-interface DecodedToken {
-  sub: string; // Assuming 'sub' is the user ID
-  email: string;
-  exp: number;
-}
+// Initialize state from tokenStore
+const getInitialState = () => ({
+  accessToken: tokenStore.getAccessToken(),
+  refreshToken: tokenStore.getRefreshToken(),
+  userEmail: tokenStore.getUserEmail(),
+  userId: tokenStore.getUserId(),
+  isAuthenticated: tokenStore.isAuthenticated(),
+});
 
-export const useAuthStore = create<AuthState>()(
-  persist(
-    (set) => ({
-      accessToken: null,
-      refreshToken: null,
-      userEmail: null,
-      userId: null,
-      isAuthenticated: false,
-      setTokens: (accessToken, refreshToken) => {
-        try {
-          const decoded = jwtDecode<DecodedToken>(accessToken);
-          set({
-            accessToken,
-            refreshToken,
-            isAuthenticated: true,
-            userId: decoded.sub,
-            userEmail: decoded.email,
-          });
-        } catch (error) {
-          console.error('Failed to decode token:', error);
-          set({ accessToken, refreshToken, isAuthenticated: true });
-        }
-      },
-      setUserEmail: (email) => set({ userEmail: email }),
-      logout: () =>
-        set({
-          accessToken: null,
-          refreshToken: null,
-          userEmail: null,
-          userId: null,
-          isAuthenticated: false,
-        }),
-    }),
-    {
-      name: 'auth-storage',
+export const useAuthStore = create<AuthState>((set) => {
+  // Subscribe to session changes
+  sessionManager.subscribe((isAuthenticated) => {
+    if (!isAuthenticated) {
+      set({
+        accessToken: null,
+        refreshToken: null,
+        userEmail: null,
+        userId: null,
+        isAuthenticated: false,
+      });
+    } else {
+      // Refresh state from tokenStore
+      set(getInitialState());
     }
-  )
-);
+  });
+
+  return {
+    ...getInitialState(),
+    
+    setTokens: (accessToken, refreshToken) => {
+      sessionManager.login(accessToken, refreshToken);
+      // State update happens via subscription or we can do it optimistically here
+      set({
+        accessToken,
+        refreshToken,
+        isAuthenticated: true,
+        userId: tokenStore.getUserId(), // tokenStore is updated by sessionManager
+        userEmail: tokenStore.getUserEmail(),
+      });
+    },
+
+    setUserEmail: (email) => set({ userEmail: email }),
+
+    logout: () => {
+      sessionManager.logout();
+      // State update happens via subscription
+    },
+  };
+});

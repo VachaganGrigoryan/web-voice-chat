@@ -1,4 +1,4 @@
-import { apiClient } from './client';
+import { apiClient } from './httpClient';
 import { TokenPair, SuccessResponse, PaginatedResponse, MessageDoc } from './types';
 
 export const authApi = {
