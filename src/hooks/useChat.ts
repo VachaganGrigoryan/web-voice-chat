@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useInfiniteQuery, useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
 import { messagesApi, realtimeApi } from '@/api/endpoints';
-import { useSocket, usePresence, useRealtimeMessages, initializeSocket } from '@/socket/socket';
+import { useSocket, usePresence, useRealtimeMessages } from '@/socket/socket';
 
 export const useChat = () => {
   const [selectedUser, setSelectedUser] = useState<string | null>(null);
