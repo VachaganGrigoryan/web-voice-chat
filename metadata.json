@@ -1,0 +1,5 @@
+{
+  "name": "Voice Chat App",
+  "description": "A real-time voice chat application with React and TypeScript.",
+  "requestFramePermissions": ["microphone"]
+}

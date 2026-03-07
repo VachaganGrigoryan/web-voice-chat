@@ -1,0 +1,30 @@
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import AuthPage from '@/features/auth/AuthPage';
+import ChatLayout from '@/features/chat/ChatLayout';
+import SettingsPage from '@/features/settings/SettingsPage';
+import ProtectedRoute from '@/components/ProtectedRoute';
+import PublicRoute from '@/components/PublicRoute';
+
+const queryClient = new QueryClient();
+
+export default function App() {
+  return (
+    <QueryClientProvider client={queryClient}>
+      <BrowserRouter>
+        <Routes>
+          <Route element={<PublicRoute />}>
+            <Route path="/auth" element={<AuthPage />} />
+          </Route>
+          
+          <Route element={<ProtectedRoute />}>
+            <Route path="/chat" element={<ChatLayout />} />
+            <Route path="/settings" element={<SettingsPage />} />
+          </Route>
+
+          <Route path="/" element={<Navigate to="/chat" replace />} />
+        </Routes>
+      </BrowserRouter>
+    </QueryClientProvider>
+  );
+}
