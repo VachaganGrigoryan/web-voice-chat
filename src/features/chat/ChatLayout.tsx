@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/Input';
 import { ScrollArea } from '@/components/ui/ScrollArea';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/Avatar';
 import { Separator } from '@/components/ui/Separator';
-import { LogOut, User, MessageSquare, Plus, Loader2, Mic } from 'lucide-react';
+import { LogOut, User, MessageSquare, Plus, Loader2, Mic, ArrowLeft } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { authApi } from '@/api/endpoints';
 import VoiceRecorder from './VoiceRecorder';
@@ -49,7 +49,10 @@ export default function ChatLayout() {
   return (
     <div className="flex h-screen bg-background overflow-hidden">
       {/* Sidebar */}
-      <div className="w-80 border-r flex flex-col bg-muted/10">
+      <div className={cn(
+        "w-full md:w-80 border-r flex-col bg-muted/10",
+        selectedUser ? "hidden md:flex" : "flex"
+      )}>
         <div className="p-4 border-b flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Avatar className="h-8 w-8">
@@ -119,11 +122,22 @@ export default function ChatLayout() {
       </div>
 
       {/* Main Chat Area */}
-      <div className="flex-1 flex flex-col min-w-0">
+      <div className={cn(
+        "flex-1 flex-col min-w-0 bg-background",
+        selectedUser ? "flex" : "hidden md:flex"
+      )}>
         {selectedUser ? (
           <>
-            <div className="h-14 border-b flex items-center px-6 justify-between bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+            <div className="h-14 border-b flex items-center px-4 md:px-6 justify-between bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
               <div className="flex items-center gap-2">
+                <Button 
+                  variant="ghost" 
+                  size="icon" 
+                  className="md:hidden -ml-2 mr-1 h-8 w-8" 
+                  onClick={() => setSelectedUser(null)}
+                >
+                  <ArrowLeft className="h-5 w-5" />
+                </Button>
                 <Avatar className="h-8 w-8">
                   <AvatarFallback>{selectedUser[0].toUpperCase()}</AvatarFallback>
                 </Avatar>
