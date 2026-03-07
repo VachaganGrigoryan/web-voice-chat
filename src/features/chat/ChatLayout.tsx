@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useChat } from '@/hooks/useChat';
 import { useAuthStore } from '@/store/authStore';
 import { Button } from '@/components/ui/Button';
@@ -6,13 +6,14 @@ import { Input } from '@/components/ui/Input';
 import { ScrollArea } from '@/components/ui/ScrollArea';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/Avatar';
 import { Separator } from '@/components/ui/Separator';
-import { LogOut, User, MessageSquare, Plus, Loader2, Mic, ArrowLeft } from 'lucide-react';
+import { LogOut, User, MessageSquare, Plus, Loader2, Mic, ArrowLeft, Check, CheckCheck } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { authApi } from '@/api/endpoints';
 import VoiceRecorder from './VoiceRecorder';
 import AudioPlayer from './AudioPlayer';
 import { cn } from '@/lib/utils';
 import { useTypingIndicator } from '@/socket/socket';
+import { format, isToday, isYesterday } from 'date-fns';
 
 export default function ChatLayout() {
   const {
@@ -46,14 +47,21 @@ export default function ChatLayout() {
 
   const allMessages = messages?.pages.flatMap((page) => page.data) || [];
 
+  const formatMessageDate = (dateString: string) => {
+    const date = new Date(dateString);
+    if (isToday(date)) return 'Today';
+    if (isYesterday(date)) return 'Yesterday';
+    return format(date, 'MMMM d, yyyy');
+  };
+
   return (
-    <div className="flex h-screen bg-background overflow-hidden">
+    <div className="flex h-[100dvh] bg-background overflow-hidden">
       {/* Sidebar */}
       <div className={cn(
-        "w-full md:w-80 border-r flex-col bg-muted/10",
+        "w-full md:w-80 border-r flex flex-col bg-muted/10 h-full",
         selectedUser ? "hidden md:flex" : "flex"
       )}>
-        <div className="p-4 border-b flex items-center justify-between">
+        <div className="p-4 border-b flex items-center justify-between shrink-0 h-16">
           <div className="flex items-center gap-2">
             <Avatar className="h-8 w-8">
               <AvatarFallback>{userEmail?.[0].toUpperCase()}</AvatarFallback>
@@ -67,13 +75,13 @@ export default function ChatLayout() {
           </Button>
         </div>
 
-        <div className="p-4">
-          <div className="flex gap-2 mb-4">
+        <div className="p-4 flex-1 flex flex-col min-h-0">
+          <div className="flex gap-2 mb-4 shrink-0">
             <Input 
               placeholder="Enter User ID..." 
               value={newUserId}
               onChange={(e) => setNewUserId(e.target.value)}
-              className="h-8 text-xs"
+              className="h-9 text-sm"
             />
             <Button 
               size="sm" 
@@ -87,32 +95,37 @@ export default function ChatLayout() {
             </Button>
           </div>
           
-          <div className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wider">
+          <div className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wider shrink-0">
             Online Users
           </div>
           
-          <ScrollArea className="flex-1">
-            <div className="space-y-1">
+          <ScrollArea className="flex-1 -mx-4 px-4">
+            <div className="space-y-1 pb-4">
               {onlineUsers?.map((uid) => (
                 <Button
                   key={uid}
                   variant={selectedUser === uid ? "secondary" : "ghost"}
                   className={cn(
-                    "w-full justify-start text-sm font-normal",
+                    "w-full justify-start text-sm font-normal py-3 h-auto",
                     uid === userId && "opacity-50 pointer-events-none"
                   )}
                   onClick={() => setSelectedUser(uid)}
                 >
-                  <div className="relative mr-2">
-                    <User className="h-4 w-4" />
-                    <span className="absolute bottom-0 right-0 h-1.5 w-1.5 rounded-full bg-green-500 ring-1 ring-background" />
+                  <div className="relative mr-3">
+                    <Avatar className="h-8 w-8">
+                      <AvatarFallback>{uid[0].toUpperCase()}</AvatarFallback>
+                    </Avatar>
+                    <span className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full bg-green-500 ring-2 ring-background" />
                   </div>
-                  <span className="truncate">{uid === userId ? `${uid} (You)` : uid}</span>
+                  <div className="flex flex-col items-start overflow-hidden">
+                     <span className="truncate font-medium">{uid === userId ? `${uid} (You)` : uid}</span>
+                     <span className="text-xs text-muted-foreground truncate w-full text-left">Click to chat</span>
+                  </div>
                 </Button>
               ))}
               
               {(!onlineUsers || onlineUsers.length === 0) && (
-                <div className="text-xs text-muted-foreground p-2 text-center">
+                <div className="text-sm text-muted-foreground p-4 text-center bg-muted/30 rounded-lg border border-dashed m-1">
                   No users online
                 </div>
               )}
@@ -123,32 +136,37 @@ export default function ChatLayout() {
 
       {/* Main Chat Area */}
       <div className={cn(
-        "flex-1 flex-col min-w-0 bg-background",
+        "flex-1 flex flex-col min-w-0 bg-background h-full relative",
         selectedUser ? "flex" : "hidden md:flex"
       )}>
         {selectedUser ? (
           <>
-            <div className="h-14 border-b flex items-center px-4 md:px-6 justify-between bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-              <div className="flex items-center gap-2">
+            {/* Chat Header */}
+            <div className="h-16 border-b flex items-center px-4 justify-between bg-background/95 backdrop-blur z-10 shrink-0 shadow-sm">
+              <div className="flex items-center gap-3">
                 <Button 
                   variant="ghost" 
                   size="icon" 
-                  className="md:hidden -ml-2 mr-1 h-8 w-8" 
+                  className="md:hidden -ml-2 h-10 w-10 rounded-full" 
                   onClick={() => setSelectedUser(null)}
                 >
                   <ArrowLeft className="h-5 w-5" />
                 </Button>
-                <Avatar className="h-8 w-8">
-                  <AvatarFallback>{selectedUser[0].toUpperCase()}</AvatarFallback>
-                </Avatar>
+                <div className="relative">
+                  <Avatar className="h-9 w-9 border">
+                    <AvatarFallback>{selectedUser[0].toUpperCase()}</AvatarFallback>
+                  </Avatar>
+                  {onlineUsers?.includes(selectedUser) && (
+                    <span className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full bg-green-500 ring-2 ring-background" />
+                  )}
+                </div>
                 <div>
-                  <div className="text-sm font-medium">{selectedUser}</div>
-                  <div className="text-[10px] text-muted-foreground flex items-center gap-1">
-                    {onlineUsers?.includes(selectedUser) ? (
-                      <>
-                        <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
-                        Online
-                      </>
+                  <div className="text-sm font-semibold leading-none mb-1">{selectedUser}</div>
+                  <div className="text-xs text-muted-foreground flex items-center gap-1">
+                    {isTyping ? (
+                      <span className="text-primary font-medium animate-pulse">Recording...</span>
+                    ) : onlineUsers?.includes(selectedUser) ? (
+                      'Online'
                     ) : (
                       'Offline'
                     )}
@@ -157,99 +175,142 @@ export default function ChatLayout() {
               </div>
             </div>
 
-            <div className="flex-1 flex flex-col overflow-hidden relative">
-              <div className="absolute inset-0 flex flex-col">
-                 <div className="flex-1 overflow-y-auto flex flex-col-reverse p-4">
-                    {/* Typing Indicator */}
-                    {isTyping && (
-                      <div className="self-start mb-4 ml-1">
-                        <div className="bg-secondary/50 rounded-full px-3 py-1 text-xs text-muted-foreground flex items-center gap-2">
-                          <Mic className="h-3 w-3 animate-pulse" />
-                          Recording...
-                        </div>
-                      </div>
-                    )}
-
-                    {allMessages.map((message) => {
-                        const isMe = message.sender_id === userId;
-                        return (
-                          <div
-                            key={message.id}
-                            className={cn(
-                              "flex flex-col max-w-[80%] mb-4",
-                              isMe ? "self-end items-end" : "self-start items-start"
-                            )}
-                          >
-                            <div
-                              className={cn(
-                                "rounded-2xl px-4 py-2 shadow-sm",
-                                isMe
-                                  ? "bg-primary text-primary-foreground rounded-br-none"
-                                  : "bg-white border rounded-bl-none"
-                              )}
-                            >
-                              {message.type === 'voice' && message.audio ? (
-                                <AudioPlayer 
-                                  src={message.audio.url} 
-                                  durationMs={message.audio.duration_ms}
-                                  messageId={message.id}
-                                  className={cn(
-                                    isMe ? "bg-primary-foreground/20" : "bg-secondary/50"
-                                  )}
-                                />
-                              ) : (
-                                <div>Unknown message type</div>
-                              )}
-                            </div>
-                            <div className="flex items-center gap-1 mt-1 px-1">
-                              <span className="text-[10px] text-muted-foreground">
-                                {new Date(message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                              </span>
-                              {isMe && (
-                                <span className="text-[10px] text-muted-foreground capitalize">
-                                  • {message.status}
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })}
-                      
-                      {isFetchingNextPage && (
-                        <div className="flex justify-center py-4">
-                          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-                        </div>
-                      )}
-                      
-                      <div 
-                        className="h-1" 
-                        ref={(node) => {
-                            if (node && hasNextPage && !isFetchingNextPage) {
-                                const observer = new IntersectionObserver((entries) => {
-                                    if (entries[0].isIntersecting) {
-                                        fetchNextPage();
-                                    }
-                                });
-                                observer.observe(node);
-                                return () => observer.disconnect();
-                            }
-                        }}
-                      />
+            {/* Messages Area */}
+            <div className="flex-1 overflow-y-auto flex flex-col-reverse p-4 space-y-reverse space-y-6 scroll-smooth overscroll-contain">
+               {/* Typing Indicator Bubble */}
+               {isTyping && (
+                 <div className="self-start mb-2 ml-1 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                   <div className="bg-secondary/50 rounded-2xl rounded-tl-none px-4 py-3 text-sm text-muted-foreground flex items-center gap-2 shadow-sm">
+                     <div className="flex gap-1">
+                       <span className="w-1.5 h-1.5 bg-primary/40 rounded-full animate-bounce [animation-delay:-0.3s]"></span>
+                       <span className="w-1.5 h-1.5 bg-primary/40 rounded-full animate-bounce [animation-delay:-0.15s]"></span>
+                       <span className="w-1.5 h-1.5 bg-primary/40 rounded-full animate-bounce"></span>
+                     </div>
+                     Recording audio...
+                   </div>
                  </div>
-              </div>
+               )}
+
+               {allMessages.map((message, index) => {
+                   const isMe = message.sender_id === userId;
+                   const nextMessage = allMessages[index + 1];
+                   const showDateHeader = !nextMessage || 
+                     format(new Date(message.created_at), 'yyyy-MM-dd') !== 
+                     format(new Date(nextMessage.created_at), 'yyyy-MM-dd');
+
+                   return (
+                     <div key={message.id} className="flex flex-col w-full">
+                       <div
+                         className={cn(
+                           "flex flex-col max-w-[85%] md:max-w-[70%] mb-1 relative group",
+                           isMe ? "self-end items-end" : "self-start items-start"
+                         )}
+                       >
+                         <div
+                           className={cn(
+                             "rounded-2xl px-1 py-1 shadow-sm overflow-hidden transition-all",
+                             isMe
+                               ? "bg-primary text-primary-foreground rounded-br-none"
+                               : "bg-white border border-border/50 rounded-bl-none"
+                           )}
+                         >
+                           {message.type === 'voice' && message.audio ? (
+                             <AudioPlayer 
+                               src={message.audio.url} 
+                               durationMs={message.audio.duration_ms}
+                               messageId={message.id}
+                               className={cn(
+                                 "w-full min-w-[200px]",
+                                 isMe ? "bg-primary-foreground/10" : "bg-secondary/30"
+                               )}
+                             />
+                           ) : (
+                             <div className="px-4 py-2">Unknown message type</div>
+                           )}
+                         </div>
+                         
+                         <div className={cn(
+                           "flex items-center gap-1 mt-1 px-1 text-[10px] text-muted-foreground/70",
+                           isMe ? "justify-end" : "justify-start"
+                         )}>
+                           <span>
+                             {format(new Date(message.created_at), 'h:mm a')}
+                           </span>
+                           {isMe && (
+                             <span className={cn(
+                               "flex items-center",
+                               message.status === 'read' ? "text-blue-500" : ""
+                             )}>
+                               {message.status === 'read' ? (
+                                 <CheckCheck className="h-3 w-3" />
+                               ) : (
+                                 <Check className="h-3 w-3" />
+                               )}
+                             </span>
+                           )}
+                         </div>
+                       </div>
+                       
+                       {showDateHeader && (
+                         <div className="flex justify-center my-6">
+                           <div className="bg-muted/50 text-muted-foreground text-[10px] font-medium px-3 py-1 rounded-full uppercase tracking-wider shadow-sm border border-border/50">
+                             {formatMessageDate(message.created_at)}
+                           </div>
+                         </div>
+                       )}
+                     </div>
+                   );
+                 })}
+                 
+                 {isFetchingNextPage && (
+                   <div className="flex justify-center py-4">
+                     <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                   </div>
+                 )}
+                 
+                 <div 
+                   className="h-1 w-full" 
+                   ref={(node) => {
+                       if (node && hasNextPage && !isFetchingNextPage) {
+                           const observer = new IntersectionObserver((entries) => {
+                               if (entries[0].isIntersecting) {
+                                   fetchNextPage();
+                               }
+                           });
+                           observer.observe(node);
+                           return () => observer.disconnect();
+                       }
+                   }}
+                 />
+                 
+                 {allMessages.length === 0 && !isFetchingNextPage && (
+                    <div className="flex flex-col items-center justify-center py-12 text-center opacity-50">
+                        <div className="bg-muted/30 p-4 rounded-full mb-3">
+                            <MessageSquare className="h-8 w-8 text-muted-foreground" />
+                        </div>
+                        <p className="text-sm text-muted-foreground font-medium">No messages yet</p>
+                        <p className="text-xs text-muted-foreground">Start the conversation by recording a voice message</p>
+                    </div>
+                 )}
             </div>
 
-            <VoiceRecorder 
-              receiverId={selectedUser} 
-              onSend={sendMessage} 
-            />
+            {/* Composer Area - Sticky at bottom */}
+            <div className="shrink-0 z-20 bg-background">
+              <VoiceRecorder 
+                receiverId={selectedUser} 
+                onSend={sendMessage} 
+              />
+            </div>
           </>
         ) : (
-          <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground">
-            <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center mb-4">
-              <MessageSquare className="h-6 w-6" />
+          <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground bg-muted/5 p-4 text-center">
+            <div className="h-16 w-16 rounded-2xl bg-primary/10 flex items-center justify-center mb-6 shadow-sm">
+              <MessageSquare className="h-8 w-8 text-primary" />
             </div>
-            <p>Select a user to start chatting</p>
+            <h3 className="text-lg font-semibold text-foreground mb-2">Welcome to Voice Chat</h3>
+            <p className="max-w-xs text-sm text-muted-foreground">
+              Select a user from the sidebar to start sending real-time voice messages.
+            </p>
           </div>
         )}
       </div>
