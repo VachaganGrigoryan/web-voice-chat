@@ -54,18 +54,24 @@ export const useChat = () => {
   });
 
   const sendMessageMutation = useMutation({
-    mutationFn: async (formData: FormData) => {
-      const response = await messagesApi.uploadVoice(formData);
+    mutationFn: async (data: {
+      type: 'voice' | 'image' | 'sticker' | 'video' | 'file';
+      receiver_id: string;
+      file: File;
+      text?: string;
+      duration_ms?: number;
+    }) => {
+      const response = await messagesApi.uploadMedia(data);
       return response.data.data;
     },
-    onSuccess: (newMessage) => {
+    onSuccess: (newMessage, variables) => {
       if (selectedUser) {
         // Emit socket event to notify server
         const { socket } = useSocketStore.getState();
         socket?.emit('send_message', {
           to: selectedUser,
           message_id: newMessage.id,
-          type: 'voice'
+          type: variables.type
         });
 
         queryClient.setQueryData(['messages', selectedUser], (old: any) => {
@@ -127,7 +133,13 @@ export const useChat = () => {
     fetchNextPage,
     hasNextPage,
     isFetchingNextPage,
-    sendVoice: sendMessageMutation.mutateAsync,
+    sendVoice: sendMessageMutation.mutateAsync as (data: {
+      type: 'voice' | 'image' | 'sticker' | 'video' | 'file';
+      receiver_id: string;
+      file: File;
+      text?: string;
+      duration_ms?: number;
+    }) => Promise<any>,
     sendText: sendTextMutation.mutateAsync,
     isSending: sendMessageMutation.isPending || sendTextMutation.isPending,
   };

@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { useChat, useConversations } from '@/hooks/useChat';
+import { useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '@/store/authStore';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -10,6 +11,8 @@ import { LogOut, User, MessageSquare, Plus, Loader2, Mic, ArrowLeft, Check, Chec
 import { useNavigate } from 'react-router-dom';
 import { authApi } from '@/api/endpoints';
 import VoiceRecorder from './VoiceRecorder';
+import MediaComposer from './MediaComposer';
+import { MessageRenderer } from './MessageRenderer';
 import AudioPlayer from './AudioPlayer';
 import UserSettings from './UserSettings';
 import { cn } from '@/lib/utils';
@@ -34,6 +37,7 @@ export default function ChatLayout() {
   
   const { data: conversationsData } = useConversations();
   const conversations = conversationsData?.pages.flatMap(page => page.data) || [];
+  const queryClient = useQueryClient();
 
   const { userEmail, userId, logout, refreshToken } = useAuthStore();
   const navigate = useNavigate();
@@ -189,10 +193,19 @@ export default function ChatLayout() {
                   )}
                   onClick={() => {
                     setSelectedUser(conv.peer_user.id);
-                    // Clear unread count when selected
-                    if (conv.unread_count) {
-                      conv.unread_count = 0;
-                    }
+                    // Clear unread count in cache
+                    queryClient.setQueryData(['conversations'], (old: any) => {
+                      if (!old) return old;
+                      const newPages = old.pages.map((page: any) => ({
+                        ...page,
+                        data: page.data.map((c: any) => 
+                          c.peer_user.id === conv.peer_user.id 
+                            ? { ...c, unread_count: 0 } 
+                            : c
+                        )
+                      }));
+                      return { ...old, pages: newPages };
+                    });
                   }}
                 >
                   <div className="relative mr-3">
@@ -208,16 +221,19 @@ export default function ChatLayout() {
                   </div>
                   <div className="flex flex-col items-start overflow-hidden flex-1">
                      <div className="flex justify-between items-center w-full">
-                       <span className={cn("truncate text-left", conv.unread_count ? "font-semibold" : "font-medium")}>
+                       <span className={cn("truncate text-left", conv.unread_count ? "font-bold text-foreground" : "font-medium text-muted-foreground")}>
                          {conv.peer_user.display_name || conv.peer_user.username || conv.peer_user.id}
                        </span>
                        {!!conv.unread_count && (
-                         <span className="bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center ml-2 shrink-0">
-                           {conv.unread_count > 99 ? '99+' : conv.unread_count}
-                         </span>
+                         <div className="flex items-center gap-1.5 ml-2 shrink-0">
+                           <span className="h-2 w-2 rounded-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.4)]" />
+                           <span className="text-[10px] font-bold text-blue-600 dark:text-blue-400">
+                             {conv.unread_count > 99 ? '99+' : conv.unread_count}
+                           </span>
+                         </div>
                        )}
                      </div>
-                     <span className={cn("text-xs truncate w-full text-left", conv.unread_count ? "text-foreground font-medium" : "text-muted-foreground")}>
+                     <span className={cn("text-xs truncate w-full text-left", conv.unread_count ? "text-foreground font-semibold" : "text-muted-foreground")}>
                        {conv.last_message?.type === 'voice' ? '🎤 Voice message' : conv.last_message?.text || 'Click to chat'}
                      </span>
                   </div>
@@ -309,41 +325,42 @@ export default function ChatLayout() {
                            isMe ? "self-end items-end" : "self-start items-start"
                          )}
                        >
-                         <div
-                           className={cn(
-                             "rounded-2xl px-1 py-1 shadow-sm overflow-hidden transition-all duration-1000",
-                             isMe
-                               ? "bg-primary text-primary-foreground rounded-br-none"
-                               : highlightedMessageIds.has(message.id)
-                               ? "bg-blue-100 border border-blue-300 rounded-bl-none dark:bg-blue-900/30 dark:border-blue-800"
-                               : "bg-white border border-border/50 rounded-bl-none"
-                           )}
-                         >
-                           {message.type === 'voice' && message.media ? (
-                             <AudioPlayer 
-                               src={message.media.url} 
-                               durationMs={message.media.duration_ms}
-                               messageId={message.id}
-                               isRead={message.status === 'read'}
-                               className={cn(
-                                 "w-full min-w-[200px]",
-                                 isMe ? "bg-primary-foreground/10" : "bg-secondary/30"
-                               )}
-                             />
-                           ) : message.type === 'text' ? (
-                             <div className="px-4 py-2 text-[15px] leading-relaxed break-words whitespace-pre-wrap">
-                               {message.text}
-                             </div>
-                           ) : (
-                             <div className="px-4 py-2">Unknown message type</div>
-                           )}
-                         </div>
-                         
+                         {/* Precise Timestamp Tooltip */}
                          <div className={cn(
-                           "flex items-center gap-1 mt-1 px-1 text-[10px] text-muted-foreground/70",
+                           "absolute bottom-full mb-1 z-50 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none",
+                           isMe ? "right-0" : "left-0"
+                         )}>
+                           <div className="bg-zinc-900/90 backdrop-blur-sm text-white text-[10px] p-2 rounded-lg shadow-xl border border-white/10 flex flex-col gap-1 min-w-[140px]">
+                             <div className="flex justify-between gap-4">
+                               <span className="text-zinc-400">Sent</span>
+                               <span>{format(new Date(message.created_at), 'MMM d, h:mm:ss a')}</span>
+                             </div>
+                             {message.delivered_at && (
+                               <div className="flex justify-between gap-4">
+                                 <span className="text-zinc-400">Delivered</span>
+                                 <span>{format(new Date(message.delivered_at), 'MMM d, h:mm:ss a')}</span>
+                               </div>
+                             )}
+                             {message.read_at && (
+                               <div className="flex justify-between gap-4">
+                                 <span className="text-zinc-400">Read</span>
+                                 <span>{format(new Date(message.read_at), 'MMM d, h:mm:ss a')}</span>
+                               </div>
+                             )}
+                           </div>
+                         </div>
+
+                          <MessageRenderer 
+                            message={message}
+                            isMe={isMe}
+                            highlighted={highlightedMessageIds.has(message.id)}
+                          />
+
+                         <div className={cn(
+                           "flex items-center gap-1 mt-1 px-1 text-[10px] text-muted-foreground/70 cursor-help",
                            isMe ? "justify-end" : "justify-start"
                          )}>
-                           <span>
+                           <span title={`Sent: ${format(new Date(message.created_at), 'MMM d, yyyy h:mm:ss a')}${message.delivered_at ? `\nDelivered: ${format(new Date(message.delivered_at), 'MMM d, yyyy h:mm:ss a')}` : ''}${message.read_at ? `\nRead: ${format(new Date(message.read_at), 'MMM d, yyyy h:mm:ss a')}` : ''}`}>
                              {format(new Date(message.created_at), 'h:mm a')}
                            </span>
                            {isMe && (
@@ -408,7 +425,13 @@ export default function ChatLayout() {
             </div>
 
             {/* Composer Area - Sticky at bottom */}
-            <div className="shrink-0 z-20 bg-background">
+            <div className="shrink-0 z-20 bg-background flex items-center gap-2 p-4">
+              <MediaComposer 
+                receiverId={selectedUser} 
+                onSendMedia={sendVoice}
+                isUploading={isSending}
+                setIsUploading={() => {}}
+              />
               <VoiceRecorder 
                 receiverId={selectedUser} 
                 onSendVoice={sendVoice}

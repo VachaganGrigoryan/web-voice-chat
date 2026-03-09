@@ -21,10 +21,24 @@ export const usersApi = {
 };
 
 export const messagesApi = {
-  uploadVoice: (formData: FormData) =>
-    apiClient.post<SuccessResponse<MessageDoc>>('/messages/voice', formData, {
+  uploadMedia: (data: {
+    type: 'voice' | 'image' | 'sticker' | 'video' | 'file';
+    receiver_id: string;
+    file: File;
+    text?: string;
+    duration_ms?: number;
+  }) => {
+    const formData = new FormData();
+    formData.append('type', data.type);
+    formData.append('receiver_id', data.receiver_id);
+    formData.append('file', data.file);
+    if (data.text) formData.append('text', data.text);
+    if (data.duration_ms) formData.append('duration_ms', data.duration_ms.toString());
+    
+    return apiClient.post<SuccessResponse<MessageDoc>>('/messages/media', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
-    }),
+    });
+  },
   sendText: (receiver_id: string, text: string) => 
     apiClient.post<SuccessResponse<MessageDoc>>('/messages/text', { receiver_id, text }),
   getHistory: (userId: string, limit = 20, cursor?: string) =>

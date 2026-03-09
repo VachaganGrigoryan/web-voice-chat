@@ -8,7 +8,13 @@ import { motion, AnimatePresence } from 'motion/react';
 
 interface VoiceRecorderProps {
   receiverId: string;
-  onSendVoice: (formData: FormData) => Promise<any>;
+  onSendVoice: (data: {
+    type: 'voice' | 'image' | 'sticker' | 'video' | 'file';
+    receiver_id: string;
+    file: File;
+    text?: string;
+    duration_ms?: number;
+  }) => Promise<any>;
   onSendText: (data: { receiver_id: string; text: string }) => Promise<any>;
 }
 
@@ -101,15 +107,14 @@ export default function VoiceRecorder({ receiverId, onSendVoice, onSendText }: V
     
     setIsUploading(true);
     try {
-      const formData = new FormData();
-      // Calculate duration from start time if available, otherwise use timer state * 1000
-      const finalDuration = duration * 1000; 
+      const file = new File([audioBlob], 'voice.webm', { type: 'audio/webm' });
       
-      formData.append('file', audioBlob, 'voice.webm');
-      formData.append('receiver_id', receiverId);
-      formData.append('duration_ms', finalDuration.toString());
-
-      await onSendVoice(formData);
+      await onSendVoice({
+        type: 'voice',
+        receiver_id: receiverId,
+        file,
+        duration_ms: duration * 1000,
+      });
       setAudioBlob(null);
       setDuration(0);
     } catch (err) {
