@@ -21,7 +21,7 @@ https://chat.vachagan.dev
 https://voice-chat.vachagan.dev/docs
 
 **Health Check**  
-[https://voice-chat.vachagan.dev/health/live](https://voice-chat.vachagan.dev/health/ready)
+https://voice-chat.vachagan.dev/health/live
 
 ---
 
@@ -98,10 +98,15 @@ docs/screenshots
 
 ## Chat Interface
 
-![Home UI](docs/screenshots/chat.png)
+![Chat UI](docs/screenshots/chat.png)
 
-![Chat UI](docs/screenshots/chat-v2.png)
-![Recording UI](docs/screenshots/chat-v3.png)
+*Realtime voice chat interface*
+
+---
+
+## Mobile Interface
+
+![Mobile UI](docs/screenshots/mobile.png)
 
 *Mobile optimized layout with fixed voice button*
 
