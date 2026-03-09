@@ -13,6 +13,7 @@ import { authApi } from '@/api/endpoints';
 import VoiceRecorder from './VoiceRecorder';
 import MediaComposer from './MediaComposer';
 import { MessageRenderer } from './MessageRenderer';
+import { MediaViewer } from './MediaViewer';
 import AudioPlayer from './AudioPlayer';
 import UserSettings from './UserSettings';
 import { cn } from '@/lib/utils';
@@ -43,6 +44,7 @@ export default function ChatLayout() {
   const navigate = useNavigate();
   const [newUserId, setNewUserId] = useState('');
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [mediaViewer, setMediaViewer] = useState<{ open: boolean; type: 'image' | 'video'; url: string }>({ open: false, type: 'image', url: '' });
   const { profile } = useProfile();
   const { socket } = useSocketStore();
   const [highlightedMessageIds, setHighlightedMessageIds] = useState<Set<string>>(new Set());
@@ -122,8 +124,18 @@ export default function ChatLayout() {
   const selectedConversationUser = conversations.find(c => c.peer_user.id === selectedUser)?.peer_user;
   const displaySelectedUser = selectedConversationUser?.display_name || selectedConversationUser?.username || selectedUser;
 
+  const handleMediaClick = (type: 'image' | 'video', url: string) => {
+    setMediaViewer({ open: true, type, url });
+  };
+
   return (
     <div className="flex h-[100dvh] bg-background overflow-hidden">
+      <MediaViewer 
+        open={mediaViewer.open}
+        type={mediaViewer.type}
+        url={mediaViewer.url}
+        onClose={() => setMediaViewer(prev => ({ ...prev, open: false }))}
+      />
       <UserSettings isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />
       {/* Sidebar */}
       <div className={cn(
@@ -354,6 +366,7 @@ export default function ChatLayout() {
                             message={message}
                             isMe={isMe}
                             highlighted={highlightedMessageIds.has(message.id)}
+                            onMediaClick={handleMediaClick}
                           />
 
                          <div className={cn(

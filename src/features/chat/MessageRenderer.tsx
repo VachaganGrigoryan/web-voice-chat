@@ -7,9 +7,10 @@ interface MessageRendererProps {
   message: MessageDoc;
   isMe: boolean;
   highlighted: boolean;
+  onMediaClick: (type: 'image' | 'video', url: string) => void;
 }
 
-export const MessageRenderer: React.FC<MessageRendererProps> = ({ message, isMe, highlighted }) => {
+export const MessageRenderer: React.FC<MessageRendererProps> = ({ message, isMe, highlighted, onMediaClick }) => {
   const baseClasses = cn(
     "rounded-2xl px-1 py-1 shadow-sm overflow-hidden transition-all duration-1000",
     isMe
@@ -46,7 +47,7 @@ export const MessageRenderer: React.FC<MessageRendererProps> = ({ message, isMe,
     case 'image':
       return (
         <div className={baseClasses}>
-          <div className="p-1">
+          <div className="p-1 cursor-pointer" onClick={() => onMediaClick('image', message.media?.url || '')}>
             <img src={message.media?.url} alt="Message" className="max-w-full max-h-64 rounded-lg object-contain" referrerPolicy="no-referrer" />
             {message.text && <p className="px-3 py-2 text-sm">{message.text}</p>}
           </div>
@@ -55,8 +56,8 @@ export const MessageRenderer: React.FC<MessageRendererProps> = ({ message, isMe,
     case 'video':
       return (
         <div className={baseClasses}>
-          <div className="p-1">
-            <video src={message.media?.url} controls className="max-w-full max-h-64 rounded-lg object-contain" />
+          <div className="p-1 cursor-pointer" onClick={() => onMediaClick('video', message.media?.url || '')}>
+            <video src={message.media?.url} className="max-w-full max-h-64 rounded-lg object-contain" />
             {message.text && <p className="px-3 py-2 text-sm">{message.text}</p>}
           </div>
         </div>
