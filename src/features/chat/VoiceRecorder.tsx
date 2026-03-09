@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/Button';
 import { Mic, Square, Loader2, Trash2, Send, StopCircle } from 'lucide-react';
 import { getSocket } from '@/socket/socket';

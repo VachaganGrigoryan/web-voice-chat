@@ -116,20 +116,38 @@ export const useTypingIndicator = (userId?: string) => {
   return { isTyping, typingUsers, startTyping, stopTyping };
 };
 
+import { toast } from 'sonner';
+
 // Helper for notifications
-const showNotification = (message: MessageDoc) => {
+const showNotification = (message: MessageDoc, senderName?: string) => {
+  // Play sound
+  try {
+    const audio = new Audio('/notification.mp3');
+    audio.volume = 0.5;
+    audio.play().catch(e => console.log('Audio play failed:', e));
+  } catch (e) {
+    console.log('Audio play failed:', e);
+  }
+
+  // Show floating toast notification
+  const title = senderName ? `New message from ${senderName}` : 'New Message';
+  const body = message.type === 'voice' ? '🎤 Voice message' : message.text || 'New message';
+  
+  toast(title, {
+    description: body,
+    duration: 4000,
+    position: 'top-right',
+  });
+
+  // Show browser notification if enabled
   if (!('Notification' in window)) return;
   
   if (Notification.permission === 'granted') {
-    new Notification('New Message', {
-      body: `New message from ${message.sender_id}`,
-    });
+    new Notification(title, { body });
   } else if (Notification.permission !== 'denied') {
     Notification.requestPermission().then(permission => {
       if (permission === 'granted') {
-        new Notification('New Message', {
-          body: `New message from ${message.sender_id}`,
-        });
+        new Notification(title, { body });
       }
     });
   }
@@ -169,11 +187,78 @@ export const useRealtimeMessages = (selectedUser: string | null) => {
         };
       });
 
+      // Update conversations list
+      queryClient.setQueryData(['conversations'], (old: any) => {
+        if (!old) return old;
+        
+        const newPages = [...old.pages];
+        const allConversations = newPages.flatMap(page => page.data);
+        
+        const existingConvIndex = allConversations.findIndex(c => c.peer_user.id === conversationPartnerId);
+        
+        if (existingConvIndex !== -1) {
+          // Update existing conversation
+          const conv = allConversations[existingConvIndex];
+          const updatedConv = {
+            ...conv,
+            last_message: {
+              id: message.id,
+              type: message.type,
+              text: message.text,
+              media: message.media,
+              status: message.status,
+              created_at: message.created_at
+            },
+            last_message_at: message.created_at,
+            // Increment unread count if we're not currently viewing this conversation
+            unread_count: (message.sender_id !== currentUserId && selectedUser !== conversationPartnerId) 
+              ? (conv.unread_count || 0) + 1 
+              : (conv.unread_count || 0)
+          };
+          
+          // Move to top
+          allConversations.splice(existingConvIndex, 1);
+          allConversations.unshift(updatedConv);
+        } else {
+          // Invalidate to fetch new conversation
+          queryClient.invalidateQueries({ queryKey: ['conversations'] });
+          return old;
+        }
+        
+        // Reconstruct pages
+        let currentIndex = 0;
+        for (let i = 0; i < newPages.length; i++) {
+          const pageLength = newPages[i].data.length;
+          newPages[i] = {
+            ...newPages[i],
+            data: allConversations.slice(currentIndex, currentIndex + pageLength)
+          };
+          currentIndex += pageLength;
+        }
+        
+        return {
+          ...old,
+          pages: newPages
+        };
+      });
+
       if (message.receiver_id === currentUserId) {
         socket.emit(EVENTS.MESSAGE_DELIVERED, { message_id: message.id });
         
         if (document.hidden || message.sender_id !== selectedUser) {
-          showNotification(message);
+          // Try to find sender name from conversations
+          const conversationsData = queryClient.getQueryData<any>(['conversations']);
+          let senderName = message.sender_id;
+          
+          if (conversationsData?.pages) {
+            const allConversations = conversationsData.pages.flatMap((p: any) => p.data);
+            const conv = allConversations.find((c: any) => c.peer_user.id === message.sender_id);
+            if (conv) {
+              senderName = conv.peer_user.display_name || conv.peer_user.username || message.sender_id;
+            }
+          }
+          
+          showNotification(message, senderName);
         }
       }
     };

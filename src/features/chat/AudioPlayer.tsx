@@ -10,9 +10,10 @@ interface AudioPlayerProps {
   durationMs?: number | null;
   className?: string;
   messageId?: string;
+  isRead?: boolean;
 }
 
-export default function AudioPlayer({ src, durationMs, className, messageId }: AudioPlayerProps) {
+export default function AudioPlayer({ src, durationMs, className, messageId, isRead }: AudioPlayerProps) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -34,7 +35,7 @@ export default function AudioPlayer({ src, durationMs, className, messageId }: A
     const handleCanPlay = () => setIsLoading(false);
     const handlePlay = () => {
       setIsPlaying(true);
-      if (messageId && !hasPlayedRef.current) {
+      if (messageId && !isRead && !hasPlayedRef.current) {
         const socket = getSocket();
         socket?.emit(EVENTS.MESSAGE_READ, { message_id: messageId });
         hasPlayedRef.current = true;

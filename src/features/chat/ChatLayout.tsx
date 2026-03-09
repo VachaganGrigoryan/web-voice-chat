@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { useChat, useConversations } from '@/hooks/useChat';
 import { useAuthStore } from '@/store/authStore';
 import { Button } from '@/components/ui/Button';
@@ -13,7 +13,8 @@ import VoiceRecorder from './VoiceRecorder';
 import AudioPlayer from './AudioPlayer';
 import UserSettings from './UserSettings';
 import { cn } from '@/lib/utils';
-import { useTypingIndicator } from '@/socket/socket';
+import { useTypingIndicator, useSocketStore } from '@/socket/socket';
+import { EVENTS } from '@/socket/events';
 import { format, isToday, isYesterday } from 'date-fns';
 import { useProfile } from '@/hooks/useProfile';
 
@@ -39,6 +40,8 @@ export default function ChatLayout() {
   const [newUserId, setNewUserId] = useState('');
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const { profile } = useProfile();
+  const { socket } = useSocketStore();
+  const [highlightedMessageIds, setHighlightedMessageIds] = useState<Set<string>>(new Set());
   
   const { isTyping } = useTypingIndicator(selectedUser || undefined);
 
@@ -53,7 +56,57 @@ export default function ChatLayout() {
     }
   };
 
-  const allMessages = messages?.pages.flatMap((page) => page.data) || [];
+  const allMessages = useMemo(() => 
+    messages?.pages.flatMap((page) => page.data) || [],
+    [messages]
+  );
+
+  const readEmittedMessagesRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    readEmittedMessagesRef.current.clear();
+    setHighlightedMessageIds(new Set());
+  }, [selectedUser]);
+
+  useEffect(() => {
+    if (!socket || !selectedUser || !allMessages.length) return;
+
+    const unreadMessages = allMessages.filter(
+      (m) => m.receiver_id === userId && 
+             m.status !== 'read' && 
+             m.type !== 'voice' &&
+             !readEmittedMessagesRef.current.has(m.id)
+    );
+
+    if (unreadMessages.length > 0) {
+      const newIds = unreadMessages.map(m => m.id);
+      
+      // Mark as emitted immediately to avoid re-processing in next render
+      newIds.forEach(id => readEmittedMessagesRef.current.add(id));
+
+      // Emit events
+      newIds.forEach((id) => {
+        socket.emit(EVENTS.MESSAGE_READ, { message_id: id });
+      });
+
+      // Update UI highlight
+      setHighlightedMessageIds((prev) => {
+        const next = new Set(prev);
+        newIds.forEach(id => next.add(id));
+        return next;
+      });
+
+      const timer = setTimeout(() => {
+        setHighlightedMessageIds((prev) => {
+          const next = new Set(prev);
+          newIds.forEach(id => next.delete(id));
+          return next;
+        });
+      }, 3000);
+
+      return () => clearTimeout(timer);
+    }
+  }, [allMessages, selectedUser, socket, userId]);
 
   const formatMessageDate = (dateString: string) => {
     const date = new Date(dateString);
@@ -134,7 +187,13 @@ export default function ChatLayout() {
                     "w-full justify-start text-sm font-normal py-3 h-auto",
                     conv.peer_user.id === userId && "opacity-50 pointer-events-none"
                   )}
-                  onClick={() => setSelectedUser(conv.peer_user.id)}
+                  onClick={() => {
+                    setSelectedUser(conv.peer_user.id);
+                    // Clear unread count when selected
+                    if (conv.unread_count) {
+                      conv.unread_count = 0;
+                    }
+                  }}
                 >
                   <div className="relative mr-3">
                     <Avatar className="h-8 w-8">
@@ -148,10 +207,17 @@ export default function ChatLayout() {
                     )}
                   </div>
                   <div className="flex flex-col items-start overflow-hidden flex-1">
-                     <span className="truncate font-medium w-full text-left">
-                       {conv.peer_user.display_name || conv.peer_user.username || conv.peer_user.id}
-                     </span>
-                     <span className="text-xs text-muted-foreground truncate w-full text-left">
+                     <div className="flex justify-between items-center w-full">
+                       <span className={cn("truncate text-left", conv.unread_count ? "font-semibold" : "font-medium")}>
+                         {conv.peer_user.display_name || conv.peer_user.username || conv.peer_user.id}
+                       </span>
+                       {!!conv.unread_count && (
+                         <span className="bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center ml-2 shrink-0">
+                           {conv.unread_count > 99 ? '99+' : conv.unread_count}
+                         </span>
+                       )}
+                     </div>
+                     <span className={cn("text-xs truncate w-full text-left", conv.unread_count ? "text-foreground font-medium" : "text-muted-foreground")}>
                        {conv.last_message?.type === 'voice' ? '🎤 Voice message' : conv.last_message?.text || 'Click to chat'}
                      </span>
                   </div>
@@ -245,9 +311,11 @@ export default function ChatLayout() {
                        >
                          <div
                            className={cn(
-                             "rounded-2xl px-1 py-1 shadow-sm overflow-hidden transition-all",
+                             "rounded-2xl px-1 py-1 shadow-sm overflow-hidden transition-all duration-1000",
                              isMe
                                ? "bg-primary text-primary-foreground rounded-br-none"
+                               : highlightedMessageIds.has(message.id)
+                               ? "bg-blue-100 border border-blue-300 rounded-bl-none dark:bg-blue-900/30 dark:border-blue-800"
                                : "bg-white border border-border/50 rounded-bl-none"
                            )}
                          >
@@ -256,6 +324,7 @@ export default function ChatLayout() {
                                src={message.media.url} 
                                durationMs={message.media.duration_ms}
                                messageId={message.id}
+                               isRead={message.status === 'read'}
                                className={cn(
                                  "w-full min-w-[200px]",
                                  isMe ? "bg-primary-foreground/10" : "bg-secondary/30"
@@ -278,10 +347,13 @@ export default function ChatLayout() {
                              {format(new Date(message.created_at), 'h:mm a')}
                            </span>
                            {isMe && (
-                             <span className={cn(
-                               "flex items-center",
-                               message.status === 'read' ? "text-blue-500" : ""
-                             )}>
+                             <span 
+                               className={cn(
+                                 "flex items-center",
+                                 message.status === 'read' ? "text-blue-500" : ""
+                               )}
+                               title={message.read_at ? `Read at ${format(new Date(message.read_at), 'h:mm a')}` : undefined}
+                             >
                                {message.status === 'read' ? (
                                  <CheckCheck className="h-3 w-3" />
                                ) : (
