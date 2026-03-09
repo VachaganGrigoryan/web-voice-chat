@@ -44,6 +44,21 @@ const setupSocketSync = () => {
       setIsConnected(false);
     });
 
+    socket.on(EVENTS.PRESENCE_UPDATE, (payload: any) => {
+      // Assuming payload is { user_id: string, status: 'online' | 'offline' } or similar
+      // The prompt says "existing presence payload shape"
+      if (payload.status === 'online') {
+        const currentUsers = useSocketStore.getState().onlineUsers;
+        if (!currentUsers.includes(payload.user_id)) {
+          setOnlineUsers([...currentUsers, payload.user_id]);
+        }
+      } else if (payload.status === 'offline') {
+        const currentUsers = useSocketStore.getState().onlineUsers;
+        setOnlineUsers(currentUsers.filter((id) => id !== payload.user_id));
+      }
+    });
+
+    // Keep these if the backend still sends them separately, otherwise presence_update covers it
     socket.on(EVENTS.USER_ONLINE, ({ user_id }: { user_id: string }) => {
       const currentUsers = useSocketStore.getState().onlineUsers;
       if (!currentUsers.includes(user_id)) {
@@ -56,12 +71,12 @@ const setupSocketSync = () => {
       setOnlineUsers(currentUsers.filter((id) => id !== user_id));
     });
 
-    socket.on(EVENTS.SERVER_TYPING_START, ({ user_id }: { user_id: string }) => {
-      setTypingUser(user_id, true);
+    socket.on(EVENTS.SERVER_TYPING_START, ({ from }: { from: string }) => {
+      setTypingUser(from, true);
     });
 
-    socket.on(EVENTS.SERVER_TYPING_STOP, ({ user_id }: { user_id: string }) => {
-      setTypingUser(user_id, false);
+    socket.on(EVENTS.SERVER_TYPING_STOP, ({ from }: { from: string }) => {
+      setTypingUser(from, false);
     });
   });
 };
@@ -91,11 +106,11 @@ export const useTypingIndicator = (userId?: string) => {
   const isTyping = userId ? !!typingUsers[userId] : false;
   
   const startTyping = (receiverId: string) => {
-    socket?.emit(EVENTS.CLIENT_TYPING_START, { receiver_id: receiverId });
+    socket?.emit(EVENTS.CLIENT_TYPING_START, { to: receiverId });
   };
 
   const stopTyping = (receiverId: string) => {
-    socket?.emit(EVENTS.CLIENT_TYPING_STOP, { receiver_id: receiverId });
+    socket?.emit(EVENTS.CLIENT_TYPING_STOP, { to: receiverId });
   };
 
   return { isTyping, typingUsers, startTyping, stopTyping };
@@ -106,13 +121,13 @@ const showNotification = (message: MessageDoc) => {
   if (!('Notification' in window)) return;
   
   if (Notification.permission === 'granted') {
-    new Notification('New Voice Message', {
+    new Notification('New Message', {
       body: `New message from ${message.sender_id}`,
     });
   } else if (Notification.permission !== 'denied') {
     Notification.requestPermission().then(permission => {
       if (permission === 'granted') {
-        new Notification('New Voice Message', {
+        new Notification('New Message', {
           body: `New message from ${message.sender_id}`,
         });
       }
@@ -155,7 +170,7 @@ export const useRealtimeMessages = (selectedUser: string | null) => {
       });
 
       if (message.receiver_id === currentUserId) {
-        socket.emit(EVENTS.VOICE_MESSAGE_DELIVERED, { message_id: message.id });
+        socket.emit(EVENTS.MESSAGE_DELIVERED, { message_id: message.id });
         
         if (document.hidden || message.sender_id !== selectedUser) {
           showNotification(message);
@@ -167,12 +182,12 @@ export const useRealtimeMessages = (selectedUser: string | null) => {
       queryClient.invalidateQueries({ queryKey: ['messages'] });
     };
 
-    socket.on(EVENTS.RECEIVE_VOICE_MESSAGE, handleReceiveMessage);
-    socket.on(EVENTS.VOICE_MESSAGE_STATUS, handleMessageStatus);
+    socket.on(EVENTS.RECEIVE_MESSAGE, handleReceiveMessage);
+    socket.on(EVENTS.MESSAGE_STATUS, handleMessageStatus);
 
     return () => {
-      socket.off(EVENTS.RECEIVE_VOICE_MESSAGE, handleReceiveMessage);
-      socket.off(EVENTS.VOICE_MESSAGE_STATUS, handleMessageStatus);
+      socket.off(EVENTS.RECEIVE_MESSAGE, handleReceiveMessage);
+      socket.off(EVENTS.MESSAGE_STATUS, handleMessageStatus);
     };
   }, [queryClient, currentUserId, socket, selectedUser]);
 };

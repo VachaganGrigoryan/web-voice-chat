@@ -36,7 +36,7 @@ export default function AudioPlayer({ src, durationMs, className, messageId }: A
       setIsPlaying(true);
       if (messageId && !hasPlayedRef.current) {
         const socket = getSocket();
-        socket?.emit(EVENTS.VOICE_MESSAGE_READ, { message_id: messageId });
+        socket?.emit(EVENTS.MESSAGE_READ, { message_id: messageId });
         hasPlayedRef.current = true;
       }
     };

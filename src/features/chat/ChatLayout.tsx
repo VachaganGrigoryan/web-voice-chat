@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { useChat } from '@/hooks/useChat';
+import { useChat, useConversations } from '@/hooks/useChat';
 import { useAuthStore } from '@/store/authStore';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -11,9 +11,11 @@ import { useNavigate } from 'react-router-dom';
 import { authApi } from '@/api/endpoints';
 import VoiceRecorder from './VoiceRecorder';
 import AudioPlayer from './AudioPlayer';
+import UserSettings from './UserSettings';
 import { cn } from '@/lib/utils';
 import { useTypingIndicator } from '@/socket/socket';
 import { format, isToday, isYesterday } from 'date-fns';
+import { useProfile } from '@/hooks/useProfile';
 
 export default function ChatLayout() {
   const {
@@ -28,9 +30,14 @@ export default function ChatLayout() {
     isSending,
   } = useChat();
   
+  const { data: conversationsData } = useConversations();
+  const conversations = conversationsData?.pages.flatMap(page => page.data) || [];
+
   const { userEmail, userId, logout, refreshToken } = useAuthStore();
   const navigate = useNavigate();
   const [newUserId, setNewUserId] = useState('');
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const { profile } = useProfile();
   
   const { isTyping } = useTypingIndicator(selectedUser || undefined);
 
@@ -54,22 +61,39 @@ export default function ChatLayout() {
     return format(date, 'MMMM d, yyyy');
   };
 
+  const selectedConversationUser = conversations.find(c => c.peer_user.id === selectedUser)?.peer_user;
+  const displaySelectedUser = selectedConversationUser?.display_name || selectedConversationUser?.username || selectedUser;
+
   return (
     <div className="flex h-[100dvh] bg-background overflow-hidden">
+      <UserSettings isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />
       {/* Sidebar */}
       <div className={cn(
         "w-full md:w-80 border-r flex flex-col bg-muted/10 h-full",
         selectedUser ? "hidden md:flex" : "flex"
       )}>
         <div className="p-4 border-b flex items-center justify-between shrink-0 h-16">
-          <div className="flex items-center gap-2">
+          <button 
+            onClick={() => setIsSettingsOpen(true)}
+            className="flex items-center gap-2 hover:bg-muted/50 p-1.5 rounded-lg transition-colors text-left max-w-[70%]"
+          >
             <Avatar className="h-8 w-8">
-              <AvatarFallback>{userEmail?.[0].toUpperCase()}</AvatarFallback>
+              {profile?.avatar ? (
+                <AvatarImage src={profile.avatar.url} className="object-cover" />
+              ) : null}
+              <AvatarFallback>{(profile?.display_name || profile?.username || userEmail || '?')[0].toUpperCase()}</AvatarFallback>
             </Avatar>
-            <div className="text-sm font-medium truncate max-w-[120px]" title={userEmail || ''}>
-              {userEmail}
+            <div className="flex flex-col overflow-hidden">
+              <span className="text-sm font-medium truncate">
+                {profile?.display_name || profile?.username || userEmail}
+              </span>
+              {profile?.username && (
+                <span className="text-[10px] text-muted-foreground truncate">
+                  @{profile.username}
+                </span>
+              )}
             </div>
-          </div>
+          </button>
           <Button variant="ghost" size="icon" onClick={handleLogout}>
             <LogOut className="h-4 w-4" />
           </Button>
@@ -96,37 +120,46 @@ export default function ChatLayout() {
           </div>
           
           <div className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wider shrink-0">
-            Online Users
+            Recent Conversations
           </div>
           
           <ScrollArea className="flex-1 -mx-4 px-4">
             <div className="space-y-1 pb-4">
-              {onlineUsers?.map((uid) => (
+              {conversations.map((conv) => (
                 <Button
-                  key={uid}
-                  variant={selectedUser === uid ? "secondary" : "ghost"}
+                  key={conv.conversation_id}
+                  variant={selectedUser === conv.peer_user.id ? "secondary" : "ghost"}
                   className={cn(
                     "w-full justify-start text-sm font-normal py-3 h-auto",
-                    uid === userId && "opacity-50 pointer-events-none"
+                    conv.peer_user.id === userId && "opacity-50 pointer-events-none"
                   )}
-                  onClick={() => setSelectedUser(uid)}
+                  onClick={() => setSelectedUser(conv.peer_user.id)}
                 >
                   <div className="relative mr-3">
                     <Avatar className="h-8 w-8">
-                      <AvatarFallback>{uid[0].toUpperCase()}</AvatarFallback>
+                      {conv.peer_user.avatar ? (
+                        <AvatarImage src={conv.peer_user.avatar.url} />
+                      ) : null}
+                      <AvatarFallback>{(conv.peer_user.display_name || conv.peer_user.username || conv.peer_user.id)[0].toUpperCase()}</AvatarFallback>
                     </Avatar>
-                    <span className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full bg-green-500 ring-2 ring-background" />
+                    {conv.peer_user.is_online && (
+                      <span className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full bg-green-500 ring-2 ring-background" />
+                    )}
                   </div>
-                  <div className="flex flex-col items-start overflow-hidden">
-                     <span className="truncate font-medium">{uid === userId ? `${uid} (You)` : uid}</span>
-                     <span className="text-xs text-muted-foreground truncate w-full text-left">Click to chat</span>
+                  <div className="flex flex-col items-start overflow-hidden flex-1">
+                     <span className="truncate font-medium w-full text-left">
+                       {conv.peer_user.display_name || conv.peer_user.username || conv.peer_user.id}
+                     </span>
+                     <span className="text-xs text-muted-foreground truncate w-full text-left">
+                       {conv.last_message?.type === 'voice' ? '🎤 Voice message' : conv.last_message?.text || 'Click to chat'}
+                     </span>
                   </div>
                 </Button>
               ))}
               
-              {(!onlineUsers || onlineUsers.length === 0) && (
+              {conversations.length === 0 && (
                 <div className="text-sm text-muted-foreground p-4 text-center bg-muted/30 rounded-lg border border-dashed m-1">
-                  No users online
+                  No recent conversations
                 </div>
               )}
             </div>
@@ -154,14 +187,17 @@ export default function ChatLayout() {
                 </Button>
                 <div className="relative">
                   <Avatar className="h-9 w-9 border">
-                    <AvatarFallback>{selectedUser[0].toUpperCase()}</AvatarFallback>
+                    {selectedConversationUser?.avatar ? (
+                      <AvatarImage src={selectedConversationUser.avatar.url} />
+                    ) : null}
+                    <AvatarFallback>{displaySelectedUser?.[0].toUpperCase()}</AvatarFallback>
                   </Avatar>
                   {onlineUsers?.includes(selectedUser) && (
                     <span className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full bg-green-500 ring-2 ring-background" />
                   )}
                 </div>
                 <div>
-                  <div className="text-sm font-semibold leading-none mb-1">{selectedUser}</div>
+                  <div className="text-sm font-semibold leading-none mb-1">{displaySelectedUser}</div>
                   <div className="text-xs text-muted-foreground flex items-center gap-1">
                     {isTyping ? (
                       <span className="text-primary font-medium animate-pulse">Recording...</span>
@@ -214,10 +250,10 @@ export default function ChatLayout() {
                                : "bg-white border border-border/50 rounded-bl-none"
                            )}
                          >
-                           {message.type === 'voice' && message.audio ? (
+                           {message.type === 'voice' && message.media ? (
                              <AudioPlayer 
-                               src={message.audio.url} 
-                               durationMs={message.audio.duration_ms}
+                               src={message.media.url} 
+                               durationMs={message.media.duration_ms}
                                messageId={message.id}
                                className={cn(
                                  "w-full min-w-[200px]",

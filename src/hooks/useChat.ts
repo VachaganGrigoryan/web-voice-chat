@@ -1,7 +1,19 @@
 import { useState, useEffect } from 'react';
 import { useInfiniteQuery, useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
-import { messagesApi, realtimeApi } from '@/api/endpoints';
-import { useSocket, usePresence, useRealtimeMessages } from '@/socket/socket';
+import { messagesApi, realtimeApi, conversationsApi } from '@/api/endpoints';
+import { useSocket, usePresence, useRealtimeMessages, useSocketStore } from '@/socket/socket';
+
+export const useConversations = () => {
+  return useInfiniteQuery({
+    queryKey: ['conversations'],
+    queryFn: async ({ pageParam }) => {
+      const response = await conversationsApi.getConversations(20, pageParam as string | undefined);
+      return response.data;
+    },
+    getNextPageParam: (lastPage) => lastPage.meta.next_cursor,
+    initialPageParam: undefined,
+  });
+};
 
 export const useChat = () => {
   const [selectedUser, setSelectedUser] = useState<string | null>(null);
@@ -48,6 +60,14 @@ export const useChat = () => {
     },
     onSuccess: (newMessage) => {
       if (selectedUser) {
+        // Emit socket event to notify server
+        const { socket } = useSocketStore.getState();
+        socket?.emit('send_message', {
+          to: selectedUser,
+          message_id: newMessage.id,
+          type: 'voice'
+        });
+
         queryClient.setQueryData(['messages', selectedUser], (old: any) => {
           if (!old) return { pages: [{ data: [newMessage], meta: { next_cursor: null } }], pageParams: [undefined] };
           
