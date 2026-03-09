@@ -86,6 +86,39 @@ export const useChat = () => {
     },
   });
 
+  const sendTextMutation = useMutation({
+    mutationFn: async ({ receiver_id, text }: { receiver_id: string; text: string }) => {
+      const response = await messagesApi.sendText(receiver_id, text);
+      return response.data.data;
+    },
+    onSuccess: (newMessage) => {
+      if (selectedUser) {
+        // Emit socket event to notify server
+        const { socket } = useSocketStore.getState();
+        socket?.emit('send_message', {
+          to: selectedUser,
+          message_id: newMessage.id,
+          type: 'text'
+        });
+
+        queryClient.setQueryData(['messages', selectedUser], (old: any) => {
+          if (!old) return { pages: [{ data: [newMessage], meta: { next_cursor: null } }], pageParams: [undefined] };
+          
+          const newPages = [...old.pages];
+          newPages[0] = {
+            ...newPages[0],
+            data: [newMessage, ...newPages[0].data],
+          };
+          
+          return {
+            ...old,
+            pages: newPages,
+          };
+        });
+      }
+    },
+  });
+
   return {
     selectedUser,
     setSelectedUser,
@@ -94,7 +127,8 @@ export const useChat = () => {
     fetchNextPage,
     hasNextPage,
     isFetchingNextPage,
-    sendMessage: sendMessageMutation.mutateAsync,
-    isSending: sendMessageMutation.isPending,
+    sendVoice: sendMessageMutation.mutateAsync,
+    sendText: sendTextMutation.mutateAsync,
+    isSending: sendMessageMutation.isPending || sendTextMutation.isPending,
   };
 };

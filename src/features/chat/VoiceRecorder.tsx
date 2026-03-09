@@ -8,19 +8,22 @@ import { motion, AnimatePresence } from 'motion/react';
 
 interface VoiceRecorderProps {
   receiverId: string;
-  onSend: (formData: FormData) => Promise<any>;
+  onSendVoice: (formData: FormData) => Promise<any>;
+  onSendText: (data: { receiver_id: string; text: string }) => Promise<any>;
 }
 
-export default function VoiceRecorder({ receiverId, onSend }: VoiceRecorderProps) {
+export default function VoiceRecorder({ receiverId, onSendVoice, onSendText }: VoiceRecorderProps) {
   const [isRecording, setIsRecording] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [duration, setDuration] = useState(0);
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
+  const [text, setText] = useState('');
   
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const startTimeRef = useRef<number>(0);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     return () => {
@@ -93,7 +96,7 @@ export default function VoiceRecorder({ receiverId, onSend }: VoiceRecorderProps
     setDuration(0);
   };
 
-  const handleSend = async () => {
+  const handleSendVoice = async () => {
     if (!audioBlob) return;
     
     setIsUploading(true);
@@ -106,7 +109,7 @@ export default function VoiceRecorder({ receiverId, onSend }: VoiceRecorderProps
       formData.append('receiver_id', receiverId);
       formData.append('duration_ms', finalDuration.toString());
 
-      await onSend(formData);
+      await onSendVoice(formData);
       setAudioBlob(null);
       setDuration(0);
     } catch (err) {
@@ -117,29 +120,91 @@ export default function VoiceRecorder({ receiverId, onSend }: VoiceRecorderProps
     }
   };
 
+  const handleSendText = async () => {
+    if (!text.trim()) return;
+    
+    setIsUploading(true);
+    try {
+      await onSendText({ receiver_id: receiverId, text: text.trim() });
+      setText('');
+      if (textareaRef.current) {
+        textareaRef.current.style.height = 'auto';
+      }
+    } catch (err) {
+      console.error('Error sending text:', err);
+      alert('Failed to send text message');
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const handleTextareaChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setText(e.target.value);
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+      textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 128)}px`;
+    }
+  };
+
   return (
     <div className="w-full bg-background/80 backdrop-blur-md border-t p-4 pb-[calc(1rem+env(safe-area-inset-bottom))]">
       <div className="max-w-3xl mx-auto flex items-center justify-between gap-4">
         <AnimatePresence mode="wait">
           {!isRecording && !audioBlob ? (
             <motion.div 
+              key="text-input"
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -10 }}
-              className="w-full flex items-center gap-3"
+              className="w-full flex items-end gap-2"
             >
               <Button
-                size="lg"
-                className="w-full rounded-full h-12 text-base font-medium shadow-md transition-all active:scale-95"
+                variant="ghost"
+                size="icon"
+                className="h-10 w-10 rounded-full shrink-0 text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
                 onClick={startRecording}
                 disabled={isUploading}
+                title="Record voice message"
               >
-                <Mic className="mr-2 h-5 w-5" />
-                Tap to Record
+                <Mic className="h-5 w-5" />
+              </Button>
+              
+              <div className="flex-1 bg-muted/50 rounded-2xl border border-border/50 focus-within:border-primary/50 focus-within:bg-background transition-colors flex items-end min-h-[40px]">
+                <textarea
+                  ref={textareaRef}
+                  value={text}
+                  onChange={handleTextareaChange}
+                  placeholder="Message..."
+                  className="w-full bg-transparent border-0 focus:ring-0 focus:outline-none resize-none py-2.5 px-4 text-sm max-h-32 min-h-[40px] leading-relaxed"
+                  rows={1}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault();
+                      handleSendText();
+                    }
+                  }}
+                />
+              </div>
+              
+              <Button
+                size="icon"
+                className={cn(
+                  "h-10 w-10 rounded-full shrink-0 transition-all duration-200",
+                  text.trim() ? "bg-primary text-primary-foreground shadow-sm hover:bg-primary/90" : "bg-muted text-muted-foreground opacity-50 cursor-not-allowed"
+                )}
+                onClick={handleSendText}
+                disabled={!text.trim() || isUploading}
+              >
+                {isUploading ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Send className="h-4 w-4 ml-0.5" />
+                )}
               </Button>
             </motion.div>
           ) : isRecording ? (
             <motion.div
+              key="recording"
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
@@ -181,6 +246,7 @@ export default function VoiceRecorder({ receiverId, onSend }: VoiceRecorderProps
             </motion.div>
           ) : (
             <motion.div
+              key="preview"
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -10 }}
@@ -210,7 +276,7 @@ export default function VoiceRecorder({ receiverId, onSend }: VoiceRecorderProps
               <Button
                 size="icon"
                 className="h-12 w-12 rounded-full shadow-md bg-primary hover:bg-primary/90"
-                onClick={handleSend}
+                onClick={handleSendVoice}
                 disabled={isUploading}
               >
                 {isUploading ? (

@@ -26,7 +26,8 @@ export default function ChatLayout() {
     fetchNextPage,
     hasNextPage,
     isFetchingNextPage,
-    sendMessage,
+    sendVoice,
+    sendText,
     isSending,
   } = useChat();
   
@@ -260,6 +261,10 @@ export default function ChatLayout() {
                                  isMe ? "bg-primary-foreground/10" : "bg-secondary/30"
                                )}
                              />
+                           ) : message.type === 'text' ? (
+                             <div className="px-4 py-2 text-[15px] leading-relaxed break-words whitespace-pre-wrap">
+                               {message.text}
+                             </div>
                            ) : (
                              <div className="px-4 py-2">Unknown message type</div>
                            )}
@@ -325,7 +330,7 @@ export default function ChatLayout() {
                             <MessageSquare className="h-8 w-8 text-muted-foreground" />
                         </div>
                         <p className="text-sm text-muted-foreground font-medium">No messages yet</p>
-                        <p className="text-xs text-muted-foreground">Start the conversation by recording a voice message</p>
+                        <p className="text-xs text-muted-foreground">Start the conversation by sending a message</p>
                     </div>
                  )}
             </div>
@@ -334,7 +339,8 @@ export default function ChatLayout() {
             <div className="shrink-0 z-20 bg-background">
               <VoiceRecorder 
                 receiverId={selectedUser} 
-                onSend={sendMessage} 
+                onSendVoice={sendVoice}
+                onSendText={sendText}
               />
             </div>
           </>
