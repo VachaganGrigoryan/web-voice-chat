@@ -47,7 +47,7 @@ export const MessageRenderer: React.FC<MessageRendererProps> = ({ message, isMe,
       return (
         <div className={baseClasses}>
           <div className="p-1">
-            <img src={message.media?.url} alt="Message" className="max-w-full rounded-lg" referrerPolicy="no-referrer" />
+            <img src={message.media?.url} alt="Message" className="max-w-full max-h-64 rounded-lg object-contain" referrerPolicy="no-referrer" />
             {message.text && <p className="px-3 py-2 text-sm">{message.text}</p>}
           </div>
         </div>
@@ -56,7 +56,7 @@ export const MessageRenderer: React.FC<MessageRendererProps> = ({ message, isMe,
       return (
         <div className={baseClasses}>
           <div className="p-1">
-            <video src={message.media?.url} controls className="max-w-full rounded-lg" />
+            <video src={message.media?.url} controls className="max-w-full max-h-64 rounded-lg object-contain" />
             {message.text && <p className="px-3 py-2 text-sm">{message.text}</p>}
           </div>
         </div>
