@@ -4,8 +4,9 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Label } from '@/components/ui/Label';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/Avatar';
-import { X, Camera, Trash2, Loader2, Save } from 'lucide-react';
+import { X, Camera, Trash2, Loader2, Save, Volume2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { unlockAudio } from '@/utils/notificationSound';
 
 interface UserSettingsProps {
   isOpen: boolean;
@@ -248,6 +249,24 @@ export default function UserSettings({ isOpen, onClose }: UserSettingsProps) {
             <div className="space-y-3 pt-2">
               <h4 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Notifications</h4>
               
+              <Button 
+                variant="outline" 
+                className="w-full justify-start" 
+                onClick={async () => {
+                  const success = await unlockAudio();
+                  if (success) {
+                    setSuccess('Sound enabled successfully');
+                    setTimeout(() => setSuccess(null), 3000);
+                  } else {
+                    setError('Failed to enable sound. Please try clicking again.');
+                    setTimeout(() => setError(null), 3000);
+                  }
+                }}
+              >
+                <Volume2 className="h-4 w-4 mr-2" />
+                Enable Sound Notifications
+              </Button>
+
               <label className="flex items-center justify-between cursor-pointer p-3 rounded-lg border hover:bg-muted/50 transition-colors">
                 <div className="space-y-0.5">
                   <div className="text-sm font-medium">Sound Notifications</div>
