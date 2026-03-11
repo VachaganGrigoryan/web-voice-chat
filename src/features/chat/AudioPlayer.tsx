@@ -11,9 +11,10 @@ interface AudioPlayerProps {
   className?: string;
   messageId?: string;
   isRead?: boolean;
+  isMe?: boolean;
 }
 
-export default function AudioPlayer({ src, durationMs, className, messageId, isRead }: AudioPlayerProps) {
+export default function AudioPlayer({ src, durationMs, className, messageId, isRead, isMe }: AudioPlayerProps) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -88,7 +89,12 @@ export default function AudioPlayer({ src, durationMs, className, messageId, isR
       <Button
         variant="ghost"
         size="icon"
-        className="h-8 w-8 shrink-0 rounded-full bg-primary text-primary-foreground hover:bg-primary/90"
+        className={cn(
+          "h-8 w-8 shrink-0 rounded-full",
+          isMe 
+            ? "bg-primary-foreground text-primary hover:bg-primary-foreground/90" 
+            : "bg-primary text-primary-foreground hover:bg-primary/90"
+        )}
         onClick={togglePlay}
       >
         {isLoading ? (
@@ -101,13 +107,13 @@ export default function AudioPlayer({ src, durationMs, className, messageId, isR
       </Button>
       
       <div className="flex flex-col gap-1 flex-1 min-w-0">
-        <div className="h-1.5 w-full bg-secondary rounded-full overflow-hidden">
+        <div className={cn("h-1.5 w-full rounded-full overflow-hidden", isMe ? "bg-primary-foreground/30" : "bg-secondary")}>
           <div 
-            className="h-full bg-primary transition-all duration-100 ease-linear"
+            className={cn("h-full transition-all duration-100 ease-linear", isMe ? "bg-primary-foreground" : "bg-primary")}
             style={{ width: `${progress}%` }}
           />
         </div>
-        <div className="flex justify-between text-[10px] text-muted-foreground font-mono">
+        <div className={cn("flex justify-between text-[10px] font-mono", isMe ? "text-primary-foreground/80" : "text-muted-foreground")}>
           <span>{formatTime(currentTime)}</span>
           <span>{formatTime(duration)}</span>
         </div>

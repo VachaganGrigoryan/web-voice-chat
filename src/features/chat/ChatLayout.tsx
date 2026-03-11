@@ -14,7 +14,6 @@ import VoiceRecorder from './VoiceRecorder';
 import MediaComposer from './MediaComposer';
 import { MessageRenderer } from './MessageRenderer';
 import { MediaViewer } from './MediaViewer';
-import AudioPlayer from './AudioPlayer';
 import UserSettings from './UserSettings';
 import { cn } from '@/lib/utils';
 import { useTypingIndicator, useSocketStore } from '@/socket/socket';

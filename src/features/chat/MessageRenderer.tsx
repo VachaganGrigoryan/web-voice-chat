@@ -12,12 +12,12 @@ interface MessageRendererProps {
 
 export const MessageRenderer: React.FC<MessageRendererProps> = ({ message, isMe, highlighted, onMediaClick }) => {
   const baseClasses = cn(
-    "rounded-2xl px-1 py-1 shadow-sm overflow-hidden transition-all duration-1000",
+    "rounded-2xl px-1 py-1 shadow-sm overflow-hidden transition-all duration-300",
     isMe
       ? "bg-primary text-primary-foreground rounded-br-none"
       : highlighted
       ? "bg-blue-100 border border-blue-300 rounded-bl-none dark:bg-blue-900/30 dark:border-blue-800"
-      : "bg-white border border-border/50 rounded-bl-none"
+      : "bg-zinc-100 text-zinc-900 dark:bg-zinc-800 dark:text-zinc-100 rounded-bl-none border border-zinc-200 dark:border-zinc-700"
   );
 
   switch (message.type) {
@@ -37,9 +37,10 @@ export const MessageRenderer: React.FC<MessageRendererProps> = ({ message, isMe,
             durationMs={message.media?.duration_ms || 0}
             messageId={message.id}
             isRead={message.status === 'read'}
+            isMe={isMe}
             className={cn(
               "w-full min-w-[200px]",
-              isMe ? "bg-primary-foreground/10" : "bg-secondary/30"
+              isMe ? "bg-primary-foreground/10" : "bg-background/50"
             )}
           />
         </div>
