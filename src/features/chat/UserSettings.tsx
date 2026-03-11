@@ -108,7 +108,7 @@ export default function UserSettings({ isOpen, onClose }: UserSettingsProps) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="bg-background w-full max-w-md rounded-2xl shadow-xl overflow-hidden flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-200">
+      <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl border border-zinc-200 overflow-hidden flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-200 text-zinc-900">
         <div className="flex items-center justify-between p-4 border-b shrink-0">
           <h2 className="text-lg font-semibold">Settings</h2>
           <Button variant="ghost" size="icon" onClick={onClose} className="rounded-full">
@@ -206,11 +206,11 @@ export default function UserSettings({ isOpen, onClose }: UserSettingsProps) {
                   <div className="text-xs text-muted-foreground">Only approved users can message you</div>
                 </div>
                 <div className={cn(
-                  "w-10 h-6 rounded-full transition-colors relative",
-                  isPrivate ? "bg-primary" : "bg-muted-foreground/30"
+                  "w-10 h-6 rounded-full transition-colors relative border border-zinc-900",
+                  isPrivate ? "bg-zinc-900" : "bg-zinc-200"
                 )}>
                   <div className={cn(
-                    "absolute top-1 left-1 bg-white w-4 h-4 rounded-full transition-transform",
+                    "absolute top-1 left-1 bg-white w-4 h-4 rounded-full transition-transform border border-zinc-900",
                     isPrivate ? "translate-x-4" : "translate-x-0"
                   )} />
                 </div>
@@ -228,11 +228,11 @@ export default function UserSettings({ isOpen, onClose }: UserSettingsProps) {
                   <div className="text-xs text-muted-foreground">Allow others to find you by username</div>
                 </div>
                 <div className={cn(
-                  "w-10 h-6 rounded-full transition-colors relative",
-                  discoveryEnabled ? "bg-primary" : "bg-muted-foreground/30"
+                  "w-10 h-6 rounded-full transition-colors relative border border-zinc-900",
+                  discoveryEnabled ? "bg-zinc-900" : "bg-zinc-200"
                 )}>
                   <div className={cn(
-                    "absolute top-1 left-1 bg-white w-4 h-4 rounded-full transition-transform",
+                    "absolute top-1 left-1 bg-white w-4 h-4 rounded-full transition-transform border border-zinc-900",
                     discoveryEnabled ? "translate-x-4" : "translate-x-0"
                   )} />
                 </div>
@@ -254,11 +254,11 @@ export default function UserSettings({ isOpen, onClose }: UserSettingsProps) {
                   <div className="text-xs text-muted-foreground">Play a sound when a new message is received</div>
                 </div>
                 <div className={cn(
-                  "w-10 h-6 rounded-full transition-colors relative",
-                  soundEnabled ? "bg-primary" : "bg-muted-foreground/30"
+                  "w-10 h-6 rounded-full transition-colors relative border border-zinc-900",
+                  soundEnabled ? "bg-zinc-900" : "bg-zinc-200"
                 )}>
                   <div className={cn(
-                    "absolute top-1 left-1 bg-white w-4 h-4 rounded-full transition-transform",
+                    "absolute top-1 left-1 bg-white w-4 h-4 rounded-full transition-transform border border-zinc-900",
                     soundEnabled ? "translate-x-4" : "translate-x-0"
                   )} />
                 </div>
