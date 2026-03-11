@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { healthApi } from '@/api/endpoints';
 import { useAuthStore } from '@/store/authStore';
@@ -9,6 +10,13 @@ import { ArrowLeft } from 'lucide-react';
 export default function SettingsPage() {
   const { accessToken, refreshToken, userId, userEmail } = useAuthStore();
   const navigate = useNavigate();
+  const [soundEnabled, setSoundEnabled] = useState(() => {
+    return localStorage.getItem('soundEnabled') !== 'false';
+  });
+
+  useEffect(() => {
+    localStorage.setItem('soundEnabled', String(soundEnabled));
+  }, [soundEnabled]);
 
   const { data: liveStatus, isLoading: isLiveLoading } = useQuery({
     queryKey: ['health', 'live'],
@@ -32,6 +40,27 @@ export default function SettingsPage() {
       <h1 className="text-2xl font-bold mb-6">Settings & Debug</h1>
 
       <div className="grid gap-4">
+        <Card className="border-primary/20 bg-primary/5">
+          <CardHeader>
+            <CardTitle className="text-primary">Notifications</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center justify-between">
+              <span className="font-medium">Sound Notifications</span>
+              <Button 
+                variant={soundEnabled ? "default" : "outline"}
+                onClick={() => setSoundEnabled(!soundEnabled)}
+                className="w-20"
+              >
+                {soundEnabled ? 'ON' : 'OFF'}
+              </Button>
+            </div>
+            <p className="text-sm text-muted-foreground mt-2">
+              Play a sound when a new message is received.
+            </p>
+          </CardContent>
+        </Card>
+
         <Card>
           <CardHeader>
             <CardTitle>Backend Health</CardTitle>

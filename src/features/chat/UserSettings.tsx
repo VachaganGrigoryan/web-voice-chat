@@ -30,11 +30,18 @@ export default function UserSettings({ isOpen, onClose }: UserSettingsProps) {
   const [bio, setBio] = useState(profile?.bio || '');
   const [isPrivate, setIsPrivate] = useState(profile?.is_private || false);
   const [discoveryEnabled, setDiscoveryEnabled] = useState(profile?.default_discovery_enabled ?? true);
+  const [soundEnabled, setSoundEnabled] = useState(() => {
+    return localStorage.getItem('soundEnabled') !== 'false';
+  });
   
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    localStorage.setItem('soundEnabled', String(soundEnabled));
+  }, [soundEnabled]);
 
   useEffect(() => {
     if (isOpen && profile) {
@@ -234,6 +241,32 @@ export default function UserSettings({ isOpen, onClose }: UserSettingsProps) {
                   className="hidden" 
                   checked={discoveryEnabled} 
                   onChange={(e) => setDiscoveryEnabled(e.target.checked)} 
+                />
+              </label>
+            </div>
+
+            <div className="space-y-3 pt-2">
+              <h4 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Notifications</h4>
+              
+              <label className="flex items-center justify-between cursor-pointer p-3 rounded-lg border hover:bg-muted/50 transition-colors">
+                <div className="space-y-0.5">
+                  <div className="text-sm font-medium">Sound Notifications</div>
+                  <div className="text-xs text-muted-foreground">Play a sound when a new message is received</div>
+                </div>
+                <div className={cn(
+                  "w-10 h-6 rounded-full transition-colors relative",
+                  soundEnabled ? "bg-primary" : "bg-muted-foreground/30"
+                )}>
+                  <div className={cn(
+                    "absolute top-1 left-1 bg-white w-4 h-4 rounded-full transition-transform",
+                    soundEnabled ? "translate-x-4" : "translate-x-0"
+                  )} />
+                </div>
+                <input 
+                  type="checkbox" 
+                  className="hidden" 
+                  checked={soundEnabled} 
+                  onChange={(e) => setSoundEnabled(e.target.checked)} 
                 />
               </label>
             </div>

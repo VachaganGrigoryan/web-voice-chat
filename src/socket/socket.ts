@@ -122,13 +122,15 @@ import { toast } from 'sonner';
 
 // Helper for notifications
 const showNotification = (message: MessageDoc, senderName?: string) => {
-  // Play sound
-  try {
-    const audio = new Audio('/notification.mp3');
-    audio.volume = 0.5;
-    audio.play().catch(e => console.log('Audio play failed:', e));
-  } catch (e) {
-    console.log('Audio play failed:', e);
+  // Play sound if enabled
+  if (localStorage.getItem('soundEnabled') !== 'false') {
+    try {
+      const audio = new Audio('/notification.mp3');
+      audio.volume = 0.5;
+      audio.play().catch(e => console.log('Audio play failed:', e));
+    } catch (e) {
+      console.log('Audio play failed:', e);
+    }
   }
 
   // Show floating toast notification
