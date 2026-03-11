@@ -49,7 +49,7 @@ export default function ChatLayout() {
   const { socket } = useSocketStore();
   const [highlightedMessageIds, setHighlightedMessageIds] = useState<Set<string>>(new Set());
   
-  const { isTyping } = useTypingIndicator(selectedUser || undefined);
+  const { isTyping, typingUsers } = useTypingIndicator(selectedUser || undefined);
 
   const handleLogout = async () => {
     try {
@@ -246,7 +246,11 @@ export default function ChatLayout() {
                        )}
                      </div>
                      <span className={cn("text-xs truncate w-full text-left", conv.unread_count ? "text-foreground font-semibold" : "text-muted-foreground")}>
-                       {conv.last_message?.type === 'voice' ? '🎤 Voice message' : conv.last_message?.text || 'Click to chat'}
+                       {typingUsers[conv.peer_user.id] ? (
+                         <span className="text-primary font-medium animate-pulse">Typing...</span>
+                       ) : (
+                         conv.last_message?.type === 'voice' ? '🎤 Voice message' : conv.last_message?.text || 'Click to chat'
+                       )}
                      </span>
                   </div>
                 </Button>
