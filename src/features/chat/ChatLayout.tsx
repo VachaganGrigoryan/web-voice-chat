@@ -295,7 +295,7 @@ export default function ChatLayout() {
                   <div className="text-sm font-semibold leading-none mb-1">{displaySelectedUser}</div>
                   <div className="text-xs text-muted-foreground flex items-center gap-1">
                     {isTyping ? (
-                      <span className="text-primary font-medium animate-pulse">Recording...</span>
+                      <span className="text-primary font-medium animate-pulse">Typing...</span>
                     ) : onlineUsers?.includes(selectedUser) ? (
                       'Online'
                     ) : (
@@ -326,7 +326,6 @@ export default function ChatLayout() {
                        <span className="w-1.5 h-1.5 bg-primary/40 rounded-full animate-bounce [animation-delay:-0.15s]"></span>
                        <span className="w-1.5 h-1.5 bg-primary/40 rounded-full animate-bounce"></span>
                      </div>
-                     Recording audio...
                    </div>
                  </div>
                )}

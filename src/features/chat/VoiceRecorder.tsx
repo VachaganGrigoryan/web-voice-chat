@@ -33,10 +33,12 @@ export default function VoiceRecorder({ receiverId, onSendVoice, onSendText }: V
   const startTimeRef = useRef<number>(0);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
+      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
     };
   }, []);
 
@@ -44,6 +46,11 @@ export default function VoiceRecorder({ receiverId, onSendVoice, onSendText }: V
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
     return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  const emitTypingStop = () => {
+    const socket = getSocket();
+    socket?.emit(EVENTS.CLIENT_TYPING_STOP, { receiver_id: receiverId });
   };
 
   const startRecording = async () => {
@@ -128,8 +135,36 @@ export default function VoiceRecorder({ receiverId, onSendVoice, onSendText }: V
     }
   };
 
+  const handleTextareaChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setText(e.target.value);
+    
+    // Handle typing indicator
+    if (!typingTimeoutRef.current) {
+      const socket = getSocket();
+      socket?.emit(EVENTS.CLIENT_TYPING_START, { receiver_id: receiverId });
+    } else {
+      clearTimeout(typingTimeoutRef.current);
+    }
+    
+    typingTimeoutRef.current = setTimeout(() => {
+      emitTypingStop();
+      typingTimeoutRef.current = null;
+    }, 2000);
+
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+      textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 128)}px`;
+    }
+  };
+
   const handleSendText = async () => {
     if (!text.trim()) return;
+    
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+      typingTimeoutRef.current = null;
+    }
+    emitTypingStop();
     
     setIsUploading(true);
     try {
@@ -147,16 +182,21 @@ export default function VoiceRecorder({ receiverId, onSendVoice, onSendText }: V
     }
   };
 
-  const handleTextareaChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setText(e.target.value);
-    if (textareaRef.current) {
-      textareaRef.current.style.height = 'auto';
-      textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 128)}px`;
-    }
-  };
-
   const onEmojiClick = (emojiObject: any) => {
     setText((prev) => prev + emojiObject.emoji);
+    
+    // Handle typing indicator
+    if (!typingTimeoutRef.current) {
+      const socket = getSocket();
+      socket?.emit(EVENTS.CLIENT_TYPING_START, { receiver_id: receiverId });
+    } else {
+      clearTimeout(typingTimeoutRef.current);
+    }
+    
+    typingTimeoutRef.current = setTimeout(() => {
+      emitTypingStop();
+      typingTimeoutRef.current = null;
+    }, 2000);
   };
 
   return (
