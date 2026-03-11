@@ -17,10 +17,9 @@ interface VoiceRecorderProps {
     duration_ms?: number;
   }) => Promise<any>;
   onSendText: (data: { receiver_id: string; text: string }) => Promise<any>;
-  onFocusChange?: (focused: boolean) => void;
 }
 
-export default function VoiceRecorder({ receiverId, onSendVoice, onSendText, onFocusChange }: VoiceRecorderProps) {
+export default function VoiceRecorder({ receiverId, onSendVoice, onSendText }: VoiceRecorderProps) {
   const [isRecording, setIsRecording] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [duration, setDuration] = useState(0);
@@ -40,12 +39,6 @@ export default function VoiceRecorder({ receiverId, onSendVoice, onSendText, onF
       if (timerRef.current) clearInterval(timerRef.current);
     };
   }, []);
-
-  useEffect(() => {
-    if (onFocusChange) {
-      onFocusChange(isFocused || text.trim().length > 0);
-    }
-  }, [isFocused, text, onFocusChange]);
 
   const formatDuration = (seconds: number) => {
     const mins = Math.floor(seconds / 60);

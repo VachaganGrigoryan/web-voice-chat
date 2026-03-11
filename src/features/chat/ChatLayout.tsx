@@ -44,7 +44,6 @@ export default function ChatLayout() {
   const navigate = useNavigate();
   const [newUserId, setNewUserId] = useState('');
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [isComposerFocused, setIsComposerFocused] = useState(false);
   const [mediaViewer, setMediaViewer] = useState<{ open: boolean; type: 'image' | 'video'; url: string }>({ open: false, type: 'image', url: '' });
   const { profile } = useProfile();
   const { socket } = useSocketStore();
@@ -305,6 +304,15 @@ export default function ChatLayout() {
                   </div>
                 </div>
               </div>
+              
+              <div className="flex items-center">
+                <MediaComposer 
+                  receiverId={selectedUser} 
+                  onSendMedia={sendVoice}
+                  isUploading={isSending}
+                  setIsUploading={() => {}}
+                />
+              </div>
             </div>
 
             {/* Messages Area */}
@@ -440,19 +448,10 @@ export default function ChatLayout() {
 
             {/* Composer Area - Sticky at bottom */}
             <div className="shrink-0 z-20 bg-background flex items-center gap-2 p-4">
-              {!isComposerFocused && (
-                <MediaComposer 
-                  receiverId={selectedUser} 
-                  onSendMedia={sendVoice}
-                  isUploading={isSending}
-                  setIsUploading={() => {}}
-                />
-              )}
               <VoiceRecorder 
                 receiverId={selectedUser} 
                 onSendVoice={sendVoice}
                 onSendText={sendText}
-                onFocusChange={setIsComposerFocused}
               />
             </div>
           </>
