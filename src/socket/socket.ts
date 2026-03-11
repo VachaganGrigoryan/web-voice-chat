@@ -119,18 +119,13 @@ export const useTypingIndicator = (userId?: string) => {
 };
 
 import { toast } from 'sonner';
+import { playNotificationSound } from '@/utils/notificationSound';
 
 // Helper for notifications
 const showNotification = (message: MessageDoc, senderName?: string) => {
   // Play sound if enabled
   if (localStorage.getItem('soundEnabled') !== 'false') {
-    try {
-      const audio = new Audio('/notification.mp3');
-      audio.volume = 0.5;
-      audio.play().catch(e => console.log('Audio play failed:', e));
-    } catch (e) {
-      console.log('Audio play failed:', e);
-    }
+    playNotificationSound();
   }
 
   // Show floating toast notification
