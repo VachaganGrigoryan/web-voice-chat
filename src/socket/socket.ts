@@ -71,12 +71,14 @@ const setupSocketSync = () => {
       setOnlineUsers(currentUsers.filter((id) => id !== user_id));
     });
 
-    socket.on(EVENTS.SERVER_TYPING_START, ({ from }: { from: string }) => {
-      setTypingUser(from, true);
+    socket.on(EVENTS.SERVER_TYPING_START, (payload: any) => {
+      const from = payload.from || payload.sender_id;
+      if (from) setTypingUser(from, true);
     });
 
-    socket.on(EVENTS.SERVER_TYPING_STOP, ({ from }: { from: string }) => {
-      setTypingUser(from, false);
+    socket.on(EVENTS.SERVER_TYPING_STOP, (payload: any) => {
+      const from = payload.from || payload.sender_id;
+      if (from) setTypingUser(from, false);
     });
   });
 };

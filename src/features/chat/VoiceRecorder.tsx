@@ -50,7 +50,7 @@ export default function VoiceRecorder({ receiverId, onSendVoice, onSendText }: V
 
   const emitTypingStop = () => {
     const socket = getSocket();
-    socket?.emit(EVENTS.CLIENT_TYPING_STOP, { receiver_id: receiverId });
+    socket?.emit(EVENTS.CLIENT_TYPING_STOP, { to: receiverId, receiver_id: receiverId });
   };
 
   const startRecording = async () => {
@@ -73,7 +73,7 @@ export default function VoiceRecorder({ receiverId, onSendVoice, onSendText }: V
         
         // Stop typing indicator
         const socket = getSocket();
-        socket?.emit(EVENTS.CLIENT_TYPING_STOP, { receiver_id: receiverId });
+        socket?.emit(EVENTS.CLIENT_TYPING_STOP, { to: receiverId, receiver_id: receiverId });
         
         // Stop all tracks
         stream.getTracks().forEach(track => track.stop());
@@ -90,7 +90,7 @@ export default function VoiceRecorder({ receiverId, onSendVoice, onSendText }: V
       
       // Start typing indicator
       const socket = getSocket();
-      socket?.emit(EVENTS.CLIENT_TYPING_START, { receiver_id: receiverId });
+      socket?.emit(EVENTS.CLIENT_TYPING_START, { to: receiverId, receiver_id: receiverId });
 
     } catch (err) {
       console.error('Error accessing microphone:', err);
@@ -141,7 +141,7 @@ export default function VoiceRecorder({ receiverId, onSendVoice, onSendText }: V
     // Handle typing indicator
     if (!typingTimeoutRef.current) {
       const socket = getSocket();
-      socket?.emit(EVENTS.CLIENT_TYPING_START, { receiver_id: receiverId });
+      socket?.emit(EVENTS.CLIENT_TYPING_START, { to: receiverId, receiver_id: receiverId });
     } else {
       clearTimeout(typingTimeoutRef.current);
     }
@@ -188,7 +188,7 @@ export default function VoiceRecorder({ receiverId, onSendVoice, onSendText }: V
     // Handle typing indicator
     if (!typingTimeoutRef.current) {
       const socket = getSocket();
-      socket?.emit(EVENTS.CLIENT_TYPING_START, { receiver_id: receiverId });
+      socket?.emit(EVENTS.CLIENT_TYPING_START, { to: receiverId, receiver_id: receiverId });
     } else {
       clearTimeout(typingTimeoutRef.current);
     }
