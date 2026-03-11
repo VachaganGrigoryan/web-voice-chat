@@ -44,6 +44,7 @@ export default function ChatLayout() {
   const navigate = useNavigate();
   const [newUserId, setNewUserId] = useState('');
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isComposerFocused, setIsComposerFocused] = useState(false);
   const [mediaViewer, setMediaViewer] = useState<{ open: boolean; type: 'image' | 'video'; url: string }>({ open: false, type: 'image', url: '' });
   const { profile } = useProfile();
   const { socket } = useSocketStore();
@@ -330,10 +331,10 @@ export default function ChatLayout() {
                      format(new Date(nextMessage.created_at), 'yyyy-MM-dd');
 
                    return (
-                     <div key={message.id} className="flex flex-col w-full">
+                     <div key={message.id} className="flex flex-col w-full min-w-0">
                        <div
                          className={cn(
-                           "flex flex-col max-w-[85%] md:max-w-[70%] mb-1 relative group",
+                           "flex flex-col max-w-[85%] md:max-w-[70%] mb-1 relative group min-w-0",
                            isMe ? "self-end items-end" : "self-start items-start"
                          )}
                        >
@@ -439,16 +440,19 @@ export default function ChatLayout() {
 
             {/* Composer Area - Sticky at bottom */}
             <div className="shrink-0 z-20 bg-background flex items-center gap-2 p-4">
-              <MediaComposer 
-                receiverId={selectedUser} 
-                onSendMedia={sendVoice}
-                isUploading={isSending}
-                setIsUploading={() => {}}
-              />
+              {!isComposerFocused && (
+                <MediaComposer 
+                  receiverId={selectedUser} 
+                  onSendMedia={sendVoice}
+                  isUploading={isSending}
+                  setIsUploading={() => {}}
+                />
+              )}
               <VoiceRecorder 
                 receiverId={selectedUser} 
                 onSendVoice={sendVoice}
                 onSendText={sendText}
+                onFocusChange={setIsComposerFocused}
               />
             </div>
           </>

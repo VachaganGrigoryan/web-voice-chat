@@ -23,8 +23,8 @@ export const MessageRenderer: React.FC<MessageRendererProps> = ({ message, isMe,
   switch (message.type) {
     case 'text':
       return (
-        <div className={baseClasses}>
-          <div className="px-4 py-2 text-[15px] leading-relaxed break-words whitespace-pre-wrap">
+        <div className={cn(baseClasses, "max-w-full min-w-0")}>
+          <div className="px-4 py-2 text-[15px] leading-relaxed break-words whitespace-pre-wrap min-w-0" style={{ wordBreak: 'break-word' }}>
             {message.text}
           </div>
         </div>
