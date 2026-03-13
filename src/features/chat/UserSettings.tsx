@@ -60,7 +60,6 @@ export default function UserSettings({ isOpen, onClose }: UserSettingsProps) {
       setDiscoveryEnabled(profile.default_discovery_enabled ?? true);
       setError(null);
       setSuccess(null);
-      setActiveTab('profile');
     }
   }, [isOpen, profile]);
 
@@ -115,300 +114,332 @@ export default function UserSettings({ isOpen, onClose }: UserSettingsProps) {
 
   const isSaving = isUpdatingProfile || isUpdatingUsername;
 
+  const TabButton = ({ icon, label, id }: { icon: React.ReactNode, label: string, id: TabType }) => (
+    <button
+      onClick={() => setActiveTab(id)}
+      className={cn(
+        "flex items-center gap-3 px-4 py-2.5 rounded-full md:rounded-lg transition-all whitespace-nowrap text-sm font-medium",
+        activeTab === id 
+          ? "bg-primary text-primary-foreground shadow-sm" 
+          : "text-muted-foreground hover:bg-muted hover:text-foreground"
+      )}
+    >
+      {icon}
+      <span>{label}</span>
+    </button>
+  );
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="bg-background w-full max-w-md rounded-2xl shadow-2xl border border-border overflow-hidden flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-200 text-foreground">
-        <div className="flex items-center justify-between p-4 border-b shrink-0">
-          <h2 className="text-lg font-semibold">Settings</h2>
-          <Button variant="ghost" size="icon" onClick={onClose} className="rounded-full">
+    <div className="fixed inset-0 z-50 bg-background flex flex-col md:flex-row animate-in fade-in duration-200">
+      {/* Mobile Header */}
+      <div className="md:hidden flex items-center justify-between p-4 border-b shrink-0 bg-background/80 backdrop-blur-md z-10">
+        <h2 className="text-lg font-semibold">Settings</h2>
+        <Button variant="ghost" size="icon" onClick={onClose} className="rounded-full">
+          <X className="h-5 w-5" />
+        </Button>
+      </div>
+
+      {/* Sidebar (Desktop) & Top Scrollable Tabs (Mobile) */}
+      <div className="flex md:flex-col border-b md:border-b-0 md:border-r w-full md:w-64 lg:w-72 shrink-0 overflow-x-auto md:overflow-y-auto no-scrollbar bg-muted/10 md:bg-muted/30 p-3 md:p-4 gap-2 z-10">
+        <div className="hidden md:flex items-center justify-between px-2 pb-4 pt-2">
+          <h2 className="text-2xl font-bold tracking-tight">Settings</h2>
+        </div>
+        <div className="flex md:flex-col gap-2">
+          <TabButton id="profile" icon={<User className="h-4 w-4" />} label="Profile" />
+          <TabButton id="appearance" icon={<Palette className="h-4 w-4" />} label="Appearance" />
+          <TabButton id="privacy" icon={<Shield className="h-4 w-4" />} label="Privacy" />
+          <TabButton id="passkeys" icon={<KeyRound className="h-4 w-4" />} label="Passkeys" />
+        </div>
+      </div>
+
+      {/* Content Area */}
+      <div className="flex-1 flex flex-col overflow-hidden relative bg-background">
+        {/* Desktop Close Button */}
+        <div className="hidden md:flex absolute top-6 right-6 z-10">
+          <Button variant="ghost" size="icon" onClick={onClose} className="rounded-full bg-muted/50 hover:bg-muted">
             <X className="h-5 w-5" />
           </Button>
         </div>
-        
-        <div className="flex space-x-1 border-b px-4 overflow-x-auto shrink-0 no-scrollbar">
-          <button 
-            onClick={() => setActiveTab('profile')} 
-            className={cn("px-3 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap flex items-center gap-2", activeTab === 'profile' ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground")}
-          >
-            <User className="h-4 w-4" /> Profile
-          </button>
-          <button 
-            onClick={() => setActiveTab('appearance')} 
-            className={cn("px-3 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap flex items-center gap-2", activeTab === 'appearance' ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground")}
-          >
-            <Palette className="h-4 w-4" /> Appearance
-          </button>
-          <button 
-            onClick={() => setActiveTab('privacy')} 
-            className={cn("px-3 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap flex items-center gap-2", activeTab === 'privacy' ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground")}
-          >
-            <Shield className="h-4 w-4" /> Privacy
-          </button>
-          <button 
-            onClick={() => setActiveTab('passkeys')} 
-            className={cn("px-3 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap flex items-center gap-2", activeTab === 'passkeys' ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground")}
-          >
-            <KeyRound className="h-4 w-4" /> Passkeys
-          </button>
-        </div>
 
-        <div className="p-6 overflow-y-auto flex-1 space-y-6">
-          {activeTab === 'profile' && (
-            <div className="space-y-6 animate-in fade-in slide-in-from-right-2 duration-300">
-              {/* Avatar Section */}
-              <div className="flex flex-col items-center space-y-4">
-                <div className="relative group">
-                  <Avatar className="h-24 w-24 border-2 border-muted">
-                    {profile?.avatar ? (
-                      <AvatarImage src={profile.avatar.url} className="object-cover" />
-                    ) : null}
-                    <AvatarFallback className="text-2xl">
-                      {(profile?.display_name || profile?.username || profile?.email || '?')[0].toUpperCase()}
-                    </AvatarFallback>
-                  </Avatar>
-                  
-                  <div className="absolute inset-0 bg-black/40 rounded-full opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-                    <Button 
-                      variant="ghost" 
-                      size="icon" 
-                      className="h-8 w-8 rounded-full text-white hover:text-white hover:bg-white/20"
-                      onClick={() => fileInputRef.current?.click()}
-                      disabled={isUploadingAvatar}
-                    >
-                      {isUploadingAvatar ? <Loader2 className="h-4 w-4 animate-spin" /> : <Camera className="h-4 w-4" />}
-                    </Button>
-                    {profile?.avatar && (
+        <div className="flex-1 overflow-y-auto p-4 md:p-8 lg:p-12 w-full max-w-3xl mx-auto">
+          <div className="space-y-8 pb-20 md:pb-0">
+            <h3 className="text-2xl font-semibold hidden md:block capitalize tracking-tight">{activeTab}</h3>
+            
+            {error && <div className="text-sm text-destructive bg-destructive/10 p-4 rounded-lg animate-in fade-in">{error}</div>}
+            {success && <div className="text-sm text-green-500 bg-green-500/10 p-4 rounded-lg animate-in fade-in">{success}</div>}
+
+            {activeTab === 'profile' && (
+              <div className="space-y-8 animate-in fade-in slide-in-from-right-4 duration-300">
+                {/* Avatar Section */}
+                <div className="flex flex-col sm:flex-row items-center sm:items-start gap-6">
+                  <div className="relative group shrink-0">
+                    <Avatar className="h-28 w-28 border-4 border-background shadow-sm">
+                      {profile?.avatar ? (
+                        <AvatarImage src={profile.avatar.url} className="object-cover" />
+                      ) : null}
+                      <AvatarFallback className="text-3xl bg-muted">
+                        {(profile?.display_name || profile?.username || profile?.email || '?')[0].toUpperCase()}
+                      </AvatarFallback>
+                    </Avatar>
+                    
+                    <div className="absolute inset-0 bg-black/40 rounded-full opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2 backdrop-blur-sm">
                       <Button 
                         variant="ghost" 
                         size="icon" 
-                        className="h-8 w-8 rounded-full text-red-400 hover:text-red-400 hover:bg-white/20"
-                        onClick={handleDeleteAvatar}
-                        disabled={isDeletingAvatar}
+                        className="h-9 w-9 rounded-full text-white hover:text-white hover:bg-white/20"
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={isUploadingAvatar}
                       >
-                        {isDeletingAvatar ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                        {isUploadingAvatar ? <Loader2 className="h-4 w-4 animate-spin" /> : <Camera className="h-4 w-4" />}
                       </Button>
-                    )}
+                      {profile?.avatar && (
+                        <Button 
+                          variant="ghost" 
+                          size="icon" 
+                          className="h-9 w-9 rounded-full text-red-400 hover:text-red-400 hover:bg-white/20"
+                          onClick={handleDeleteAvatar}
+                          disabled={isDeletingAvatar}
+                        >
+                          {isDeletingAvatar ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                        </Button>
+                      )}
+                    </div>
+                    <input 
+                      type="file" 
+                      ref={fileInputRef} 
+                      className="hidden" 
+                      accept="image/*"
+                      onChange={handleAvatarUpload}
+                    />
                   </div>
-                  <input 
-                    type="file" 
-                    ref={fileInputRef} 
-                    className="hidden" 
-                    accept="image/*"
-                    onChange={handleAvatarUpload}
-                  />
-                </div>
-                <div className="text-center">
-                  <h3 className="font-medium text-lg">{profile?.display_name || profile?.username || 'User'}</h3>
-                  <p className="text-sm text-muted-foreground">{profile?.email}</p>
-                </div>
-              </div>
-
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="username">Username</Label>
-                  <Input 
-                    id="username" 
-                    value={username} 
-                    onChange={(e) => setUsername(e.target.value)} 
-                    placeholder="Choose a unique username"
-                  />
-                </div>
-                
-                <div className="space-y-2">
-                  <Label htmlFor="displayName">Display Name</Label>
-                  <Input 
-                    id="displayName" 
-                    value={displayName} 
-                    onChange={(e) => setDisplayName(e.target.value)} 
-                    placeholder="How others see you"
-                  />
-                </div>
-                
-                <div className="space-y-2">
-                  <Label htmlFor="bio">Bio</Label>
-                  <textarea 
-                    id="bio" 
-                    value={bio} 
-                    onChange={(e) => setBio(e.target.value)} 
-                    placeholder="A little about yourself"
-                    className="flex min-h-[80px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 resize-none"
-                  />
-                </div>
-              </div>
-            </div>
-          )}
-
-          {activeTab === 'appearance' && (
-            <div className="space-y-6 animate-in fade-in slide-in-from-right-2 duration-300">
-              <div className="space-y-2">
-                <Label>Theme Mode</Label>
-                <div className="grid grid-cols-3 gap-2">
-                  <Button
-                    variant={mode === 'light' ? 'default' : 'outline'}
-                    className="w-full"
-                    onClick={() => setMode('light')}
-                  >
-                    <Sun className="h-4 w-4 mr-2" />
-                    Light
-                  </Button>
-                  <Button
-                    variant={mode === 'dark' ? 'default' : 'outline'}
-                    className="w-full"
-                    onClick={() => setMode('dark')}
-                  >
-                    <Moon className="h-4 w-4 mr-2" />
-                    Dark
-                  </Button>
-                  <Button
-                    variant={mode === 'system' ? 'default' : 'outline'}
-                    className="w-full"
-                    onClick={() => setMode('system')}
-                  >
-                    <Monitor className="h-4 w-4 mr-2" />
-                    System
-                  </Button>
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label>Color Theme</Label>
-                <div className="grid grid-cols-2 gap-2">
-                  <Button
-                    variant={theme === 'default' ? 'default' : 'outline'}
-                    className="w-full justify-start"
-                    onClick={() => setTheme('default')}
-                  >
-                    <Palette className="h-4 w-4 mr-2" />
-                    Default (Zinc)
-                  </Button>
-                  <Button
-                    variant={theme === 'slate' ? 'default' : 'outline'}
-                    className="w-full justify-start"
-                    onClick={() => setTheme('slate')}
-                  >
-                    <Palette className="h-4 w-4 mr-2" />
-                    Slate
-                  </Button>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {activeTab === 'privacy' && (
-            <div className="space-y-6 animate-in fade-in slide-in-from-right-2 duration-300">
-              <div className="space-y-3">
-                <h4 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Account Privacy</h4>
-                
-                <label className="flex items-center justify-between cursor-pointer p-3 rounded-lg border hover:bg-muted/50 transition-colors">
-                  <div className="space-y-0.5">
-                    <div className="text-sm font-medium">Private Account</div>
-                    <div className="text-xs text-muted-foreground">Only approved users can message you</div>
+                  <div className="text-center sm:text-left space-y-1 pt-2">
+                    <h3 className="font-semibold text-xl">{profile?.display_name || profile?.username || 'User'}</h3>
+                    <p className="text-sm text-muted-foreground">{profile?.email}</p>
+                    <p className="text-xs text-muted-foreground pt-2 max-w-xs">
+                      Update your photo and personal details here.
+                    </p>
                   </div>
-                  <div className={cn(
-                    "w-10 h-6 rounded-full transition-colors relative border border-primary",
-                    isPrivate ? "bg-primary" : "bg-muted"
-                  )}>
+                </div>
+
+                <div className="space-y-5 max-w-xl">
+                  <div className="space-y-2">
+                    <Label htmlFor="username">Username</Label>
+                    <Input 
+                      id="username" 
+                      value={username} 
+                      onChange={(e) => setUsername(e.target.value)} 
+                      placeholder="Choose a unique username"
+                      className="max-w-md"
+                    />
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <Label htmlFor="displayName">Display Name</Label>
+                    <Input 
+                      id="displayName" 
+                      value={displayName} 
+                      onChange={(e) => setDisplayName(e.target.value)} 
+                      placeholder="How others see you"
+                      className="max-w-md"
+                    />
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <Label htmlFor="bio">Bio</Label>
+                    <textarea 
+                      id="bio" 
+                      value={bio} 
+                      onChange={(e) => setBio(e.target.value)} 
+                      placeholder="A little about yourself"
+                      className="flex min-h-[100px] w-full max-w-md rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 resize-none"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'appearance' && (
+              <div className="space-y-8 animate-in fade-in slide-in-from-right-4 duration-300 max-w-xl">
+                <div className="space-y-4">
+                  <div>
+                    <Label className="text-base">Theme Mode</Label>
+                    <p className="text-sm text-muted-foreground mb-4">Select or customize your UI theme.</p>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <Button
+                      variant={mode === 'light' ? 'default' : 'outline'}
+                      className="w-full h-12"
+                      onClick={() => setMode('light')}
+                    >
+                      <Sun className="h-4 w-4 mr-2" />
+                      Light
+                    </Button>
+                    <Button
+                      variant={mode === 'dark' ? 'default' : 'outline'}
+                      className="w-full h-12"
+                      onClick={() => setMode('dark')}
+                    >
+                      <Moon className="h-4 w-4 mr-2" />
+                      Dark
+                    </Button>
+                    <Button
+                      variant={mode === 'system' ? 'default' : 'outline'}
+                      className="w-full h-12"
+                      onClick={() => setMode('system')}
+                    >
+                      <Monitor className="h-4 w-4 mr-2" />
+                      System
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="space-y-4 pt-4 border-t">
+                  <div>
+                    <Label className="text-base">Color Theme</Label>
+                    <p className="text-sm text-muted-foreground mb-4">Choose your preferred accent color.</p>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <Button
+                      variant={theme === 'default' ? 'default' : 'outline'}
+                      className="w-full justify-start h-12"
+                      onClick={() => setTheme('default')}
+                    >
+                      <div className="w-4 h-4 rounded-full bg-zinc-900 dark:bg-zinc-100 mr-3" />
+                      Default (Zinc)
+                    </Button>
+                    <Button
+                      variant={theme === 'slate' ? 'default' : 'outline'}
+                      className="w-full justify-start h-12"
+                      onClick={() => setTheme('slate')}
+                    >
+                      <div className="w-4 h-4 rounded-full bg-slate-900 dark:bg-slate-100 mr-3" />
+                      Slate
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'privacy' && (
+              <div className="space-y-8 animate-in fade-in slide-in-from-right-4 duration-300 max-w-xl">
+                <div className="space-y-4">
+                  <div>
+                    <h4 className="text-base font-medium">Account Privacy</h4>
+                    <p className="text-sm text-muted-foreground mb-4">Manage who can see and interact with you.</p>
+                  </div>
+                  
+                  <label className="flex items-center justify-between cursor-pointer p-4 rounded-xl border bg-card hover:bg-accent/50 transition-colors shadow-sm">
+                    <div className="space-y-1 pr-4">
+                      <div className="text-sm font-medium">Private Account</div>
+                      <div className="text-sm text-muted-foreground">Only approved users can message you</div>
+                    </div>
                     <div className={cn(
-                      "absolute top-1 left-1 bg-background w-4 h-4 rounded-full transition-transform border border-primary",
-                      isPrivate ? "translate-x-4" : "translate-x-0"
-                    )} />
-                  </div>
-                  <input 
-                    type="checkbox" 
-                    className="hidden" 
-                    checked={isPrivate} 
-                    onChange={(e) => setIsPrivate(e.target.checked)} 
-                  />
-                </label>
-                
-                <label className="flex items-center justify-between cursor-pointer p-3 rounded-lg border hover:bg-muted/50 transition-colors">
-                  <div className="space-y-0.5">
-                    <div className="text-sm font-medium">Discoverable</div>
-                    <div className="text-xs text-muted-foreground">Allow others to find you by username</div>
-                  </div>
-                  <div className={cn(
-                    "w-10 h-6 rounded-full transition-colors relative border border-primary",
-                    discoveryEnabled ? "bg-primary" : "bg-muted"
-                  )}>
+                      "w-11 h-6 rounded-full transition-colors relative shrink-0",
+                      isPrivate ? "bg-primary" : "bg-muted border"
+                    )}>
+                      <div className={cn(
+                        "absolute top-0.5 left-0.5 bg-background w-5 h-5 rounded-full transition-transform shadow-sm",
+                        isPrivate ? "translate-x-5" : "translate-x-0"
+                      )} />
+                    </div>
+                    <input 
+                      type="checkbox" 
+                      className="hidden" 
+                      checked={isPrivate} 
+                      onChange={(e) => setIsPrivate(e.target.checked)} 
+                    />
+                  </label>
+                  
+                  <label className="flex items-center justify-between cursor-pointer p-4 rounded-xl border bg-card hover:bg-accent/50 transition-colors shadow-sm">
+                    <div className="space-y-1 pr-4">
+                      <div className="text-sm font-medium">Discoverable</div>
+                      <div className="text-sm text-muted-foreground">Allow others to find you by username</div>
+                    </div>
                     <div className={cn(
-                      "absolute top-1 left-1 bg-background w-4 h-4 rounded-full transition-transform border border-primary",
-                      discoveryEnabled ? "translate-x-4" : "translate-x-0"
-                    )} />
-                  </div>
-                  <input 
-                    type="checkbox" 
-                    className="hidden" 
-                    checked={discoveryEnabled} 
-                    onChange={(e) => setDiscoveryEnabled(e.target.checked)} 
-                  />
-                </label>
-              </div>
+                      "w-11 h-6 rounded-full transition-colors relative shrink-0",
+                      discoveryEnabled ? "bg-primary" : "bg-muted border"
+                    )}>
+                      <div className={cn(
+                        "absolute top-0.5 left-0.5 bg-background w-5 h-5 rounded-full transition-transform shadow-sm",
+                        discoveryEnabled ? "translate-x-5" : "translate-x-0"
+                      )} />
+                    </div>
+                    <input 
+                      type="checkbox" 
+                      className="hidden" 
+                      checked={discoveryEnabled} 
+                      onChange={(e) => setDiscoveryEnabled(e.target.checked)} 
+                    />
+                  </label>
+                </div>
 
-              <div className="space-y-3">
-                <h4 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Notifications</h4>
-                
-                <Button 
-                  variant="outline" 
-                  className="w-full justify-start" 
-                  onClick={async () => {
-                    const success = await unlockAudioExplicit();
-                    if (success) {
-                      setSuccess('Sound enabled successfully');
-                      setTimeout(() => setSuccess(null), 3000);
-                    } else {
-                      setError('Failed to enable sound. Please try clicking again.');
-                      setTimeout(() => setError(null), 3000);
-                    }
-                  }}
-                >
-                  <Volume2 className="h-4 w-4 mr-2" />
-                  Enable Sound Notifications
-                </Button>
-
-                <label className="flex items-center justify-between cursor-pointer p-3 rounded-lg border hover:bg-muted/50 transition-colors">
-                  <div className="space-y-0.5">
-                    <div className="text-sm font-medium">Sound Notifications</div>
-                    <div className="text-xs text-muted-foreground">Play a sound when a new message is received</div>
+                <div className="space-y-4 pt-4 border-t">
+                  <div>
+                    <h4 className="text-base font-medium">Notifications</h4>
+                    <p className="text-sm text-muted-foreground mb-4">Manage your notification preferences.</p>
                   </div>
-                  <div className={cn(
-                    "w-10 h-6 rounded-full transition-colors relative border border-primary",
-                    soundEnabled ? "bg-primary" : "bg-muted"
-                  )}>
+                  
+                  <Button 
+                    variant="outline" 
+                    className="w-full justify-start h-12 bg-card shadow-sm" 
+                    onClick={async () => {
+                      const success = await unlockAudioExplicit();
+                      if (success) {
+                        setSuccess('Sound enabled successfully');
+                        setTimeout(() => setSuccess(null), 3000);
+                      } else {
+                        setError('Failed to enable sound. Please try clicking again.');
+                        setTimeout(() => setError(null), 3000);
+                      }
+                    }}
+                  >
+                    <Volume2 className="h-4 w-4 mr-3 text-muted-foreground" />
+                    Test & Enable Sound Notifications
+                  </Button>
+
+                  <label className="flex items-center justify-between cursor-pointer p-4 rounded-xl border bg-card hover:bg-accent/50 transition-colors shadow-sm">
+                    <div className="space-y-1 pr-4">
+                      <div className="text-sm font-medium">Sound Notifications</div>
+                      <div className="text-sm text-muted-foreground">Play a sound when a new message is received</div>
+                    </div>
                     <div className={cn(
-                      "absolute top-1 left-1 bg-background w-4 h-4 rounded-full transition-transform border border-primary",
-                      soundEnabled ? "translate-x-4" : "translate-x-0"
-                    )} />
-                  </div>
-                  <input 
-                    type="checkbox" 
-                    className="hidden" 
-                    checked={soundEnabled} 
-                    onChange={(e) => setSoundEnabled(e.target.checked)} 
-                  />
-                </label>
+                      "w-11 h-6 rounded-full transition-colors relative shrink-0",
+                      soundEnabled ? "bg-primary" : "bg-muted border"
+                    )}>
+                      <div className={cn(
+                        "absolute top-0.5 left-0.5 bg-background w-5 h-5 rounded-full transition-transform shadow-sm",
+                        soundEnabled ? "translate-x-5" : "translate-x-0"
+                      )} />
+                    </div>
+                    <input 
+                      type="checkbox" 
+                      className="hidden" 
+                      checked={soundEnabled} 
+                      onChange={(e) => setSoundEnabled(e.target.checked)} 
+                    />
+                  </label>
+                </div>
               </div>
-            </div>
-          )}
+            )}
 
-          {activeTab === 'passkeys' && (
-            <div className="animate-in fade-in slide-in-from-right-2 duration-300">
-              <PasskeysSettings />
-            </div>
-          )}
-
-          {error && <div className="text-sm text-destructive bg-destructive/10 p-3 rounded-md">{error}</div>}
-          {success && <div className="text-sm text-green-500 bg-green-500/10 p-3 rounded-md">{success}</div>}
+            {activeTab === 'passkeys' && (
+              <div className="animate-in fade-in slide-in-from-right-4 duration-300 max-w-2xl">
+                <PasskeysSettings />
+              </div>
+            )}
+          </div>
         </div>
         
-        <div className="p-4 border-t bg-muted/20 shrink-0 flex justify-end gap-2">
-          <Button variant="outline" onClick={onClose}>Close</Button>
-          {(activeTab === 'profile' || activeTab === 'privacy') && (
-            <Button onClick={handleSave} disabled={isSaving}>
+        {/* Footer Actions */}
+        {(activeTab === 'profile' || activeTab === 'privacy') && (
+          <div className="absolute bottom-0 left-0 right-0 p-4 border-t bg-background/80 backdrop-blur-md flex justify-end gap-3 z-20">
+            <Button variant="outline" onClick={onClose} className="md:hidden">Cancel</Button>
+            <Button onClick={handleSave} disabled={isSaving} className="w-full md:w-auto shadow-sm">
               {isSaving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
               Save Changes
             </Button>
-          )}
-        </div>
+          </div>
+        )}
       </div>
     </div>
   );

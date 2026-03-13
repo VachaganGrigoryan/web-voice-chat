@@ -109,7 +109,7 @@ export default function AuthPage() {
       const verifyRes = await authApi.passkeys.loginFinish({ email: data.email, credential });
       
       // 4. Handle success (extract tokens directly from response based on spec)
-      const { access_token, refresh_token } = verifyRes.data.data || verifyRes.data;
+      const { access_token, refresh_token } = (verifyRes.data.data || verifyRes.data) as any;
       setTokens(access_token, refresh_token);
       navigate('/chat');
     } catch (err: any) {
