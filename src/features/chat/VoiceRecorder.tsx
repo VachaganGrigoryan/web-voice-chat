@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/Button';
-import { Mic, Square, Loader2, Trash2, Send, StopCircle, X, Smile } from 'lucide-react';
+import { Mic, Square, Loader2, Trash2, Send, StopCircle, Smile, Pause, Play } from 'lucide-react';
 import { getSocket } from '@/socket/socket';
 import { EVENTS } from '@/socket/events';
 import { cn } from '@/lib/utils';
@@ -21,30 +21,49 @@ interface VoiceRecorderProps {
 
 export default function VoiceRecorder({ receiverId, onSendVoice, onSendText }: VoiceRecorderProps) {
   const [isRecording, setIsRecording] = useState(false);
+  const [isRecordingPaused, setIsRecordingPaused] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [duration, setDuration] = useState(0);
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
+  const [audioUrl, setAudioUrl] = useState<string | null>(null);
+  const [isPlayingPreview, setIsPlayingPreview] = useState(false);
+  const [previewProgress, setPreviewProgress] = useState(0);
   const [text, setText] = useState('');
   const [isFocused, setIsFocused] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
-  const startTimeRef = useRef<number>(0);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const isRecordingPausedRef = useRef(false);
+
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
       if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+      if (audioUrl) URL.revokeObjectURL(audioUrl);
     };
-  }, []);
+  }, [audioUrl]);
+
+  useEffect(() => {
+    if (audioBlob) {
+      const url = URL.createObjectURL(audioBlob);
+      setAudioUrl(url);
+      return () => URL.revokeObjectURL(url);
+    } else {
+      setAudioUrl(null);
+      setIsPlayingPreview(false);
+      setPreviewProgress(0);
+    }
+  }, [audioBlob]);
 
   const formatDuration = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
+    const secs = Math.floor(seconds % 60);
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
@@ -59,7 +78,6 @@ export default function VoiceRecorder({ receiverId, onSendVoice, onSendText }: V
       const mediaRecorder = new MediaRecorder(stream);
       mediaRecorderRef.current = mediaRecorder;
       chunksRef.current = [];
-      startTimeRef.current = Date.now();
 
       mediaRecorder.ondataavailable = (e) => {
         if (e.data.size > 0) {
@@ -71,16 +89,16 @@ export default function VoiceRecorder({ receiverId, onSendVoice, onSendText }: V
         const blob = new Blob(chunksRef.current, { type: 'audio/webm' });
         setAudioBlob(blob);
         
-        // Stop typing indicator
         const socket = getSocket();
         socket?.emit(EVENTS.CLIENT_TYPING_STOP, { to: receiverId, receiver_id: receiverId });
         
-        // Stop all tracks
         stream.getTracks().forEach(track => track.stop());
       };
 
       mediaRecorder.start();
       setIsRecording(true);
+      setIsRecordingPaused(false);
+      isRecordingPausedRef.current = false;
       setDuration(0);
       setAudioBlob(null);
       
@@ -88,7 +106,6 @@ export default function VoiceRecorder({ receiverId, onSendVoice, onSendText }: V
         setDuration(prev => prev + 1);
       }, 1000);
       
-      // Start typing indicator
       const socket = getSocket();
       socket?.emit(EVENTS.CLIENT_TYPING_START, { to: receiverId, receiver_id: receiverId });
 
@@ -98,10 +115,32 @@ export default function VoiceRecorder({ receiverId, onSendVoice, onSendText }: V
     }
   };
 
+  const pauseRecording = () => {
+    if (mediaRecorderRef.current && isRecording && !isRecordingPaused) {
+      mediaRecorderRef.current.pause();
+      setIsRecordingPaused(true);
+      isRecordingPausedRef.current = true;
+      if (timerRef.current) clearInterval(timerRef.current);
+    }
+  };
+
+  const resumeRecording = () => {
+    if (mediaRecorderRef.current && isRecording && isRecordingPaused) {
+      mediaRecorderRef.current.resume();
+      setIsRecordingPaused(false);
+      isRecordingPausedRef.current = false;
+      timerRef.current = setInterval(() => {
+        setDuration(prev => prev + 1);
+      }, 1000);
+    }
+  };
+
   const stopRecording = () => {
     if (mediaRecorderRef.current && isRecording) {
       mediaRecorderRef.current.stop();
       setIsRecording(false);
+      setIsRecordingPaused(false);
+      isRecordingPausedRef.current = false;
       if (timerRef.current) clearInterval(timerRef.current);
     }
   };
@@ -110,6 +149,17 @@ export default function VoiceRecorder({ receiverId, onSendVoice, onSendText }: V
     stopRecording();
     setAudioBlob(null);
     setDuration(0);
+  };
+
+  const togglePreviewPlayback = () => {
+    if (audioRef.current) {
+      if (isPlayingPreview) {
+        audioRef.current.pause();
+      } else {
+        audioRef.current.play();
+      }
+      setIsPlayingPreview(!isPlayingPreview);
+    }
   };
 
   const handleSendVoice = async () => {
@@ -138,7 +188,6 @@ export default function VoiceRecorder({ receiverId, onSendVoice, onSendText }: V
   const handleTextareaChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setText(e.target.value);
     
-    // Handle typing indicator
     if (!typingTimeoutRef.current) {
       const socket = getSocket();
       socket?.emit(EVENTS.CLIENT_TYPING_START, { to: receiverId, receiver_id: receiverId });
@@ -185,7 +234,6 @@ export default function VoiceRecorder({ receiverId, onSendVoice, onSendText }: V
   const onEmojiClick = (emojiObject: any) => {
     setText((prev) => prev + emojiObject.emoji);
     
-    // Handle typing indicator
     if (!typingTimeoutRef.current) {
       const socket = getSocket();
       socket?.emit(EVENTS.CLIENT_TYPING_START, { to: receiverId, receiver_id: receiverId });
@@ -249,7 +297,6 @@ export default function VoiceRecorder({ receiverId, onSendVoice, onSendText }: V
                     onChange={handleTextareaChange}
                     onFocus={() => setIsFocused(true)}
                     onBlur={() => {
-                      // Small delay to allow emoji picker click to register before hiding
                       setTimeout(() => setIsFocused(false), 200);
                     }}
                     placeholder="Message..."
@@ -289,40 +336,53 @@ export default function VoiceRecorder({ receiverId, onSendVoice, onSendText }: V
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="w-full flex items-center gap-3 bg-red-50/50 p-1 rounded-full border border-red-100"
+              className="w-full flex items-center gap-2 bg-red-50/50 p-1 rounded-full border border-red-100"
             >
-              <div className="flex-1 flex items-center gap-3 px-4">
-                <div className="relative flex h-3 w-3">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
+              <div className="flex-1 flex items-center gap-3 px-4 h-10">
+                <div className="relative flex h-3 w-3 shrink-0">
+                  {!isRecordingPaused && <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>}
+                  <span className={cn("relative inline-flex rounded-full h-3 w-3", isRecordingPaused ? "bg-red-300" : "bg-red-500")}></span>
                 </div>
-                <span className="font-mono text-sm font-medium text-red-600 min-w-[3rem]">
+                <span className="font-mono text-sm font-medium text-red-600 min-w-[3rem] shrink-0">
                   {formatDuration(duration)}
                 </span>
-                <div className="h-8 flex-1 flex items-center gap-0.5 opacity-50">
-                  {/* Fake waveform */}
-                  {[...Array(12)].map((_, i) => (
-                    <motion.div
-                      key={i}
-                      animate={{ height: [4, 16, 8, 24, 4] }}
-                      transition={{ 
-                        repeat: Infinity, 
-                        duration: 1.5, 
-                        delay: i * 0.1,
-                        ease: "easeInOut" 
-                      }}
-                      className="w-1 bg-red-400 rounded-full"
-                    />
-                  ))}
+                <div className="flex-1 h-8 flex items-center justify-around gap-1 opacity-60 overflow-hidden px-2">
+                  {[...Array(30)].map((_, i) => {
+                    const height1 = 4 + (i % 3) * 4;
+                    const height2 = 12 + (i % 5) * 4;
+                    return (
+                      <motion.div
+                        key={i}
+                        animate={isRecordingPaused ? { height: 4 } : { height: [height1, height2, height1] }}
+                        transition={{ 
+                          repeat: Infinity, 
+                          duration: 1 + (i % 3) * 0.2, 
+                          delay: (i % 5) * 0.1,
+                          ease: "easeInOut" 
+                        }}
+                        className="w-1.5 bg-red-400 rounded-full flex-shrink-0"
+                      />
+                    );
+                  })}
                 </div>
               </div>
+              
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-10 w-10 rounded-full shrink-0 text-red-500 hover:text-red-600 hover:bg-red-100"
+                onClick={isRecordingPaused ? resumeRecording : pauseRecording}
+              >
+                {isRecordingPaused ? <Mic className="h-5 w-5" /> : <Pause className="h-5 w-5" />}
+              </Button>
+              
               <Button
                 variant="destructive"
                 size="icon"
                 className="h-10 w-10 rounded-full shrink-0"
                 onClick={stopRecording}
               >
-                <StopCircle className="h-5 w-5" />
+                <Square className="h-4 w-4" />
               </Button>
             </motion.div>
           ) : (
@@ -336,27 +396,40 @@ export default function VoiceRecorder({ receiverId, onSendVoice, onSendText }: V
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-12 w-12 rounded-full text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                className="h-12 w-12 rounded-full text-muted-foreground hover:text-destructive hover:bg-destructive/10 shrink-0"
                 onClick={cancelRecording}
               >
                 <Trash2 className="h-5 w-5" />
               </Button>
               
-              <div className="flex-1 bg-secondary/50 h-12 rounded-full flex items-center px-4 gap-3 border">
-                <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center">
-                  <Mic className="h-4 w-4 text-primary" />
+              <div className="flex-1 bg-secondary/50 h-12 rounded-full flex items-center px-2 gap-2 border overflow-hidden">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 rounded-full shrink-0 text-primary hover:bg-primary/10"
+                  onClick={togglePreviewPlayback}
+                >
+                  {isPlayingPreview ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4 ml-0.5" />}
+                </Button>
+                
+                <div className="flex-1 h-1.5 bg-primary/20 rounded-full overflow-hidden relative cursor-pointer" onClick={(e) => {
+                  if (audioRef.current) {
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    const pos = (e.clientX - rect.left) / rect.width;
+                    audioRef.current.currentTime = pos * audioRef.current.duration;
+                  }
+                }}>
+                  <div className="h-full bg-primary absolute left-0 top-0 bottom-0 transition-all duration-75" style={{ width: `${previewProgress}%` }} />
                 </div>
-                <div className="flex-1 h-1 bg-primary/20 rounded-full overflow-hidden">
-                  <div className="h-full bg-primary w-full" />
-                </div>
-                <span className="font-mono text-xs font-medium text-muted-foreground">
+                
+                <span className="font-mono text-xs font-medium text-muted-foreground shrink-0 px-2">
                   {formatDuration(duration)}
                 </span>
               </div>
 
               <Button
                 size="icon"
-                className="h-12 w-12 rounded-full shadow-md bg-primary hover:bg-primary/90"
+                className="h-12 w-12 rounded-full shadow-md bg-primary hover:bg-primary/90 shrink-0"
                 onClick={handleSendVoice}
                 disabled={isUploading}
               >
@@ -366,6 +439,23 @@ export default function VoiceRecorder({ receiverId, onSendVoice, onSendText }: V
                   <Send className="h-5 w-5 ml-0.5" />
                 )}
               </Button>
+              
+              {audioUrl && (
+                <audio 
+                  ref={audioRef} 
+                  src={audioUrl} 
+                  onTimeUpdate={() => {
+                    if (audioRef.current) {
+                      setPreviewProgress((audioRef.current.currentTime / audioRef.current.duration) * 100);
+                    }
+                  }}
+                  onEnded={() => {
+                    setIsPlayingPreview(false);
+                    setPreviewProgress(0);
+                  }}
+                  className="hidden" 
+                />
+              )}
             </motion.div>
           )}
         </AnimatePresence>
