@@ -17,8 +17,9 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/Card';
-import { Loader2, ArrowLeft, Mail, Check, RefreshCw } from 'lucide-react';
+import { Loader2, ArrowLeft, Mail, Check, RefreshCw, KeyRound, AlertTriangle } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { startAuthentication } from '@simplewebauthn/browser';
 
 const emailSchema = z.object({
   email: z.string().email('Invalid email address'),
@@ -34,6 +35,7 @@ export default function AuthPage() {
   const [code, setCode] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [cooldown, setCooldown] = useState(0);
+  const [isIframe, setIsIframe] = useState(false);
 
   const navigate = useNavigate();
   const setTokens = useAuthStore((state) => state.setTokens);
@@ -43,10 +45,15 @@ export default function AuthPage() {
     handleSubmit: handleSubmitEmail,
     formState: { errors: emailErrors },
     setValue: setEmailValue,
+    getValues: getEmailValues,
   } = useForm<EmailFormValues>({
     resolver: zodResolver(emailSchema),
     defaultValues: { email: '' },
   });
+
+  useEffect(() => {
+    setIsIframe(window !== window.top);
+  }, []);
 
   // Cooldown timer effect
   useEffect(() => {
@@ -71,6 +78,43 @@ export default function AuthPage() {
     } catch (err: any) {
       console.error(err);
       setError(err.response?.data?.error?.message || 'Something went wrong');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handlePasskeyLogin = async () => {
+    const data = getEmailValues();
+    if (!data.email) {
+      setError('Please enter your email first');
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+    try {
+      // 1. Get options from server
+      const optionsRes = await authApi.passkeys.loginStart(data.email);
+      
+      // Extract publicKey from response based on API spec
+      const options = optionsRes.data.publicKey || optionsRes.data.data?.publicKey || optionsRes.data.data || optionsRes.data;
+
+      // Ensure userVerification is preferred
+      options.userVerification = "preferred";
+
+      // 2. Call browser API
+      const credential = await startAuthentication(options);
+
+      // 3. Send credential to server
+      const verifyRes = await authApi.passkeys.loginFinish({ email: data.email, credential });
+      
+      // 4. Handle success (extract tokens directly from response based on spec)
+      const { access_token, refresh_token } = verifyRes.data.data || verifyRes.data;
+      setTokens(access_token, refresh_token);
+      navigate('/chat');
+    } catch (err: any) {
+      console.error('Passkey login failed:', err);
+      setError(err.response?.data?.error?.message || err.message || 'Passkey login failed');
     } finally {
       setLoading(false);
     }
@@ -232,15 +276,50 @@ export default function AuthPage() {
                     </div>
                   )}
 
-                  <Button type="submit" className="w-full" disabled={loading}>
-                    {loading ? (
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    ) : (
+                  <div className="flex flex-col gap-3">
+                    <Button type="submit" className="w-full" disabled={loading}>
+                      {loading ? (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      ) : (
+                        <>
+                          {mode === 'login' ? 'Send Login Code' : 'Send Verification Code'}
+                        </>
+                      )}
+                    </Button>
+
+                    {mode === 'login' && (
                       <>
-                        {mode === 'login' ? 'Send Login Code' : 'Send Verification Code'}
+                        <div className="relative">
+                          <div className="absolute inset-0 flex items-center">
+                            <span className="w-full border-t border-muted-foreground/20" />
+                          </div>
+                          <div className="relative flex justify-center text-xs uppercase">
+                            <span className="bg-card px-2 text-muted-foreground">Or continue with</span>
+                          </div>
+                        </div>
+
+                        {isIframe && (
+                          <div className="rounded-md bg-amber-500/15 p-3 text-xs text-amber-600 flex items-start gap-2">
+                            <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
+                            <p>
+                              Passkeys may fail in preview mode. If so, <strong>open the app in a new tab</strong>.
+                            </p>
+                          </div>
+                        )}
+
+                        <Button 
+                          type="button" 
+                          variant="outline" 
+                          className="w-full" 
+                          disabled={loading}
+                          onClick={handlePasskeyLogin}
+                        >
+                          <KeyRound className="mr-2 h-4 w-4" />
+                          Sign in with Passkey
+                        </Button>
                       </>
                     )}
-                  </Button>
+                  </div>
                 </form>
               </motion.div>
             ) : (

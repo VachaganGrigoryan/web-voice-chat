@@ -1,5 +1,5 @@
 {
   "name": "Voca",
   "description": "Voca is a new era secure and fast messenger.",
-  "requestFramePermissions": ["microphone"]
+  "requestFramePermissions": ["microphone", "publickey-credentials-get", "publickey-credentials-create"]
 }

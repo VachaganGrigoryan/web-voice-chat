@@ -7,6 +7,14 @@ export const authApi = {
   verify: (email: string, code: string) =>
     apiClient.post<SuccessResponse<TokenPair>>('/auth/verify', { email, code }),
   logout: (refresh_token: string) => apiClient.post('/auth/logout', { refresh_token }),
+  passkeys: {
+    registerStart: (nickname?: string) => apiClient.post('/auth/passkeys/register/start', { nickname }),
+    registerFinish: (data: { credential: any, nickname?: string }) => apiClient.post('/auth/passkeys/register/finish', data),
+    loginStart: (email: string) => apiClient.post('/auth/passkeys/login/start', { email }),
+    loginFinish: (data: { email: string, credential: any }) => apiClient.post<SuccessResponse<TokenPair>>('/auth/passkeys/login/finish', data),
+    list: () => apiClient.get('/auth/passkeys'),
+    delete: (credentialId: string) => apiClient.delete(`/auth/passkeys/${credentialId}`),
+  }
 };
 
 export const usersApi = {

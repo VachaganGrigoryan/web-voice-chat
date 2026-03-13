@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
+import PasskeysSettings from './PasskeysSettings';
 
 export default function SettingsPage() {
   const { accessToken, refreshToken, userId, userEmail } = useAuthStore();
@@ -103,6 +104,12 @@ export default function SettingsPage() {
                 {refreshToken ? `${refreshToken.substring(0, 20)}...` : 'None'}
               </span>
             </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="pt-6">
+            <PasskeysSettings />
           </CardContent>
         </Card>
       </div>
