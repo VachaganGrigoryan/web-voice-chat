@@ -1,5 +1,5 @@
 {
-  "name": "Voice Chat App",
-  "description": "A real-time voice chat application with React and TypeScript.",
+  "name": "Voca",
+  "description": "Voca is a new era secure and fast messenger.",
   "requestFramePermissions": ["microphone"]
 }

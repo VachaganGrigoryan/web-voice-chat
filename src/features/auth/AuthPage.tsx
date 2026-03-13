@@ -135,11 +135,18 @@ export default function AuthPage() {
                 exit={{ opacity: 0, y: -10 }}
                 className="space-y-1"
               >
+                <div className="flex justify-center mb-4">
+                  <div className="h-12 w-12 rounded-full bg-red-500/10 flex items-center justify-center">
+                    <div className="h-8 w-8 rounded-full border-[3px] border-red-500 flex items-center justify-center">
+                      <div className="h-3 w-3 rounded-full bg-red-500" />
+                    </div>
+                  </div>
+                </div>
                 <CardTitle className="text-2xl font-bold text-center">
-                  Welcome back
+                  Welcome to Voca
                 </CardTitle>
                 <CardDescription className="text-center">
-                  Enter your email to sign in or create an account
+                  A new era secure and fast messenger
                 </CardDescription>
               </motion.div>
             ) : (

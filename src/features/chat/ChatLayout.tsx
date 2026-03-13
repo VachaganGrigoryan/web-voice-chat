@@ -459,12 +459,14 @@ export default function ChatLayout() {
           </>
         ) : (
           <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground bg-muted/5 p-4 text-center">
-            <div className="h-16 w-16 rounded-2xl bg-primary/10 flex items-center justify-center mb-6 shadow-sm">
-              <MessageSquare className="h-8 w-8 text-primary" />
+            <div className="h-20 w-20 rounded-full bg-red-500/10 flex items-center justify-center mb-6 shadow-sm">
+              <div className="h-12 w-12 rounded-full border-[4px] border-red-500 flex items-center justify-center">
+                <div className="h-4 w-4 rounded-full bg-red-500" />
+              </div>
             </div>
-            <h3 className="text-lg font-semibold text-foreground mb-2">Welcome to Voice Chat</h3>
+            <h3 className="text-xl font-bold text-foreground mb-2">Welcome to Voca</h3>
             <p className="max-w-xs text-sm text-muted-foreground">
-              Select a user from the sidebar to start sending real-time voice messages.
+              A new era secure and fast messenger. Select a user from the sidebar to start chatting.
             </p>
           </div>
         )}
