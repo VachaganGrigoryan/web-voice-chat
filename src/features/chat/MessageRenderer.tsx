@@ -17,7 +17,7 @@ export const MessageRenderer: React.FC<MessageRendererProps> = ({ message, isMe,
       ? "bg-primary text-primary-foreground rounded-br-none"
       : highlighted
       ? "bg-blue-100 border border-blue-300 rounded-bl-none dark:bg-blue-900/30 dark:border-blue-800"
-      : "bg-zinc-100 text-zinc-900 dark:bg-zinc-800 dark:text-zinc-100 rounded-bl-none border border-zinc-200 dark:border-zinc-700"
+      : "bg-muted text-foreground rounded-bl-none border border-border"
   );
 
   switch (message.type) {

@@ -336,17 +336,17 @@ export default function VoiceRecorder({ receiverId, onSendVoice, onSendText }: V
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="w-full flex items-center gap-2 bg-red-50/50 p-1 rounded-full border border-red-100"
+              className="w-full flex items-center gap-2 bg-red-500/10 p-1 rounded-full border border-red-500/20"
             >
-              <div className="flex-1 flex items-center gap-3 px-4 h-10">
+              <div className="flex-1 flex items-center gap-2 sm:gap-3 px-2 sm:px-4 h-10 min-w-0">
                 <div className="relative flex h-3 w-3 shrink-0">
                   {!isRecordingPaused && <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>}
                   <span className={cn("relative inline-flex rounded-full h-3 w-3", isRecordingPaused ? "bg-red-300" : "bg-red-500")}></span>
                 </div>
-                <span className="font-mono text-sm font-medium text-red-600 min-w-[3rem] shrink-0">
+                <span className="font-mono text-xs sm:text-sm font-medium text-red-500 min-w-[2.5rem] sm:min-w-[3rem] shrink-0">
                   {formatDuration(duration)}
                 </span>
-                <div className="flex-1 h-8 flex items-center justify-around gap-1 opacity-60 overflow-hidden px-2">
+                <div className="flex-1 h-8 flex items-center justify-around gap-0.5 sm:gap-1 opacity-60 overflow-hidden px-1 sm:px-2">
                   {[...Array(30)].map((_, i) => {
                     const height1 = 4 + (i % 3) * 4;
                     const height2 = 12 + (i % 5) * 4;
@@ -360,7 +360,7 @@ export default function VoiceRecorder({ receiverId, onSendVoice, onSendText }: V
                           delay: (i % 5) * 0.1,
                           ease: "easeInOut" 
                         }}
-                        className="w-1.5 bg-red-400 rounded-full flex-shrink-0"
+                        className="w-1 sm:w-1.5 bg-red-400 rounded-full flex-shrink-0"
                       />
                     );
                   })}
@@ -370,7 +370,7 @@ export default function VoiceRecorder({ receiverId, onSendVoice, onSendText }: V
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-10 w-10 rounded-full shrink-0 text-red-500 hover:text-red-600 hover:bg-red-100"
+                className="h-10 w-10 rounded-full shrink-0 text-red-500 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-500/20"
                 onClick={isRecordingPaused ? resumeRecording : pauseRecording}
               >
                 {isRecordingPaused ? <Mic className="h-5 w-5" /> : <Pause className="h-5 w-5" />}
@@ -391,18 +391,18 @@ export default function VoiceRecorder({ receiverId, onSendVoice, onSendText }: V
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -10 }}
-              className="w-full flex items-center gap-2"
+              className="w-full flex items-center gap-1 sm:gap-2"
             >
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-12 w-12 rounded-full text-muted-foreground hover:text-destructive hover:bg-destructive/10 shrink-0"
+                className="h-10 w-10 sm:h-12 sm:w-12 rounded-full text-muted-foreground hover:text-destructive hover:bg-destructive/10 shrink-0"
                 onClick={cancelRecording}
               >
-                <Trash2 className="h-5 w-5" />
+                <Trash2 className="h-4 w-4 sm:h-5 sm:w-5" />
               </Button>
               
-              <div className="flex-1 bg-secondary/50 h-12 rounded-full flex items-center px-2 gap-2 border overflow-hidden">
+              <div className="flex-1 bg-secondary/50 h-10 sm:h-12 rounded-full flex items-center px-1 sm:px-2 gap-1 sm:gap-2 border overflow-hidden min-w-0">
                 <Button
                   variant="ghost"
                   size="icon"
@@ -412,7 +412,7 @@ export default function VoiceRecorder({ receiverId, onSendVoice, onSendText }: V
                   {isPlayingPreview ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4 ml-0.5" />}
                 </Button>
                 
-                <div className="flex-1 h-1.5 bg-primary/20 rounded-full overflow-hidden relative cursor-pointer" onClick={(e) => {
+                <div className="flex-1 h-1.5 bg-primary/20 rounded-full overflow-hidden relative cursor-pointer min-w-[50px]" onClick={(e) => {
                   if (audioRef.current) {
                     const rect = e.currentTarget.getBoundingClientRect();
                     const pos = (e.clientX - rect.left) / rect.width;
@@ -422,21 +422,21 @@ export default function VoiceRecorder({ receiverId, onSendVoice, onSendText }: V
                   <div className="h-full bg-primary absolute left-0 top-0 bottom-0 transition-all duration-75" style={{ width: `${previewProgress}%` }} />
                 </div>
                 
-                <span className="font-mono text-xs font-medium text-muted-foreground shrink-0 px-2">
+                <span className="font-mono text-[10px] sm:text-xs font-medium text-muted-foreground shrink-0 px-1 sm:px-2">
                   {formatDuration(duration)}
                 </span>
               </div>
 
               <Button
                 size="icon"
-                className="h-12 w-12 rounded-full shadow-md bg-primary hover:bg-primary/90 shrink-0"
+                className="h-10 w-10 sm:h-12 sm:w-12 rounded-full shadow-md bg-primary hover:bg-primary/90 shrink-0"
                 onClick={handleSendVoice}
                 disabled={isUploading}
               >
                 {isUploading ? (
-                  <Loader2 className="h-5 w-5 animate-spin" />
+                  <Loader2 className="h-4 w-4 sm:h-5 sm:w-5 animate-spin" />
                 ) : (
-                  <Send className="h-5 w-5 ml-0.5" />
+                  <Send className="h-4 w-4 sm:h-5 sm:w-5 ml-0.5" />
                 )}
               </Button>
               

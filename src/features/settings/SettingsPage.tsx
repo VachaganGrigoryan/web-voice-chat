@@ -68,13 +68,13 @@ export default function SettingsPage() {
           <CardContent className="space-y-2">
             <div className="flex justify-between">
               <span className="font-medium">Live Status:</span>
-              <span className={isLiveLoading ? 'text-muted-foreground' : 'text-green-600'}>
+              <span className={isLiveLoading ? 'text-muted-foreground' : 'text-green-600 dark:text-green-400'}>
                 {isLiveLoading ? 'Loading...' : JSON.stringify(liveStatus?.data)}
               </span>
             </div>
             <div className="flex justify-between">
               <span className="font-medium">Ready Status:</span>
-              <span className={isReadyLoading ? 'text-muted-foreground' : 'text-green-600'}>
+              <span className={isReadyLoading ? 'text-muted-foreground' : 'text-green-600 dark:text-green-400'}>
                 {isReadyLoading ? 'Loading...' : JSON.stringify(readyStatus?.data)}
               </span>
             </div>

@@ -123,7 +123,7 @@ export default function AuthPage() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gray-50 p-4">
+    <div className="flex min-h-screen items-center justify-center bg-muted/30 p-4">
       <Card className="w-full max-w-md overflow-hidden transition-all duration-300">
         <CardHeader className="space-y-1">
           <AnimatePresence mode="wait">

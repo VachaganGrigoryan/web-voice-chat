@@ -4,9 +4,10 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Label } from '@/components/ui/Label';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/Avatar';
-import { X, Camera, Trash2, Loader2, Save, Volume2 } from 'lucide-react';
+import { X, Camera, Trash2, Loader2, Save, Volume2, Monitor, Moon, Sun, Palette } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { unlockAudioExplicit } from '@/utils/notificationSound';
+import { useTheme } from '@/components/ThemeProvider';
 
 interface UserSettingsProps {
   isOpen: boolean;
@@ -25,6 +26,8 @@ export default function UserSettings({ isOpen, onClose }: UserSettingsProps) {
     isUploadingAvatar,
     isDeletingAvatar
   } = useProfile();
+
+  const { mode, setMode, theme, setTheme } = useTheme();
 
   const [username, setUsername] = useState(profile?.username || '');
   const [displayName, setDisplayName] = useState(profile?.display_name || '');
@@ -109,7 +112,7 @@ export default function UserSettings({ isOpen, onClose }: UserSettingsProps) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl border border-zinc-200 overflow-hidden flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-200 text-zinc-900">
+      <div className="bg-background w-full max-w-md rounded-2xl shadow-2xl border border-border overflow-hidden flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-200 text-foreground">
         <div className="flex items-center justify-between p-4 border-b shrink-0">
           <h2 className="text-lg font-semibold">Settings</h2>
           <Button variant="ghost" size="icon" onClick={onClose} className="rounded-full">
@@ -199,6 +202,62 @@ export default function UserSettings({ isOpen, onClose }: UserSettingsProps) {
             </div>
 
             <div className="space-y-3 pt-2">
+              <h4 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Appearance</h4>
+              
+              <div className="space-y-2">
+                <Label>Theme Mode</Label>
+                <div className="grid grid-cols-3 gap-2">
+                  <Button
+                    variant={mode === 'light' ? 'default' : 'outline'}
+                    className="w-full"
+                    onClick={() => setMode('light')}
+                  >
+                    <Sun className="h-4 w-4 mr-2" />
+                    Light
+                  </Button>
+                  <Button
+                    variant={mode === 'dark' ? 'default' : 'outline'}
+                    className="w-full"
+                    onClick={() => setMode('dark')}
+                  >
+                    <Moon className="h-4 w-4 mr-2" />
+                    Dark
+                  </Button>
+                  <Button
+                    variant={mode === 'system' ? 'default' : 'outline'}
+                    className="w-full"
+                    onClick={() => setMode('system')}
+                  >
+                    <Monitor className="h-4 w-4 mr-2" />
+                    System
+                  </Button>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Color Theme</Label>
+                <div className="grid grid-cols-2 gap-2">
+                  <Button
+                    variant={theme === 'default' ? 'default' : 'outline'}
+                    className="w-full justify-start"
+                    onClick={() => setTheme('default')}
+                  >
+                    <Palette className="h-4 w-4 mr-2" />
+                    Default (Zinc)
+                  </Button>
+                  <Button
+                    variant={theme === 'slate' ? 'default' : 'outline'}
+                    className="w-full justify-start"
+                    onClick={() => setTheme('slate')}
+                  >
+                    <Palette className="h-4 w-4 mr-2" />
+                    Slate
+                  </Button>
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-3 pt-2">
               <h4 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Privacy</h4>
               
               <label className="flex items-center justify-between cursor-pointer p-3 rounded-lg border hover:bg-muted/50 transition-colors">
@@ -207,11 +266,11 @@ export default function UserSettings({ isOpen, onClose }: UserSettingsProps) {
                   <div className="text-xs text-muted-foreground">Only approved users can message you</div>
                 </div>
                 <div className={cn(
-                  "w-10 h-6 rounded-full transition-colors relative border border-zinc-900",
-                  isPrivate ? "bg-zinc-900" : "bg-zinc-200"
+                  "w-10 h-6 rounded-full transition-colors relative border border-primary",
+                  isPrivate ? "bg-primary" : "bg-muted"
                 )}>
                   <div className={cn(
-                    "absolute top-1 left-1 bg-white w-4 h-4 rounded-full transition-transform border border-zinc-900",
+                    "absolute top-1 left-1 bg-background w-4 h-4 rounded-full transition-transform border border-primary",
                     isPrivate ? "translate-x-4" : "translate-x-0"
                   )} />
                 </div>
@@ -229,11 +288,11 @@ export default function UserSettings({ isOpen, onClose }: UserSettingsProps) {
                   <div className="text-xs text-muted-foreground">Allow others to find you by username</div>
                 </div>
                 <div className={cn(
-                  "w-10 h-6 rounded-full transition-colors relative border border-zinc-900",
-                  discoveryEnabled ? "bg-zinc-900" : "bg-zinc-200"
+                  "w-10 h-6 rounded-full transition-colors relative border border-primary",
+                  discoveryEnabled ? "bg-primary" : "bg-muted"
                 )}>
                   <div className={cn(
-                    "absolute top-1 left-1 bg-white w-4 h-4 rounded-full transition-transform border border-zinc-900",
+                    "absolute top-1 left-1 bg-background w-4 h-4 rounded-full transition-transform border border-primary",
                     discoveryEnabled ? "translate-x-4" : "translate-x-0"
                   )} />
                 </div>
@@ -273,11 +332,11 @@ export default function UserSettings({ isOpen, onClose }: UserSettingsProps) {
                   <div className="text-xs text-muted-foreground">Play a sound when a new message is received</div>
                 </div>
                 <div className={cn(
-                  "w-10 h-6 rounded-full transition-colors relative border border-zinc-900",
-                  soundEnabled ? "bg-zinc-900" : "bg-zinc-200"
+                  "w-10 h-6 rounded-full transition-colors relative border border-primary",
+                  soundEnabled ? "bg-primary" : "bg-muted"
                 )}>
                   <div className={cn(
-                    "absolute top-1 left-1 bg-white w-4 h-4 rounded-full transition-transform border border-zinc-900",
+                    "absolute top-1 left-1 bg-background w-4 h-4 rounded-full transition-transform border border-primary",
                     soundEnabled ? "translate-x-4" : "translate-x-0"
                   )} />
                 </div>
@@ -291,7 +350,7 @@ export default function UserSettings({ isOpen, onClose }: UserSettingsProps) {
             </div>
           </div>
 
-          {error && <div className="text-sm text-red-500 bg-red-500/10 p-3 rounded-md">{error}</div>}
+          {error && <div className="text-sm text-destructive bg-destructive/10 p-3 rounded-md">{error}</div>}
           {success && <div className="text-sm text-green-500 bg-green-500/10 p-3 rounded-md">{success}</div>}
         </div>
         
