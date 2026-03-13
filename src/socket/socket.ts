@@ -118,39 +118,7 @@ export const useTypingIndicator = (userId?: string) => {
   return { isTyping, typingUsers, startTyping, stopTyping };
 };
 
-import { toast } from 'sonner';
-import { playNotificationSound } from '@/utils/notificationSound';
-
-// Helper for notifications
-const showNotification = (message: MessageDoc, senderName?: string) => {
-  // Play sound if enabled
-  if (localStorage.getItem('soundEnabled') !== 'false') {
-    playNotificationSound();
-  }
-
-  // Show floating toast notification
-  const title = senderName ? `New message from ${senderName}` : 'New Message';
-  const body = message.type === 'voice' ? '🎤 Voice message' : message.text || 'New message';
-  
-  toast(title, {
-    description: body,
-    duration: 4000,
-    position: 'top-right',
-  });
-
-  // Show browser notification if enabled
-  if (!('Notification' in window)) return;
-  
-  if (Notification.permission === 'granted') {
-    new Notification(title, { body });
-  } else if (Notification.permission !== 'denied') {
-    Notification.requestPermission().then(permission => {
-      if (permission === 'granted') {
-        new Notification(title, { body });
-      }
-    });
-  }
-};
+import { sendNotification } from '@/utils/notificationSound';
 
 export const useRealtimeMessages = (selectedUser: string | null) => {
   const queryClient = useQueryClient();
@@ -257,7 +225,9 @@ export const useRealtimeMessages = (selectedUser: string | null) => {
             }
           }
           
-          showNotification(message, senderName);
+          const title = senderName ? `New message from ${senderName}` : 'New Message';
+          const body = message.type === 'voice' ? '🎤 Voice message' : message.text || 'New message';
+          sendNotification(title, body);
         }
       }
     };

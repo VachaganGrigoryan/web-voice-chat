@@ -6,7 +6,7 @@ import { Label } from '@/components/ui/Label';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/Avatar';
 import { X, Camera, Trash2, Loader2, Save, Volume2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { unlockAudio } from '@/utils/notificationSound';
+import { unlockAudioExplicit } from '@/utils/notificationSound';
 
 interface UserSettingsProps {
   isOpen: boolean;
@@ -253,7 +253,7 @@ export default function UserSettings({ isOpen, onClose }: UserSettingsProps) {
                 variant="outline" 
                 className="w-full justify-start" 
                 onClick={async () => {
-                  const success = await unlockAudio();
+                  const success = await unlockAudioExplicit();
                   if (success) {
                     setSuccess('Sound enabled successfully');
                     setTimeout(() => setSuccess(null), 3000);
