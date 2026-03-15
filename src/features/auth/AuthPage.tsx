@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { authApi } from '@/api/endpoints';
 import { useAuthStore } from '@/store/authStore';
@@ -38,6 +38,8 @@ export default function AuthPage() {
   const [isIframe, setIsIframe] = useState(false);
 
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const redirectUrl = searchParams.get('redirect') || '/chat';
   const setTokens = useAuthStore((state) => state.setTokens);
 
   const {
@@ -77,7 +79,9 @@ export default function AuthPage() {
       setCooldown(30); // Start 30s cooldown
     } catch (err: any) {
       console.error(err);
-      setError(err.response?.data?.error?.message || 'Something went wrong');
+      const errorData = err.response?.data?.error;
+      const message = typeof errorData === 'string' ? errorData : errorData?.message || 'Something went wrong';
+      setError(message);
     } finally {
       setLoading(false);
     }
@@ -111,10 +115,12 @@ export default function AuthPage() {
       // 4. Handle success (extract tokens directly from response based on spec)
       const { access_token, refresh_token } = (verifyRes.data.data || verifyRes.data) as any;
       setTokens(access_token, refresh_token);
-      navigate('/chat');
+      navigate(redirectUrl);
     } catch (err: any) {
       console.error('Passkey login failed:', err);
-      setError(err.response?.data?.error?.message || err.message || 'Passkey login failed');
+      const errorData = err.response?.data?.error;
+      const message = typeof errorData === 'string' ? errorData : errorData?.message || err.message || 'Passkey login failed';
+      setError(message);
     } finally {
       setLoading(false);
     }
@@ -129,10 +135,12 @@ export default function AuthPage() {
       const response = await authApi.verify(email, code);
       const { access_token, refresh_token } = response.data.data;
       setTokens(access_token, refresh_token);
-      navigate('/chat');
+      navigate(redirectUrl);
     } catch (err: any) {
       console.error(err);
-      setError(err.response?.data?.error?.message || 'Invalid code');
+      const errorData = err.response?.data?.error;
+      const message = typeof errorData === 'string' ? errorData : errorData?.message || 'Invalid code';
+      setError(message);
       setCode(''); // Clear code on error
     } finally {
       setLoading(false);
@@ -152,7 +160,9 @@ export default function AuthPage() {
       }
       setCooldown(30);
     } catch (err: any) {
-      setError(err.response?.data?.error?.message || 'Failed to resend code');
+      const errorData = err.response?.data?.error;
+      const message = typeof errorData === 'string' ? errorData : errorData?.message || 'Failed to resend code';
+      setError(message);
     } finally {
       setLoading(false);
     }

@@ -22,4 +22,9 @@ export const EVENTS = {
   USER_OFFLINE: 'user_offline',
   SERVER_TYPING_START: 'typing_start',
   SERVER_TYPING_STOP: 'typing_stop',
+  // Pings
+  PING_RECEIVED: 'ping_received',
+  PING_ACCEPTED: 'ping_accepted',
+  PING_DECLINED: 'ping_declined',
+  CHAT_PERMISSION_UPDATED: 'chat_permission_updated',
 } as const;

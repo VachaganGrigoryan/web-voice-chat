@@ -18,21 +18,10 @@ export default function PasskeysSettings() {
     setIsIframe(window !== window.top);
   }, []);
 
-  const { data: passkeysData, isLoading } = useQuery({
+  const { data: passkeys = [], isLoading } = useQuery({
     queryKey: ['passkeys'],
-    queryFn: () => authApi.passkeys.list().then(res => res.data),
+    queryFn: () => authApi.passkeys.list().then(res => res.data?.data?.items || []),
   });
-
-  let passkeys = [];
-  if (Array.isArray(passkeysData)) {
-    passkeys = passkeysData;
-  } else if (passkeysData && Array.isArray(passkeysData.data)) {
-    passkeys = passkeysData.data;
-  } else if (passkeysData?.data && Array.isArray(passkeysData.data.passkeys)) {
-    passkeys = passkeysData.data.passkeys;
-  } else if (passkeysData && Array.isArray(passkeysData.passkeys)) {
-    passkeys = passkeysData.passkeys;
-  }
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => authApi.passkeys.delete(id),
@@ -108,7 +97,9 @@ export default function PasskeysSettings() {
       setNickname('');
     } catch (err: any) {
       console.error('Failed to register passkey:', err);
-      setError(err.response?.data?.error?.message || err.message || 'Failed to register passkey');
+      const errorData = err.response?.data?.error;
+      const message = typeof errorData === 'string' ? errorData : errorData?.message || err.message || 'Failed to register passkey';
+      setError(message);
     } finally {
       setIsRegistering(false);
     }
@@ -150,19 +141,21 @@ export default function PasskeysSettings() {
             <p className="text-sm text-muted-foreground py-2">No passkeys registered yet.</p>
           ) : (
             <div className="space-y-2">
-              {passkeys.map((passkey: any) => (
-                <div key={passkey.credential_id} className="flex items-center justify-between p-3 border rounded-lg bg-muted/30">
+              {passkeys.map((passkey: any) => {
+                const id = passkey.credential_id || passkey.id;
+                return (
+                <div key={id} className="flex items-center justify-between p-3 border rounded-lg bg-muted/30">
                   <div>
-                    <p className="font-medium text-sm">{passkey.nickname || passkey.device_name || 'Unknown Device'}</p>
+                    <p className="font-medium text-sm">{passkey.nickname || passkey.device_name || passkey.name || 'Unknown Device'}</p>
                     <p className="text-xs text-muted-foreground">
-                      Added {format(new Date(passkey.created_at), 'MMM d, yyyy')}
+                      Added {passkey.created_at ? format(new Date(passkey.created_at), 'MMM d, yyyy') : 'Unknown date'}
                     </p>
                   </div>
                   <Button
                     variant="ghost"
                     size="icon"
                     className="text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-                    onClick={() => deleteMutation.mutate(passkey.credential_id)}
+                    onClick={() => deleteMutation.mutate(id)}
                     disabled={deleteMutation.isPending}
                   >
                     {deleteMutation.isPending ? (
@@ -172,7 +165,7 @@ export default function PasskeysSettings() {
                     )}
                   </Button>
                 </div>
-              ))}
+              )})}
             </div>
           )}
         </div>

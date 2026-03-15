@@ -4,6 +4,7 @@ import { Toaster } from 'sonner';
 import AuthPage from '@/features/auth/AuthPage';
 import ChatLayout from '@/features/chat/ChatLayout';
 import SettingsPage from '@/features/settings/SettingsPage';
+import InvitePage from '@/features/chat/InvitePage';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import PublicRoute from '@/components/PublicRoute';
 import { ThemeProvider } from '@/components/ThemeProvider';
@@ -25,6 +26,7 @@ export default function App() {
               <Route path="/settings" element={<SettingsPage />} />
             </Route>
 
+            <Route path="/invite/:token" element={<InvitePage />} />
             <Route path="/" element={<Navigate to="/chat" replace />} />
           </Routes>
         </HashRouter>

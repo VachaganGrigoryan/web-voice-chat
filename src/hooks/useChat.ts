@@ -10,7 +10,7 @@ export const useConversations = () => {
       const response = await conversationsApi.getConversations(20, pageParam as string | undefined);
       return response.data;
     },
-    getNextPageParam: (lastPage) => lastPage.meta.next_cursor,
+    getNextPageParam: (lastPage) => lastPage.meta?.next_cursor,
     initialPageParam: undefined,
   });
 };
@@ -44,11 +44,11 @@ export const useChat = () => {
   } = useInfiniteQuery({
     queryKey: ['messages', selectedUser],
     queryFn: async ({ pageParam }) => {
-      if (!selectedUser) return { data: [], meta: { next_cursor: null } };
+      if (!selectedUser) return { data: [], meta: { next_cursor: null, limit: 20, total: 0 }, success: true };
       const response = await messagesApi.getHistory(selectedUser, 20, pageParam as string | undefined);
       return response.data;
     },
-    getNextPageParam: (lastPage) => lastPage.meta.next_cursor,
+    getNextPageParam: (lastPage) => lastPage.meta?.next_cursor,
     enabled: !!selectedUser,
     initialPageParam: undefined,
   });
@@ -75,12 +75,12 @@ export const useChat = () => {
         });
 
         queryClient.setQueryData(['messages', selectedUser], (old: any) => {
-          if (!old) return { pages: [{ data: [newMessage], meta: { next_cursor: null } }], pageParams: [undefined] };
+          if (!old) return { pages: [{ data: [newMessage], meta: { next_cursor: null, limit: 20, total: 1 }, success: true }], pageParams: [undefined] };
           
           const newPages = [...old.pages];
           newPages[0] = {
             ...newPages[0],
-            data: [newMessage, ...newPages[0].data],
+            data: [newMessage, ...(newPages[0].data || [])],
           };
           
           return {
@@ -108,12 +108,12 @@ export const useChat = () => {
         });
 
         queryClient.setQueryData(['messages', selectedUser], (old: any) => {
-          if (!old) return { pages: [{ data: [newMessage], meta: { next_cursor: null } }], pageParams: [undefined] };
+          if (!old) return { pages: [{ data: [newMessage], meta: { next_cursor: null, limit: 20, total: 1 }, success: true }], pageParams: [undefined] };
           
           const newPages = [...old.pages];
           newPages[0] = {
             ...newPages[0],
-            data: [newMessage, ...newPages[0].data],
+            data: [newMessage, ...(newPages[0].data || [])],
           };
           
           return {

@@ -10,12 +10,14 @@ import { unlockAudioExplicit } from '@/utils/notificationSound';
 import { useTheme } from '@/components/ThemeProvider';
 import PasskeysSettings from '../settings/PasskeysSettings';
 
+import DiscoverySettings from '../settings/DiscoverySettings';
+
 interface UserSettingsProps {
   isOpen: boolean;
   onClose: () => void;
 }
 
-type TabType = 'profile' | 'appearance' | 'privacy' | 'passkeys';
+type TabType = 'profile' | 'appearance' | 'privacy' | 'passkeys' | 'discovery';
 
 export default function UserSettings({ isOpen, onClose }: UserSettingsProps) {
   const { 
@@ -83,7 +85,9 @@ export default function UserSettings({ isOpen, onClose }: UserSettingsProps) {
       setSuccess('Profile updated successfully');
       setTimeout(() => setSuccess(null), 3000);
     } catch (err: any) {
-      setError(err.response?.data?.error?.message || 'Failed to update profile');
+      const errorData = err.response?.data?.error;
+      const message = typeof errorData === 'string' ? errorData : errorData?.message || 'Failed to update profile';
+      setError(message);
     }
   };
 
@@ -97,7 +101,9 @@ export default function UserSettings({ isOpen, onClose }: UserSettingsProps) {
       setSuccess('Avatar updated successfully');
       setTimeout(() => setSuccess(null), 3000);
     } catch (err: any) {
-      setError(err.response?.data?.error?.message || 'Failed to upload avatar');
+      const errorData = err.response?.data?.error;
+      const message = typeof errorData === 'string' ? errorData : errorData?.message || 'Failed to upload avatar';
+      setError(message);
     }
   };
 
@@ -108,7 +114,9 @@ export default function UserSettings({ isOpen, onClose }: UserSettingsProps) {
       setSuccess('Avatar removed successfully');
       setTimeout(() => setSuccess(null), 3000);
     } catch (err: any) {
-      setError(err.response?.data?.error?.message || 'Failed to remove avatar');
+      const errorData = err.response?.data?.error;
+      const message = typeof errorData === 'string' ? errorData : errorData?.message || 'Failed to remove avatar';
+      setError(message);
     }
   };
 
@@ -149,6 +157,7 @@ export default function UserSettings({ isOpen, onClose }: UserSettingsProps) {
           <TabButton id="appearance" icon={<Palette className="h-4 w-4" />} label="Appearance" />
           <TabButton id="privacy" icon={<Shield className="h-4 w-4" />} label="Privacy" />
           <TabButton id="passkeys" icon={<KeyRound className="h-4 w-4" />} label="Passkeys" />
+          <TabButton id="discovery" icon={<User className="h-4 w-4" />} label="Discovery" />
         </div>
       </div>
 
@@ -425,6 +434,12 @@ export default function UserSettings({ isOpen, onClose }: UserSettingsProps) {
             {activeTab === 'passkeys' && (
               <div className="animate-in fade-in slide-in-from-right-4 duration-300 max-w-2xl">
                 <PasskeysSettings />
+              </div>
+            )}
+
+            {activeTab === 'discovery' && (
+              <div className="animate-in fade-in slide-in-from-right-4 duration-300 max-w-2xl">
+                <DiscoverySettings />
               </div>
             )}
           </div>

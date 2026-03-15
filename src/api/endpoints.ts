@@ -1,5 +1,5 @@
 import { apiClient } from './httpClient';
-import { TokenPair, SuccessResponse, PaginatedResponse, MessageDoc, User, Conversation } from './types';
+import { TokenPair, SuccessResponse, PaginatedResponse, MessageDoc, User, Conversation, DiscoveredUser, Ping, PingItem } from './types';
 
 export const authApi = {
   register: (email: string) => apiClient.post('/auth/register', { email }),
@@ -68,6 +68,24 @@ export const realtimeApi = {
     apiClient.get<SuccessResponse<Record<string, string>>>('/realtime/presence', {
       params: { user_ids: userIds },
     }),
+};
+
+export const discoveryApi = {
+  regenerateCode: () => apiClient.post('/discovery/code/regenerate'),
+  resolveCode: (code: string) => apiClient.post<{ data: DiscoveredUser }>('/discovery/code/resolve', { code }),
+  createLink: (expires_in_seconds: number, max_uses: number) => apiClient.post('/discovery/links', { expires_in_seconds, max_uses }),
+  resolveLink: (token: string) => apiClient.get<{ data: DiscoveredUser }>(`/discovery/invite/${token}`),
+  searchUsers: (q: string) => apiClient.get<{ data: DiscoveredUser[] }>('/discovery/users/search', { params: { q } }),
+};
+
+export const pingsApi = {
+  sendPing: (to_user_id: string) => apiClient.post<SuccessResponse<Ping>>('/pings', { to_user_id }),
+  getIncoming: (limit = 20, cursor?: string) => 
+    apiClient.get<PaginatedResponse<PingItem>>('/pings/incoming', { params: { limit, cursor } }),
+  getOutgoing: (limit = 20, cursor?: string) => 
+    apiClient.get<PaginatedResponse<PingItem>>('/pings/outgoing', { params: { limit, cursor } }),
+  acceptPing: (ping_id: string) => apiClient.post<SuccessResponse<Ping>>(`/pings/${ping_id}/accept`),
+  declinePing: (ping_id: string) => apiClient.post<SuccessResponse<Ping>>(`/pings/${ping_id}/decline`),
 };
 
 export const healthApi = {

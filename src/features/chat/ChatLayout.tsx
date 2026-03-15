@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { useChat, useConversations } from '@/hooks/useChat';
+import { usePings } from '@/hooks/usePings';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '@/store/authStore';
 import { Button } from '@/components/ui/Button';
@@ -7,21 +8,25 @@ import { Input } from '@/components/ui/Input';
 import { ScrollArea } from '@/components/ui/ScrollArea';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/Avatar';
 import { Separator } from '@/components/ui/Separator';
-import { LogOut, User, MessageSquare, Plus, Loader2, Mic, ArrowLeft, Check, CheckCheck } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { LogOut, User, MessageSquare, Plus, Loader2, Mic, ArrowLeft, Check, CheckCheck, Bell, Clock, UserPlus, X } from 'lucide-react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { authApi } from '@/api/endpoints';
 import VoiceRecorder from './VoiceRecorder';
 import MediaComposer from './MediaComposer';
 import { MessageRenderer } from './MessageRenderer';
 import { MediaViewer } from './MediaViewer';
 import UserSettings from './UserSettings';
+import { PingsModal } from './PingsModal';
 import { cn } from '@/lib/utils';
 import { useTypingIndicator, useSocketStore } from '@/socket/socket';
 import { EVENTS } from '@/socket/events';
 import { format, isToday, isYesterday } from 'date-fns';
 import { useProfile } from '@/hooks/useProfile';
 
+import { UserSearch } from './UserSearch';
+
 export default function ChatLayout() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const {
     selectedUser,
     setSelectedUser,
@@ -34,21 +39,105 @@ export default function ChatLayout() {
     sendText,
     isSending,
   } = useChat();
-  
+
+  useEffect(() => {
+    const userFromUrl = searchParams.get('user');
+    if (userFromUrl && userFromUrl !== selectedUser) {
+      setSelectedUser(userFromUrl);
+      // Clean up URL
+      setSearchParams({});
+    }
+  }, [searchParams, selectedUser, setSelectedUser, setSearchParams]);
+
   const { data: conversationsData } = useConversations();
-  const conversations = conversationsData?.pages.flatMap(page => page.data) || [];
+  const conversations = useMemo(() => 
+    conversationsData?.pages.flatMap(page => page.data || []).filter(Boolean) || [],
+    [conversationsData]
+  );
   const queryClient = useQueryClient();
 
   const { userEmail, userId, logout, refreshToken } = useAuthStore();
   const navigate = useNavigate();
   const [newUserId, setNewUserId] = useState('');
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isPingsOpen, setIsPingsOpen] = useState(false);
   const [mediaViewer, setMediaViewer] = useState<{ open: boolean; type: 'image' | 'video'; url: string }>({ open: false, type: 'image', url: '' });
   const { profile } = useProfile();
   const { socket } = useSocketStore();
+  const { incoming, outgoing, sendPing, acceptPing, declinePing, isSending: isSendingPing, isAccepting: isAcceptingPing, isDeclining: isDecliningPing } = usePings();
+  const pendingIncomingCount = incoming.filter(item => item.ping.status === 'pending').length;
   const [highlightedMessageIds, setHighlightedMessageIds] = useState<Set<string>>(new Set());
   
   const { isTyping, typingUsers } = useTypingIndicator(selectedUser || undefined);
+
+  const contacts = useMemo(() => {
+    const list = [...conversations];
+    const conversationUserIds = new Set(conversations.map(c => c?.peer_user?.id).filter(Boolean));
+    
+    // Add accepted incoming pings
+    incoming.filter(Boolean).forEach(item => {
+      if (item.ping?.status === 'accepted' && item.peer?.id && !conversationUserIds.has(item.peer.id)) {
+        list.push({
+          conversation_id: `ping-${item.ping.id}`,
+          peer_user: item.peer,
+          last_message: null,
+          unread_count: 0,
+          last_message_at: item.ping.updated_at
+        } as any);
+        conversationUserIds.add(item.peer.id);
+      }
+    });
+
+    // Add accepted outgoing pings
+    outgoing.filter(Boolean).forEach(item => {
+      if (item.ping?.status === 'accepted' && item.peer?.id && !conversationUserIds.has(item.peer.id)) {
+        list.push({
+          conversation_id: `ping-${item.ping.id}`,
+          peer_user: item.peer,
+          last_message: null,
+          unread_count: 0,
+          last_message_at: item.ping.updated_at
+        } as any);
+        conversationUserIds.add(item.peer.id);
+      }
+    });
+
+    // Sort by last_message_at descending
+    return list.filter(Boolean).sort((a, b) => {
+      const timeA = new Date(a.last_message_at || 0).getTime();
+      const timeB = new Date(b.last_message_at || 0).getTime();
+      return timeB - timeA;
+    });
+  }, [conversations, incoming, outgoing]);
+
+  const selectedUserSummary = useMemo(() => {
+    if (!selectedUser) return null;
+    return conversations.find(c => c?.peer_user?.id === selectedUser)?.peer_user || null;
+  }, [selectedUser, conversations]);
+
+  const incomingPing = useMemo(() => 
+    selectedUser ? incoming.find(item => item?.peer?.id === selectedUser)?.ping : null,
+    [selectedUser, incoming]
+  );
+
+  const pingStatus = useMemo(() => {
+    if (!selectedUser) return 'none';
+    if (selectedUserSummary) return selectedUserSummary.ping_status;
+    if (incomingPing?.status === 'pending') return 'incoming_pending';
+    if (outgoing.find(item => item?.peer?.id === selectedUser)?.ping.status === 'pending') return 'outgoing_pending';
+    return 'none';
+  }, [selectedUser, selectedUserSummary, incomingPing, outgoing]);
+
+  const isPingAccepted = useMemo(() => {
+    if (!selectedUser) return false;
+    
+    if (selectedUserSummary) {
+      return selectedUserSummary.chat_allowed || selectedUserSummary.ping_status === 'accepted';
+    }
+
+    return incoming.some(item => item?.peer?.id === selectedUser && item?.ping?.status === 'accepted') ||
+           outgoing.some(item => item?.peer?.id === selectedUser && item?.ping?.status === 'accepted');
+  }, [selectedUser, selectedUserSummary, incoming, outgoing]);
 
   const handleLogout = async () => {
     try {
@@ -62,7 +151,7 @@ export default function ChatLayout() {
   };
 
   const allMessages = useMemo(() => 
-    messages?.pages.flatMap((page) => page.data) || [],
+    messages?.pages.flatMap((page) => page.data || []).filter(Boolean) || [],
     [messages]
   );
 
@@ -120,7 +209,7 @@ export default function ChatLayout() {
     return format(date, 'MMMM d, yyyy');
   };
 
-  const selectedConversationUser = conversations.find(c => c.peer_user.id === selectedUser)?.peer_user;
+  const selectedConversationUser = contacts.find(c => c.peer_user.id === selectedUser)?.peer_user;
   const displaySelectedUser = selectedConversationUser?.display_name || selectedConversationUser?.username || selectedUser;
 
   const handleMediaClick = (type: 'image' | 'video', url: string) => {
@@ -135,6 +224,14 @@ export default function ChatLayout() {
         url={mediaViewer.url}
         onClose={() => setMediaViewer(prev => ({ ...prev, open: false }))}
       />
+      <PingsModal 
+        isOpen={isPingsOpen} 
+        onClose={() => setIsPingsOpen(false)} 
+        onSelectUser={(id) => {
+          setSelectedUser(id);
+          setIsPingsOpen(false);
+        }}
+      />
       <UserSettings isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />
       {/* Sidebar */}
       <div className={cn(
@@ -144,7 +241,7 @@ export default function ChatLayout() {
         <div className="p-4 border-b flex items-center justify-between shrink-0 h-16">
           <button 
             onClick={() => setIsSettingsOpen(true)}
-            className="flex items-center gap-2 hover:bg-muted/50 p-1.5 rounded-lg transition-colors text-left max-w-[70%]"
+            className="flex items-center gap-2 hover:bg-muted/50 p-1.5 rounded-lg transition-colors text-left max-w-[60%]"
           >
             <Avatar className="h-8 w-8">
               {profile?.avatar ? (
@@ -163,38 +260,29 @@ export default function ChatLayout() {
               )}
             </div>
           </button>
-          <Button variant="ghost" size="icon" onClick={handleLogout}>
-            <LogOut className="h-4 w-4" />
-          </Button>
+          <div className="flex items-center gap-1">
+            <Button variant="ghost" size="icon" onClick={() => setIsPingsOpen(true)} className="relative">
+              <Bell className="h-4 w-4" />
+              {pendingIncomingCount > 0 && (
+                <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-destructive" />
+              )}
+            </Button>
+            <Button variant="ghost" size="icon" onClick={handleLogout}>
+              <LogOut className="h-4 w-4" />
+            </Button>
+          </div>
         </div>
 
         <div className="p-4 flex-1 flex flex-col min-h-0">
-          <div className="flex gap-2 mb-4 shrink-0">
-            <Input 
-              placeholder="Enter User ID..." 
-              value={newUserId}
-              onChange={(e) => setNewUserId(e.target.value)}
-              className="h-9 text-sm"
-            />
-            <Button 
-              size="sm" 
-              variant="secondary"
-              onClick={() => {
-                if (newUserId) setSelectedUser(newUserId);
-              }}
-              disabled={!newUserId}
-            >
-              <Plus className="h-4 w-4" />
-            </Button>
-          </div>
+          <UserSearch onSelectUser={(id) => setSelectedUser(id)} />
           
           <div className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wider shrink-0">
-            Recent Conversations
+            Chats
           </div>
           
           <ScrollArea className="flex-1 -mx-4 px-4">
             <div className="space-y-1 pb-4">
-              {conversations.map((conv) => (
+              {contacts.map((conv) => (
                 <Button
                   key={conv.conversation_id}
                   variant={selectedUser === conv.peer_user.id ? "secondary" : "ghost"}
@@ -255,7 +343,7 @@ export default function ChatLayout() {
                 </Button>
               ))}
               
-              {conversations.length === 0 && (
+              {contacts.length === 0 && (
                 <div className="text-sm text-muted-foreground p-4 text-center bg-muted/30 rounded-lg border border-dashed m-1">
                   No recent conversations
                 </div>
@@ -309,29 +397,46 @@ export default function ChatLayout() {
               </div>
               
               <div className="flex items-center">
-                <MediaComposer 
-                  receiverId={selectedUser} 
-                  onSendMedia={sendVoice}
-                  isUploading={isSending}
-                  setIsUploading={() => {}}
-                />
+                {isPingAccepted ? (
+                  <MediaComposer 
+                    receiverId={selectedUser} 
+                    onSendMedia={sendVoice}
+                    isUploading={isSending}
+                    setIsUploading={() => {}}
+                  />
+                ) : (
+                  <Button 
+                    onClick={() => sendPing(selectedUser)}
+                    disabled={isSendingPing || (selectedUserSummary && !selectedUserSummary.can_ping) || pingStatus === 'outgoing_pending' || pingStatus === 'incoming_pending'}
+                    size="sm"
+                  >
+                    {pingStatus === 'outgoing_pending' ? (
+                      <><Clock className="h-4 w-4 mr-2" />Pending</>
+                    ) : pingStatus === 'incoming_pending' ? (
+                      <><Bell className="h-4 w-4 mr-2" />Request Received</>
+                    ) : (
+                      <>{isSendingPing ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <UserPlus className="h-4 w-4 mr-2" />}Send Ping</>
+                    )}
+                  </Button>
+                )}
               </div>
             </div>
 
             {/* Messages Area */}
-            <div className="flex-1 overflow-y-auto flex flex-col-reverse p-4 space-y-reverse space-y-6 scroll-smooth overscroll-contain">
-               {/* Typing Indicator Bubble */}
-               {isTyping && (
-                 <div className="self-start mb-2 ml-1 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                   <div className="bg-secondary/50 rounded-2xl rounded-tl-none px-4 py-3 text-sm text-muted-foreground flex items-center gap-2 shadow-sm">
-                     <div className="flex gap-1">
-                       <span className="w-1.5 h-1.5 bg-primary/40 rounded-full animate-bounce [animation-delay:-0.3s]"></span>
-                       <span className="w-1.5 h-1.5 bg-primary/40 rounded-full animate-bounce [animation-delay:-0.15s]"></span>
-                       <span className="w-1.5 h-1.5 bg-primary/40 rounded-full animate-bounce"></span>
+            {isPingAccepted ? (
+              <div className="flex-1 overflow-y-auto flex flex-col-reverse p-4 space-y-reverse space-y-6 scroll-smooth overscroll-contain">
+                 {/* Typing Indicator Bubble */}
+                 {isTyping && (
+                   <div className="self-start mb-2 ml-1 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                     <div className="bg-secondary/50 rounded-2xl rounded-tl-none px-4 py-3 text-sm text-muted-foreground flex items-center gap-2 shadow-sm">
+                       <div className="flex gap-1">
+                         <span className="w-1.5 h-1.5 bg-primary/40 rounded-full animate-bounce [animation-delay:-0.3s]"></span>
+                         <span className="w-1.5 h-1.5 bg-primary/40 rounded-full animate-bounce [animation-delay:-0.15s]"></span>
+                         <span className="w-1.5 h-1.5 bg-primary/40 rounded-full animate-bounce"></span>
+                       </div>
                      </div>
                    </div>
-                 </div>
-               )}
+                 )}
 
                {allMessages.map((message, index) => {
                    const isMe = message.sender_id === userId;
@@ -447,15 +552,89 @@ export default function ChatLayout() {
                     </div>
                  )}
             </div>
+            ) : (
+              <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground bg-muted/5 p-4 text-center">
+                {(() => {
+                  if (pingStatus === 'incoming_pending') {
+                    const pingId = incomingPing?.id;
+                    return (
+                      <>
+                        <div className="h-16 w-16 rounded-full bg-primary/10 flex items-center justify-center mb-4">
+                          <Bell className="h-8 w-8 text-primary" />
+                        </div>
+                        <h3 className="text-xl font-bold text-foreground mb-2">Incoming Request</h3>
+                        <p className="max-w-xs text-sm text-muted-foreground mb-6">
+                          {displaySelectedUser} wants to chat with you.
+                        </p>
+                        <div className="flex items-center gap-3">
+                          <Button 
+                            onClick={() => pingId && acceptPing(pingId)}
+                            disabled={isAcceptingPing || !pingId}
+                            className="bg-green-600 hover:bg-green-700 text-white"
+                          >
+                            {isAcceptingPing ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Check className="h-4 w-4 mr-2" />}
+                            Accept
+                          </Button>
+                          <Button 
+                            variant="outline"
+                            onClick={() => pingId && declinePing(pingId)}
+                            disabled={isDecliningPing || !pingId}
+                            className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                          >
+                            {isDecliningPing ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <X className="h-4 w-4 mr-2" />}
+                            Decline
+                          </Button>
+                        </div>
+                      </>
+                    );
+                  }
+                  
+                  if (pingStatus === 'outgoing_pending') {
+                    return (
+                      <>
+                        <div className="h-16 w-16 rounded-full bg-muted flex items-center justify-center mb-4">
+                          <Clock className="h-8 w-8 text-muted-foreground" />
+                        </div>
+                        <h3 className="text-xl font-bold text-foreground mb-2">Request Sent</h3>
+                        <p className="max-w-xs text-sm text-muted-foreground">
+                          Waiting for {displaySelectedUser} to accept your request.
+                        </p>
+                      </>
+                    );
+                  }
+
+                  return (
+                    <>
+                      <div className="h-16 w-16 rounded-full bg-primary/10 flex items-center justify-center mb-4">
+                        <UserPlus className="h-8 w-8 text-primary" />
+                      </div>
+                      <h3 className="text-xl font-bold text-foreground mb-2">Start Chatting</h3>
+                      <p className="max-w-xs text-sm text-muted-foreground mb-6">
+                        Send a ping to {displaySelectedUser} to start a conversation.
+                      </p>
+                      <Button 
+                        onClick={() => sendPing(selectedUser)}
+                        disabled={isSendingPing || (selectedUserSummary && !selectedUserSummary.can_ping)}
+                      >
+                        {isSendingPing ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <UserPlus className="h-4 w-4 mr-2" />}
+                        Send Ping
+                      </Button>
+                    </>
+                  );
+                })()}
+              </div>
+            )}
 
             {/* Composer Area - Sticky at bottom */}
-            <div className="shrink-0 z-20 bg-background flex items-center gap-2 p-4">
-              <VoiceRecorder 
-                receiverId={selectedUser} 
-                onSendVoice={sendVoice}
-                onSendText={sendText}
-              />
-            </div>
+            {isPingAccepted && (
+              <div className="shrink-0 z-20 bg-background flex items-center gap-2 p-4">
+                <VoiceRecorder 
+                  receiverId={selectedUser} 
+                  onSendVoice={sendVoice}
+                  onSendText={sendText}
+                />
+              </div>
+            )}
           </>
         ) : (
           <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground bg-muted/5 p-4 text-center">

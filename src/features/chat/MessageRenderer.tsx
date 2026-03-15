@@ -22,10 +22,35 @@ export const MessageRenderer: React.FC<MessageRendererProps> = ({ message, isMe,
 
   switch (message.type) {
     case 'text':
+      const renderText = (text: string | null) => {
+        if (!text) return null;
+        const urlRegex = /(https?:\/\/[^\s]+)/g;
+        return text.split(urlRegex).map((part, i) => {
+          if (part.match(urlRegex)) {
+            return (
+              <a 
+                key={i} 
+                href={part} 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className={cn(
+                  "underline break-all",
+                  isMe ? "text-white hover:text-white/80" : "text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
+                )}
+                onClick={(e) => e.stopPropagation()}
+              >
+                {part}
+              </a>
+            );
+          }
+          return part;
+        });
+      };
+
       return (
         <div className={cn(baseClasses, "max-w-full min-w-0")}>
           <div className="px-4 py-2 text-[15px] leading-relaxed break-words whitespace-pre-wrap min-w-0" style={{ wordBreak: 'break-word' }}>
-            {message.text}
+            {renderText(message.text)}
           </div>
         </div>
       );

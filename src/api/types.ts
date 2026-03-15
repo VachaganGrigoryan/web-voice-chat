@@ -53,15 +53,22 @@ export interface MessageDoc {
   updated_at: string;
 }
 
+export type PingStatus = 'none' | 'incoming_pending' | 'outgoing_pending' | 'accepted' | 'declined';
+
+export interface UserSummary {
+  id: string;
+  username: string | null;
+  display_name: string | null;
+  avatar: AvatarMeta | null;
+  is_online: boolean;
+  can_ping: boolean;
+  chat_allowed: boolean;
+  ping_status: PingStatus;
+}
+
 export interface Conversation {
   conversation_id: string;
-  peer_user: {
-    id: string;
-    username: string | null;
-    display_name: string | null;
-    avatar: AvatarMeta | null;
-    is_online: boolean;
-  };
+  peer_user: UserSummary;
   last_message: {
     id: string;
     type: string;
@@ -74,15 +81,34 @@ export interface Conversation {
   unread_count?: number;
 }
 
+export interface DiscoveredUser extends UserSummary {
+  discovered_via: string;
+}
+
+export interface Ping {
+  id: string;
+  from_user_id: string;
+  to_user_id: string;
+  status: 'pending' | 'accepted' | 'declined';
+  created_at: string;
+  updated_at: string;
+  responded_at: string | null;
+}
+
+export interface PingItem {
+  ping: Ping;
+  peer: UserSummary;
+}
+
 export interface PaginatedResponse<T> {
   success: boolean;
   data: T[];
   meta: {
-    cursor: string | null;
     next_cursor: string | null;
-    limit: number | null;
+    limit: number;
     total: number | null;
   };
+  request_id?: string;
 }
 
 export interface SuccessResponse<T> {
