@@ -179,8 +179,8 @@ export const useRealtimeMessages = (selectedUser: string | null) => {
             last_message_at: message.created_at,
             // Increment unread count if we're not currently viewing this conversation
             unread_count: (message.sender_id !== currentUserId && selectedUser !== conversationPartnerId) 
-              ? (conv.unread_count || 0) + 1 
-              : (conv.unread_count || 0)
+              ? (conv.unread_count ?? 0) + 1 
+              : (conv.unread_count ?? 0)
           };
           
           // Move to top
