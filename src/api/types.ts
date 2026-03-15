@@ -78,7 +78,7 @@ export interface Conversation {
     created_at: string;
   } | null;
   last_message_at: string | null;
-  unread_count?: number;
+  unread_count: number;
 }
 
 export interface DiscoveredUser extends UserSummary {

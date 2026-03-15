@@ -3,6 +3,7 @@ import { useChat, useConversations } from '@/hooks/useChat';
 import { usePings } from '@/hooks/usePings';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '@/store/authStore';
+import { Conversation } from '@/api/types';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { ScrollArea } from '@/components/ui/ScrollArea';
@@ -18,18 +19,34 @@ import { MediaViewer } from './MediaViewer';
 import UserSettings from './UserSettings';
 import { PingsModal } from './PingsModal';
 import { GlobalAudioPlayerBar } from './GlobalAudioPlayerBar';
+import { UserProfileModal } from './UserProfileModal';
 import { useChatAudioPlayerStore } from './audioPlayerStore';
+import { MessageItem, MessageMeta } from './components/MessageShell';
+import { ProfileTriggerButton } from './components/ProfileTriggerButton';
 import { cn } from '@/lib/utils';
 import { useTypingIndicator, useSocketStore } from '@/socket/socket';
 import { EVENTS } from '@/socket/events';
 import { useProfile } from '@/hooks/useProfile';
+import { AudioMessage } from './types/message';
 import {
   formatMessageDay,
-  formatMessageTime,
   isSameLocalDay,
 } from '@/utils/dateUtils';
+import { parseMessages } from './utils/messageParser';
 
 import { UserSearch } from './UserSearch';
+
+const createAcceptedPingConversation = (
+  conversationId: string,
+  peerUser: Conversation['peer_user'],
+  lastMessageAt: string | null
+): Conversation => ({
+  conversation_id: conversationId,
+  peer_user: peerUser,
+  last_message: null,
+  unread_count: 0,
+  last_message_at: lastMessageAt,
+});
 
 export default function ChatLayout() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -67,6 +84,7 @@ export default function ChatLayout() {
   const [newUserId, setNewUserId] = useState('');
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isPingsOpen, setIsPingsOpen] = useState(false);
+  const [isUserProfileOpen, setIsUserProfileOpen] = useState(false);
   const [mediaViewer, setMediaViewer] = useState<{ open: boolean; type: 'image' | 'video'; url: string }>({ open: false, type: 'image', url: '' });
   const { profile } = useProfile();
   const { socket } = useSocketStore();
@@ -79,19 +97,15 @@ export default function ChatLayout() {
   const { isTyping, typingUsers } = useTypingIndicator(selectedUser || undefined);
 
   const contacts = useMemo(() => {
-    const list = [...conversations];
+    const list: Conversation[] = [...conversations];
     const conversationUserIds = new Set(conversations.map(c => c?.peer_user?.id).filter(Boolean));
     
     // Add accepted incoming pings
     incoming.filter(Boolean).forEach(item => {
       if (item.ping?.status === 'accepted' && item.peer?.id && !conversationUserIds.has(item.peer.id)) {
-        list.push({
-          conversation_id: `ping-${item.ping.id}`,
-          peer_user: item.peer,
-          last_message: null,
-          unread_count: 0,
-          last_message_at: item.ping.updated_at
-        } as any);
+        list.push(
+          createAcceptedPingConversation(`ping-${item.ping.id}`, item.peer, item.ping.updated_at)
+        );
         conversationUserIds.add(item.peer.id);
       }
     });
@@ -99,13 +113,9 @@ export default function ChatLayout() {
     // Add accepted outgoing pings
     outgoing.filter(Boolean).forEach(item => {
       if (item.ping?.status === 'accepted' && item.peer?.id && !conversationUserIds.has(item.peer.id)) {
-        list.push({
-          conversation_id: `ping-${item.ping.id}`,
-          peer_user: item.peer,
-          last_message: null,
-          unread_count: 0,
-          last_message_at: item.ping.updated_at
-        } as any);
+        list.push(
+          createAcceptedPingConversation(`ping-${item.ping.id}`, item.peer, item.ping.updated_at)
+        );
         conversationUserIds.add(item.peer.id);
       }
     });
@@ -162,20 +172,24 @@ export default function ChatLayout() {
     messages?.pages.flatMap((page) => page.data || []).filter(Boolean) || [],
     [messages]
   );
+  const chatMessages = useMemo(
+    () => parseMessages(allMessages, userId),
+    [allMessages, userId]
+  );
   const audioQueue = useMemo(
     () =>
-      [...allMessages]
+      chatMessages
+        .filter((message): message is AudioMessage => message.kind === 'audio')
         .reverse()
-        .filter((message) => message.type === 'voice' && !!message.media?.url)
         .map((message) => ({
           id: message.id,
-          src: message.media?.url || '',
-          durationMs: message.media?.duration_ms || 0,
-          createdAt: message.created_at,
+          src: message.audioUrl,
+          durationMs: message.durationSec ? message.durationSec * 1000 : 0,
+          createdAt: message.createdAt,
           isRead: message.status === 'read',
-          isMe: message.sender_id === userId,
+          isMe: message.isOwn,
         })),
-    [allMessages, userId]
+    [chatMessages]
   );
 
   const readEmittedMessagesRef = useRef<Set<string>>(new Set());
@@ -238,8 +252,34 @@ export default function ChatLayout() {
     return () => closeAudioPlayer();
   }, [closeAudioPlayer]);
 
+  const resetConversationUnreadCount = (peerUserId: string) => {
+    queryClient.setQueryData(['conversations'], (old: any) => {
+      if (!old?.pages) return old;
+
+      return {
+        ...old,
+        pages: old.pages.map((page: any) => ({
+          ...page,
+          data: page.data.map((conversation: Conversation) =>
+            conversation.peer_user.id === peerUserId
+              ? { ...conversation, unread_count: 0 }
+              : conversation
+          ),
+        })),
+      };
+    });
+  };
+
+  useEffect(() => {
+    if (!selectedUser) return;
+    resetConversationUnreadCount(selectedUser);
+  }, [selectedUser]);
+
   const selectedConversationUser = contacts.find(c => c.peer_user.id === selectedUser)?.peer_user;
   const displaySelectedUser = selectedConversationUser?.display_name || selectedConversationUser?.username || selectedUser;
+  const canAccessSelectedUserProfile = !!selectedConversationUser && (
+    selectedConversationUser.chat_allowed || selectedConversationUser.ping_status === 'accepted'
+  );
 
   const handleMediaClick = (type: 'image' | 'video', url: string) => {
     setMediaViewer({ open: true, type, url });
@@ -261,6 +301,13 @@ export default function ChatLayout() {
           setIsPingsOpen(false);
         }}
       />
+      <UserProfileModal
+        isOpen={isUserProfileOpen}
+        onClose={() => setIsUserProfileOpen(false)}
+        userId={selectedUser}
+        initialData={selectedConversationUser}
+        canAccessProfile={canAccessSelectedUserProfile}
+      />
       <UserSettings isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />
       {/* Sidebar */}
       <div className={cn(
@@ -268,27 +315,14 @@ export default function ChatLayout() {
         selectedUser ? "hidden md:flex" : "flex"
       )}>
         <div className="p-4 border-b flex items-center justify-between shrink-0 h-16">
-          <button 
+          <ProfileTriggerButton
+            title={profile?.display_name || profile?.username || userEmail}
+            subtitle={profile?.username ? `@${profile.username}` : undefined}
+            avatarUrl={profile?.avatar?.url}
+            fallback={(profile?.display_name || profile?.username || userEmail || '?')[0].toUpperCase()}
             onClick={() => setIsSettingsOpen(true)}
-            className="flex items-center gap-2 hover:bg-muted/50 p-1.5 rounded-lg transition-colors text-left max-w-[60%]"
-          >
-            <Avatar className="h-8 w-8">
-              {profile?.avatar ? (
-                <AvatarImage src={profile.avatar.url} className="object-cover" />
-              ) : null}
-              <AvatarFallback>{(profile?.display_name || profile?.username || userEmail || '?')[0].toUpperCase()}</AvatarFallback>
-            </Avatar>
-            <div className="flex flex-col overflow-hidden">
-              <span className="text-sm font-medium truncate">
-                {profile?.display_name || profile?.username || userEmail}
-              </span>
-              {profile?.username && (
-                <span className="text-[10px] text-muted-foreground truncate">
-                  @{profile.username}
-                </span>
-              )}
-            </div>
-          </button>
+            className="max-w-[60%]"
+          />
           <div className="flex items-center gap-1">
             <Button variant="ghost" size="icon" onClick={() => setIsPingsOpen(true)} className="relative">
               <Bell className="h-4 w-4" />
@@ -321,19 +355,7 @@ export default function ChatLayout() {
                   )}
                   onClick={() => {
                     setSelectedUser(conv.peer_user.id);
-                    // Clear unread count in cache
-                    queryClient.setQueryData(['conversations'], (old: any) => {
-                      if (!old) return old;
-                      const newPages = old.pages.map((page: any) => ({
-                        ...page,
-                        data: page.data.map((c: any) => 
-                          c.peer_user.id === conv.peer_user.id 
-                            ? { ...c, unread_count: 0 } 
-                            : c
-                        )
-                      }));
-                      return { ...old, pages: newPages };
-                    });
+                    resetConversationUnreadCount(conv.peer_user.id);
                   }}
                 >
                   <div className="relative mr-3">
@@ -349,10 +371,10 @@ export default function ChatLayout() {
                   </div>
                   <div className="flex flex-col items-start overflow-hidden flex-1">
                      <div className="flex justify-between items-center w-full">
-                       <span className={cn("truncate text-left", conv.unread_count ? "font-bold text-foreground" : "font-medium text-muted-foreground")}>
+                       <span className={cn("truncate text-left", conv.unread_count > 0 ? "font-bold text-foreground" : "font-medium text-muted-foreground")}>
                          {conv.peer_user.display_name || conv.peer_user.username || conv.peer_user.id}
                        </span>
-                       {!!conv.unread_count && (
+                       {conv.unread_count > 0 && (
                          <div className="flex items-center gap-1.5 ml-2 shrink-0">
                            <span className="h-2 w-2 rounded-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.4)]" />
                            <span className="text-[10px] font-bold text-blue-600 dark:text-blue-400">
@@ -361,7 +383,7 @@ export default function ChatLayout() {
                          </div>
                        )}
                      </div>
-                     <span className={cn("text-xs truncate w-full text-left", conv.unread_count ? "text-foreground font-semibold" : "text-muted-foreground")}>
+                     <span className={cn("text-xs truncate w-full text-left", conv.unread_count > 0 ? "text-foreground font-semibold" : "text-muted-foreground")}>
                        {typingUsers[conv.peer_user.id] ? (
                          <span className="text-primary font-medium animate-pulse">Typing...</span>
                        ) : (
@@ -400,29 +422,25 @@ export default function ChatLayout() {
                 >
                   <ArrowLeft className="h-5 w-5" />
                 </Button>
-                <div className="relative">
-                  <Avatar className="h-9 w-9 border">
-                    {selectedConversationUser?.avatar ? (
-                      <AvatarImage src={selectedConversationUser.avatar.url} />
-                    ) : null}
-                    <AvatarFallback>{displaySelectedUser?.[0].toUpperCase()}</AvatarFallback>
-                  </Avatar>
-                  {onlineUsers?.includes(selectedUser) && (
-                    <span className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full bg-green-500 ring-2 ring-background" />
-                  )}
-                </div>
-                <div>
-                  <div className="text-sm font-semibold leading-none mb-1">{displaySelectedUser}</div>
-                  <div className="text-xs text-muted-foreground flex items-center gap-1">
-                    {isTyping ? (
+                <ProfileTriggerButton
+                  title={displaySelectedUser}
+                  subtitle={
+                    isTyping ? (
                       <span className="text-primary font-medium animate-pulse">Typing...</span>
                     ) : onlineUsers?.includes(selectedUser) ? (
                       'Online'
                     ) : (
                       'Offline'
-                    )}
-                  </div>
-                </div>
+                    )
+                  }
+                  avatarUrl={selectedConversationUser?.avatar?.url}
+                  fallback={(displaySelectedUser || '?')[0].toUpperCase()}
+                  onClick={() => setIsUserProfileOpen(true)}
+                  disabled={!selectedUser}
+                  online={!!selectedUser && onlineUsers?.includes(selectedUser)}
+                  avatarClassName="h-9 w-9 border"
+                  className="max-w-full"
+                />
               </div>
               
               <div className="flex items-center">
@@ -470,54 +488,34 @@ export default function ChatLayout() {
                      </div>
                    )}
 
-                 {allMessages.map((message, index) => {
-                     const isMe = message.sender_id === userId;
-                     const nextMessage = allMessages[index + 1];
+                 {chatMessages.map((message, index) => {
+                     const nextMessage = chatMessages[index + 1];
                      const showDateHeader = !nextMessage ||
-                       !isSameLocalDay(message.created_at, nextMessage.created_at);
-                     const messageTime = formatMessageTime(message.created_at);
+                       !isSameLocalDay(message.createdAt, nextMessage.createdAt);
 
                      return (
                        <div key={message.id} className="flex flex-col w-full min-w-0">
-                         <div
-                           className={cn(
-                             "flex flex-col max-w-[85%] md:max-w-[70%] mb-1 min-w-0",
-                             isMe ? "self-end items-end" : "self-start items-start"
-                           )}
-                         >
-                            <MessageRenderer 
-                              message={message}
-                              isMe={isMe}
-                              highlighted={highlightedMessageIds.has(message.id)}
-                              onMediaClick={handleMediaClick}
-                            />
-
-                           <div className={cn(
-                             "flex items-center gap-1 mt-1 px-1 text-[10px] text-muted-foreground/70",
-                             isMe ? "justify-end" : "justify-start"
-                           )}>
-                             <span>{messageTime}</span>
-                             {isMe && (
-                               <span 
-                                 className={cn(
-                                   "flex items-center",
-                                   message.status === 'read' ? "text-blue-500" : ""
-                                 )}
-                               >
-                                 {message.status === 'read' ? (
-                                   <CheckCheck className="h-3 w-3" />
-                                 ) : (
-                                   <Check className="h-3 w-3" />
-                                 )}
-                               </span>
-                             )}
-                           </div>
-                         </div>
+                         {message.kind === 'system' ? (
+                           <MessageRenderer
+                             message={message}
+                             highlighted={highlightedMessageIds.has(message.id)}
+                             onMediaClick={handleMediaClick}
+                           />
+                         ) : (
+                           <MessageItem isOwn={message.isOwn}>
+                             <MessageRenderer
+                               message={message}
+                               highlighted={highlightedMessageIds.has(message.id)}
+                               onMediaClick={handleMediaClick}
+                             />
+                             <MessageMeta message={message} />
+                           </MessageItem>
+                         )}
                          
                          {showDateHeader && (
                            <div className="flex justify-center my-6">
                              <div className="bg-muted/50 text-muted-foreground text-[10px] font-medium px-3 py-1 rounded-full shadow-sm border border-border/50">
-                               {formatMessageDay(message.created_at)}
+                               {formatMessageDay(message.createdAt)}
                              </div>
                            </div>
                          )}
@@ -546,7 +544,7 @@ export default function ChatLayout() {
                      }}
                    />
                    
-                   {allMessages.length === 0 && !isFetchingNextPage && (
+                   {chatMessages.length === 0 && !isFetchingNextPage && (
                       <div className="flex flex-col items-center justify-center py-12 text-center opacity-50">
                           <div className="bg-muted/30 p-4 rounded-full mb-3">
                               <MessageSquare className="h-8 w-8 text-muted-foreground" />
