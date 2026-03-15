@@ -1,16 +1,16 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { useProfile } from '@/features/settings/hooks/useProfile';
-import { Button } from '@/shared/components/ui/Button';
-import { Input } from '@/shared/components/ui/Input';
-import { Label } from '@/shared/components/ui/Label';
-import { Avatar, AvatarFallback, AvatarImage } from '@/shared/components/ui/Avatar';
+import { useProfile } from '@/hooks/useProfile';
+import { Button } from '@/components/ui/Button';
+import { Input } from '@/components/ui/Input';
+import { Label } from '@/components/ui/Label';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/Avatar';
 import { X, Camera, Trash2, Loader2, Save, Volume2, Monitor, Moon, Sun, Palette, User, Shield, KeyRound, Bell } from 'lucide-react';
-import { cn } from '@/shared/lib/utils';
-import { unlockAudioExplicit } from '@/shared/utils/notificationSound';
-import { useTheme } from '@/app/providers/ThemeProvider';
-import PasskeysSettings from '@/features/settings/components/PasskeysSettings';
+import { cn } from '@/lib/utils';
+import { unlockAudioExplicit } from '@/utils/notificationSound';
+import { useTheme } from '@/components/ThemeProvider';
+import PasskeysSettings from '../settings/PasskeysSettings';
 
-import DiscoverySettings from '@/features/settings/components/DiscoverySettings';
+import DiscoverySettings from '../settings/DiscoverySettings';
 
 interface UserSettingsProps {
   isOpen: boolean;

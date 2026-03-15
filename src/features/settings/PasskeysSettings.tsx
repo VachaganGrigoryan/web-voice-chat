@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Loader2, Trash2, KeyRound, AlertTriangle } from 'lucide-react';
 import { startRegistration } from '@simplewebauthn/browser';
-import { formatMessageDay } from '@/utils/dateUtils';
+import { format } from 'date-fns';
 
 export default function PasskeysSettings() {
   const queryClient = useQueryClient();
@@ -148,7 +148,7 @@ export default function PasskeysSettings() {
                   <div>
                     <p className="font-medium text-sm">{passkey.nickname || passkey.device_name || passkey.name || 'Unknown Device'}</p>
                     <p className="text-xs text-muted-foreground">
-                      Added {passkey.created_at ? formatMessageDay(passkey.created_at) : 'Unknown date'}
+                      Added {passkey.created_at ? format(new Date(passkey.created_at), 'MMM d, yyyy') : 'Unknown date'}
                     </p>
                   </div>
                   <Button

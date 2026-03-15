@@ -1,7 +1,7 @@
 import React, { useRef } from 'react';
-import { Button } from '@/shared/components/ui/Button';
+import { Button } from '@/components/ui/Button';
 import { Paperclip, Loader2 } from 'lucide-react';
-import { getMessageType, validateFile } from '@/shared/utils/fileUtils';
+import { getMessageType, validateFile } from '@/utils/fileUtils';
 
 interface MediaComposerProps {
   receiverId: string;

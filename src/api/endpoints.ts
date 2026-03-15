@@ -19,7 +19,6 @@ export const authApi = {
 
 export const usersApi = {
   getMe: () => apiClient.get<SuccessResponse<User>>('/users/me'),
-  getUser: (id: string) => apiClient.get<SuccessResponse<User>>(`/users/${id}`),
   updateProfile: (data: { display_name?: string; bio?: string; is_private?: boolean; default_discovery_enabled?: boolean }) => 
     apiClient.patch<SuccessResponse<User>>('/users/me', data),
   updateUsername: (username: string) => apiClient.patch<SuccessResponse<User>>('/users/me/username', { username }),

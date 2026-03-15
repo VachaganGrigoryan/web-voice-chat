@@ -1,6 +1,6 @@
 import { create } from 'zustand';
-import { tokenStore } from '@/features/auth/api/tokenStore';
-import { sessionManager } from '@/features/auth/api/session';
+import { tokenStore } from '@/auth/tokenStore';
+import { sessionManager } from '@/auth/session';
 
 interface AuthState {
   accessToken: string | null;

@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { discoveryApi } from '@/api/endpoints';
-import { Button } from '@/shared/components/ui/Button';
-import { Avatar, AvatarFallback, AvatarImage } from '@/shared/components/ui/Avatar';
+import { Button } from '@/components/ui/Button';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/Avatar';
 import { Loader2, MessageSquare, AlertTriangle, UserPlus, Bell } from 'lucide-react';
 import { useAuthStore } from '@/store/authStore';
 
