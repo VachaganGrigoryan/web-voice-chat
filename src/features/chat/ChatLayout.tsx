@@ -13,14 +13,18 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { authApi } from '@/api/endpoints';
 import VoiceRecorder from './VoiceRecorder';
 import MediaComposer from './MediaComposer';
+import { MessageItem, MessageMeta } from './components/MessageShell';
 import { MessageRenderer } from './MessageRenderer';
+import { GlobalAudioPlayer } from './GlobalAudioPlayer';
+import { UserProfileModal } from './UserProfileModal';
+import { useAudioPlayerStore } from './store/audioPlayerStore';
 import { MediaViewer } from './MediaViewer';
 import UserSettings from './UserSettings';
 import { PingsModal } from './PingsModal';
 import { cn } from '@/lib/utils';
 import { useTypingIndicator, useSocketStore } from '@/socket/socket';
 import { EVENTS } from '@/socket/events';
-import { format, isToday, isYesterday } from 'date-fns';
+import { formatMessageTime, formatMessageDay, formatMessageDateTime, isToday, isYesterday } from '@/utils/dateUtils';
 import { useProfile } from '@/hooks/useProfile';
 
 import { UserSearch } from './UserSearch';
@@ -61,6 +65,7 @@ export default function ChatLayout() {
   const [newUserId, setNewUserId] = useState('');
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isPingsOpen, setIsPingsOpen] = useState(false);
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [mediaViewer, setMediaViewer] = useState<{ open: boolean; type: 'image' | 'video'; url: string }>({ open: false, type: 'image', url: '' });
   const { profile } = useProfile();
   const { socket } = useSocketStore();
@@ -155,6 +160,13 @@ export default function ChatLayout() {
     [messages]
   );
 
+  const setAudioMessages = useAudioPlayerStore(state => state.setAudioMessages);
+
+  useEffect(() => {
+    const audioMsgs = allMessages.filter(m => m.type === 'voice');
+    setAudioMessages(audioMsgs);
+  }, [allMessages, setAudioMessages]);
+
   const readEmittedMessagesRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
@@ -203,10 +215,7 @@ export default function ChatLayout() {
   }, [allMessages, selectedUser, socket, userId]);
 
   const formatMessageDate = (dateString: string) => {
-    const date = new Date(dateString);
-    if (isToday(date)) return 'Today';
-    if (isYesterday(date)) return 'Yesterday';
-    return format(date, 'MMMM d, yyyy');
+    return formatMessageDay(dateString);
   };
 
   const selectedConversationUser = contacts.find(c => c.peer_user.id === selectedUser)?.peer_user;
@@ -232,6 +241,14 @@ export default function ChatLayout() {
           setIsPingsOpen(false);
         }}
       />
+      {selectedUser && (
+        <UserProfileModal
+          isOpen={isProfileModalOpen}
+          onClose={() => setIsProfileModalOpen(false)}
+          userId={selectedUser}
+          initialData={selectedConversationUser}
+        />
+      )}
       <UserSettings isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />
       {/* Sidebar */}
       <div className={cn(
@@ -371,27 +388,32 @@ export default function ChatLayout() {
                 >
                   <ArrowLeft className="h-5 w-5" />
                 </Button>
-                <div className="relative">
-                  <Avatar className="h-9 w-9 border">
-                    {selectedConversationUser?.avatar ? (
-                      <AvatarImage src={selectedConversationUser.avatar.url} />
-                    ) : null}
-                    <AvatarFallback>{displaySelectedUser?.[0].toUpperCase()}</AvatarFallback>
-                  </Avatar>
-                  {onlineUsers?.includes(selectedUser) && (
-                    <span className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full bg-green-500 ring-2 ring-background" />
-                  )}
-                </div>
-                <div>
-                  <div className="text-sm font-semibold leading-none mb-1">{displaySelectedUser}</div>
-                  <div className="text-xs text-muted-foreground flex items-center gap-1">
-                    {isTyping ? (
-                      <span className="text-primary font-medium animate-pulse">Typing...</span>
-                    ) : onlineUsers?.includes(selectedUser) ? (
-                      'Online'
-                    ) : (
-                      'Offline'
+                <div 
+                  className="flex items-center gap-3 cursor-pointer hover:bg-muted/50 p-1.5 -ml-1.5 rounded-lg transition-colors"
+                  onClick={() => setIsProfileModalOpen(true)}
+                >
+                  <div className="relative">
+                    <Avatar className="h-9 w-9 border">
+                      {selectedConversationUser?.avatar ? (
+                        <AvatarImage src={selectedConversationUser.avatar.url} />
+                      ) : null}
+                      <AvatarFallback>{displaySelectedUser?.[0].toUpperCase()}</AvatarFallback>
+                    </Avatar>
+                    {onlineUsers?.includes(selectedUser) && (
+                      <span className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full bg-green-500 ring-2 ring-background" />
                     )}
+                  </div>
+                  <div>
+                    <div className="text-sm font-semibold leading-none mb-1">{displaySelectedUser}</div>
+                    <div className="text-xs text-muted-foreground flex items-center gap-1">
+                      {isTyping ? (
+                        <span className="text-primary font-medium animate-pulse">Typing...</span>
+                      ) : onlineUsers?.includes(selectedUser) ? (
+                        'Online'
+                      ) : (
+                        'Offline'
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -422,6 +444,8 @@ export default function ChatLayout() {
               </div>
             </div>
 
+            <GlobalAudioPlayer />
+
             {/* Messages Area */}
             {isPingAccepted ? (
               <div className="flex-1 overflow-y-auto flex flex-col-reverse p-4 space-y-reverse space-y-6 scroll-smooth overscroll-contain">
@@ -442,41 +466,13 @@ export default function ChatLayout() {
                    const isMe = message.sender_id === userId;
                    const nextMessage = allMessages[index + 1];
                    const showDateHeader = !nextMessage || 
-                     format(new Date(message.created_at), 'yyyy-MM-dd') !== 
-                     format(new Date(nextMessage.created_at), 'yyyy-MM-dd');
+                     new Date(message.created_at).toDateString() !== 
+                     new Date(nextMessage.created_at).toDateString();
 
                    return (
                      <div key={message.id} className="flex flex-col w-full min-w-0">
-                       <div
-                         className={cn(
-                           "flex flex-col max-w-[85%] md:max-w-[70%] mb-1 relative group min-w-0",
-                           isMe ? "self-end items-end" : "self-start items-start"
-                         )}
-                       >
-                         {/* Precise Timestamp Tooltip */}
-                         <div className={cn(
-                           "absolute bottom-full mb-1 z-50 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none",
-                           isMe ? "right-0" : "left-0"
-                         )}>
-                           <div className="bg-zinc-900/90 backdrop-blur-sm text-white text-[10px] p-2 rounded-lg shadow-xl border border-white/10 flex flex-col gap-1 min-w-[140px]">
-                             <div className="flex justify-between gap-4">
-                               <span className="text-zinc-400">Sent</span>
-                               <span>{format(new Date(message.created_at), 'MMM d, h:mm:ss a')}</span>
-                             </div>
-                             {message.delivered_at && (
-                               <div className="flex justify-between gap-4">
-                                 <span className="text-zinc-400">Delivered</span>
-                                 <span>{format(new Date(message.delivered_at), 'MMM d, h:mm:ss a')}</span>
-                               </div>
-                             )}
-                             {message.read_at && (
-                               <div className="flex justify-between gap-4">
-                                 <span className="text-zinc-400">Read</span>
-                                 <span>{format(new Date(message.read_at), 'MMM d, h:mm:ss a')}</span>
-                               </div>
-                             )}
-                           </div>
-                         </div>
+                       <MessageItem isMe={isMe}>
+                         {/* Precise Timestamp Tooltip Removed */}
 
                           <MessageRenderer 
                             message={message}
@@ -485,30 +481,8 @@ export default function ChatLayout() {
                             onMediaClick={handleMediaClick}
                           />
 
-                         <div className={cn(
-                           "flex items-center gap-1 mt-1 px-1 text-[10px] text-muted-foreground/70 cursor-help",
-                           isMe ? "justify-end" : "justify-start"
-                         )}>
-                           <span title={`Sent: ${format(new Date(message.created_at), 'MMM d, yyyy h:mm:ss a')}${message.delivered_at ? `\nDelivered: ${format(new Date(message.delivered_at), 'MMM d, yyyy h:mm:ss a')}` : ''}${message.read_at ? `\nRead: ${format(new Date(message.read_at), 'MMM d, yyyy h:mm:ss a')}` : ''}`}>
-                             {format(new Date(message.created_at), 'h:mm a')}
-                           </span>
-                           {isMe && (
-                             <span 
-                               className={cn(
-                                 "flex items-center",
-                                 message.status === 'read' ? "text-blue-500" : ""
-                               )}
-                               title={message.read_at ? `Read at ${format(new Date(message.read_at), 'h:mm a')}` : undefined}
-                             >
-                               {message.status === 'read' ? (
-                                 <CheckCheck className="h-3 w-3" />
-                               ) : (
-                                 <Check className="h-3 w-3" />
-                               )}
-                             </span>
-                           )}
-                         </div>
-                       </div>
+                          <MessageMeta message={message} isMe={isMe} />
+                       </MessageItem>
                        
                        {showDateHeader && (
                          <div className="flex justify-center my-6">

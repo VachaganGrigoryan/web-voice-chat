@@ -1,13 +1,13 @@
 import { useState } from 'react';
-import { usePings } from '@/hooks/usePings';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/Dialog';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/Tabs';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/Avatar';
-import { Button } from '@/components/ui/Button';
-import { ScrollArea } from '@/components/ui/ScrollArea';
+import { usePings } from '@/features/chat/hooks/usePings';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/shared/components/ui/Dialog';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/shared/components/ui/Tabs';
+import { Avatar, AvatarFallback, AvatarImage } from '@/shared/components/ui/Avatar';
+import { Button } from '@/shared/components/ui/Button';
+import { ScrollArea } from '@/shared/components/ui/ScrollArea';
 import { Check, X, Clock, MessageSquare, Loader2, Bell, UserPlus } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
-import { cn } from '@/lib/utils';
+import { cn } from '@/shared/lib/utils';
 
 interface PingsModalProps {
   isOpen: boolean;

@@ -1,0 +1,146 @@
+import { useState, useEffect } from 'react';
+import { useInfiniteQuery, useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
+import { messagesApi, realtimeApi, conversationsApi } from '@/api/endpoints';
+import { useSocket, usePresence, useRealtimeMessages, useSocketStore } from '@/socket/hooks/useSocket';
+
+export const useConversations = () => {
+  return useInfiniteQuery({
+    queryKey: ['conversations'],
+    queryFn: async ({ pageParam }) => {
+      const response = await conversationsApi.getConversations(20, pageParam as string | undefined);
+      return response.data;
+    },
+    getNextPageParam: (lastPage) => lastPage.meta?.next_cursor,
+    initialPageParam: undefined,
+  });
+};
+
+export const useChat = () => {
+  const [selectedUser, setSelectedUser] = useState<string | null>(null);
+  const queryClient = useQueryClient();
+  
+  // Initialize socket and subscriptions
+  useSocket();
+  useRealtimeMessages(selectedUser);
+  const { onlineUsers, setOnlineUsers } = usePresence();
+
+  // Initial fetch of online users (fallback/initial population)
+  useQuery({
+    queryKey: ['onlineUsers'],
+    queryFn: async () => {
+      const response = await realtimeApi.getOnlineUsers();
+      setOnlineUsers(response.data.data);
+      return response.data.data;
+    },
+    // We rely on socket events for updates, but this fetches initial state
+    staleTime: Infinity, 
+  });
+
+  const {
+    data: messages,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useInfiniteQuery({
+    queryKey: ['messages', selectedUser],
+    queryFn: async ({ pageParam }) => {
+      if (!selectedUser) return { data: [], meta: { next_cursor: null, limit: 20, total: 0 }, success: true };
+      const response = await messagesApi.getHistory(selectedUser, 20, pageParam as string | undefined);
+      return response.data;
+    },
+    getNextPageParam: (lastPage) => lastPage.meta?.next_cursor,
+    enabled: !!selectedUser,
+    initialPageParam: undefined,
+  });
+
+  const sendMessageMutation = useMutation({
+    mutationFn: async (data: {
+      type: 'voice' | 'image' | 'sticker' | 'video' | 'file';
+      receiver_id: string;
+      file: File;
+      text?: string;
+      duration_ms?: number;
+    }) => {
+      const response = await messagesApi.uploadMedia(data);
+      return response.data.data;
+    },
+    onSuccess: (newMessage, variables) => {
+      if (selectedUser) {
+        // Emit socket event to notify server
+        const { socket } = useSocketStore.getState();
+        socket?.emit('send_message', {
+          to: selectedUser,
+          message_id: newMessage.id,
+          type: variables.type
+        });
+
+        queryClient.setQueryData(['messages', selectedUser], (old: any) => {
+          if (!old) return { pages: [{ data: [newMessage], meta: { next_cursor: null, limit: 20, total: 1 }, success: true }], pageParams: [undefined] };
+          
+          const newPages = [...old.pages];
+          newPages[0] = {
+            ...newPages[0],
+            data: [newMessage, ...(newPages[0].data || [])],
+          };
+          
+          return {
+            ...old,
+            pages: newPages,
+          };
+        });
+      }
+    },
+  });
+
+  const sendTextMutation = useMutation({
+    mutationFn: async ({ receiver_id, text }: { receiver_id: string; text: string }) => {
+      const response = await messagesApi.sendText(receiver_id, text);
+      return response.data.data;
+    },
+    onSuccess: (newMessage) => {
+      if (selectedUser) {
+        // Emit socket event to notify server
+        const { socket } = useSocketStore.getState();
+        socket?.emit('send_message', {
+          to: selectedUser,
+          message_id: newMessage.id,
+          type: 'text'
+        });
+
+        queryClient.setQueryData(['messages', selectedUser], (old: any) => {
+          if (!old) return { pages: [{ data: [newMessage], meta: { next_cursor: null, limit: 20, total: 1 }, success: true }], pageParams: [undefined] };
+          
+          const newPages = [...old.pages];
+          newPages[0] = {
+            ...newPages[0],
+            data: [newMessage, ...(newPages[0].data || [])],
+          };
+          
+          return {
+            ...old,
+            pages: newPages,
+          };
+        });
+      }
+    },
+  });
+
+  return {
+    selectedUser,
+    setSelectedUser,
+    onlineUsers,
+    messages,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+    sendVoice: sendMessageMutation.mutateAsync as (data: {
+      type: 'voice' | 'image' | 'sticker' | 'video' | 'file';
+      receiver_id: string;
+      file: File;
+      text?: string;
+      duration_ms?: number;
+    }) => Promise<any>,
+    sendText: sendTextMutation.mutateAsync,
+    isSending: sendMessageMutation.isPending || sendTextMutation.isPending,
+  };
+};

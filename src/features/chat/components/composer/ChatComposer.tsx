@@ -1,13 +1,14 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Button } from '@/components/ui/Button';
+import { Button } from '@/shared/components/ui/Button';
 import { Mic, Square, Loader2, Trash2, Send, StopCircle, Smile, Pause, Play } from 'lucide-react';
-import { getSocket } from '@/socket/socket';
-import { EVENTS } from '@/socket/events';
-import { cn } from '@/lib/utils';
+import { getSocket } from '@/socket/hooks/useSocket';
+import { EVENTS } from '@/socket/events/events';
+import { cn } from '@/shared/lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
 import EmojiPicker, { Theme } from 'emoji-picker-react';
+import MediaComposer from './MediaComposer';
 
-interface VoiceRecorderProps {
+interface ChatComposerProps {
   receiverId: string;
   onSendVoice: (data: {
     type: 'voice' | 'image' | 'sticker' | 'video' | 'file';
@@ -19,7 +20,7 @@ interface VoiceRecorderProps {
   onSendText: (data: { receiver_id: string; text: string }) => Promise<any>;
 }
 
-export default function VoiceRecorder({ receiverId, onSendVoice, onSendText }: VoiceRecorderProps) {
+export default function ChatComposer({ receiverId, onSendVoice, onSendText }: ChatComposerProps) {
   const [isRecording, setIsRecording] = useState(false);
   const [isRecordingPaused, setIsRecordingPaused] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
@@ -261,16 +262,24 @@ export default function VoiceRecorder({ receiverId, onSendVoice, onSendText }: V
             >
               <div className="flex items-end gap-2 w-full">
                 {(!isFocused && text.trim().length === 0) && (
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-10 w-10 rounded-full shrink-0 text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
-                    onClick={startRecording}
-                    disabled={isUploading}
-                    title="Record voice message"
-                  >
-                    <Mic className="h-5 w-5" />
-                  </Button>
+                  <div className="flex items-center gap-1">
+                    <MediaComposer 
+                      receiverId={receiverId} 
+                      onSendMedia={onSendVoice}
+                      isUploading={isUploading}
+                      setIsUploading={setIsUploading}
+                    />
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-10 w-10 rounded-full shrink-0 text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
+                      onClick={startRecording}
+                      disabled={isUploading}
+                      title="Record voice message"
+                    >
+                      <Mic className="h-5 w-5" />
+                    </Button>
+                  </div>
                 )}
                 
                 <div className="flex-1 bg-muted/50 rounded-2xl border border-border/50 focus-within:border-primary/50 focus-within:bg-background transition-colors flex items-end min-h-[40px] relative">

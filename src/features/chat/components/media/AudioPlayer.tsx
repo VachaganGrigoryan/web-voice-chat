@@ -1,9 +1,9 @@
 import { useState, useRef, useEffect } from 'react';
 import { Play, Pause, Loader2 } from 'lucide-react';
-import { Button } from '@/components/ui/Button';
-import { cn } from '@/lib/utils';
-import { getSocket } from '@/socket/socket';
-import { EVENTS } from '@/socket/events';
+import { Button } from '@/shared/components/ui/Button';
+import { cn } from '@/shared/lib/utils';
+import { getSocket } from '@/socket/hooks/useSocket';
+import { EVENTS } from '@/socket/events/events';
 
 interface AudioPlayerProps {
   src: string;

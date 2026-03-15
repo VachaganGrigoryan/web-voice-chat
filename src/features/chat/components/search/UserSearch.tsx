@@ -1,13 +1,13 @@
 import { useState, useEffect, useRef } from 'react';
 import { discoveryApi } from '@/api/endpoints';
 import { DiscoveredUser } from '@/api/types';
-import { Input } from '@/components/ui/Input';
-import { Button } from '@/components/ui/Button';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/Avatar';
+import { Input } from '@/shared/components/ui/Input';
+import { Button } from '@/shared/components/ui/Button';
+import { Avatar, AvatarFallback, AvatarImage } from '@/shared/components/ui/Avatar';
 import { Search, Loader2, MessageSquare, UserPlus, Check, X, Clock } from 'lucide-react';
-import { useDebounce } from '@/hooks/useDebounce';
-import { usePings } from '@/hooks/usePings';
-import { useConversations } from '@/hooks/useChat';
+import { useDebounce } from '@/shared/hooks/useDebounce';
+import { usePings } from '@/features/chat/hooks/usePings';
+import { useConversations } from '@/features/chat/hooks/useChat';
 
 interface UserSearchProps {
   onSelectUser: (userId: string) => void;
