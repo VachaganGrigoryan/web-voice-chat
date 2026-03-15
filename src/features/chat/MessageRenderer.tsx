@@ -19,6 +19,13 @@ export const MessageRenderer: React.FC<MessageRendererProps> = ({ message, isMe,
       ? "bg-blue-100 border border-blue-300 rounded-bl-none dark:bg-blue-900/30 dark:border-blue-800"
       : "bg-muted text-foreground rounded-bl-none border border-border"
   );
+  const messageTextClasses = cn(
+    "px-4 py-2 text-[15px] leading-relaxed break-words whitespace-pre-wrap min-w-0",
+    "[&_a]:font-medium [&_a]:underline [&_a]:underline-offset-2 [&_a]:decoration-current [&_a]:transition-opacity [&_a]:hover:opacity-80 [&_a]:focus-visible:outline-none [&_a]:focus-visible:ring-2 [&_a]:focus-visible:ring-ring [&_a]:focus-visible:ring-offset-2 [&_a]:focus-visible:ring-offset-transparent",
+    isMe
+      ? "[&_a]:text-sky-300 [&_a]:hover:text-sky-200 dark:[&_a]:text-sky-700 dark:[&_a]:hover:text-sky-800"
+      : "[&_a]:text-sky-600 [&_a]:hover:text-sky-700 dark:[&_a]:text-sky-400 dark:[&_a]:hover:text-sky-300"
+  );
 
   switch (message.type) {
     case 'text':
@@ -33,10 +40,7 @@ export const MessageRenderer: React.FC<MessageRendererProps> = ({ message, isMe,
                 href={part} 
                 target="_blank" 
                 rel="noopener noreferrer"
-                className={cn(
-                  "underline break-all",
-                  isMe ? "text-white hover:text-white/80" : "text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
-                )}
+                className="break-all"
                 onClick={(e) => e.stopPropagation()}
               >
                 {part}
@@ -49,7 +53,7 @@ export const MessageRenderer: React.FC<MessageRendererProps> = ({ message, isMe,
 
       return (
         <div className={cn(baseClasses, "max-w-full min-w-0")}>
-          <div className="px-4 py-2 text-[15px] leading-relaxed break-words whitespace-pre-wrap min-w-0" style={{ wordBreak: 'break-word' }}>
+          <div className={messageTextClasses} style={{ wordBreak: 'break-word' }}>
             {renderText(message.text)}
           </div>
         </div>
@@ -63,6 +67,7 @@ export const MessageRenderer: React.FC<MessageRendererProps> = ({ message, isMe,
             messageId={message.id}
             isRead={message.status === 'read'}
             isMe={isMe}
+            createdAt={message.created_at}
             className={cn(
               "w-full min-w-[200px]",
               isMe ? "bg-primary-foreground/10" : "bg-background/50"

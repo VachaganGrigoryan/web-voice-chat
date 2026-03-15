@@ -17,11 +17,17 @@ import { MessageRenderer } from './MessageRenderer';
 import { MediaViewer } from './MediaViewer';
 import UserSettings from './UserSettings';
 import { PingsModal } from './PingsModal';
+import { GlobalAudioPlayerBar } from './GlobalAudioPlayerBar';
+import { useChatAudioPlayerStore } from './audioPlayerStore';
 import { cn } from '@/lib/utils';
 import { useTypingIndicator, useSocketStore } from '@/socket/socket';
 import { EVENTS } from '@/socket/events';
-import { format, isToday, isYesterday } from 'date-fns';
 import { useProfile } from '@/hooks/useProfile';
+import {
+  formatMessageDay,
+  formatMessageTime,
+  isSameLocalDay,
+} from '@/utils/dateUtils';
 
 import { UserSearch } from './UserSearch';
 
@@ -65,6 +71,8 @@ export default function ChatLayout() {
   const { profile } = useProfile();
   const { socket } = useSocketStore();
   const { incoming, outgoing, sendPing, acceptPing, declinePing, isSending: isSendingPing, isAccepting: isAcceptingPing, isDeclining: isDecliningPing } = usePings();
+  const setAudioQueue = useChatAudioPlayerStore((state) => state.setQueue);
+  const closeAudioPlayer = useChatAudioPlayerStore((state) => state.close);
   const pendingIncomingCount = incoming.filter(item => item.ping.status === 'pending').length;
   const [highlightedMessageIds, setHighlightedMessageIds] = useState<Set<string>>(new Set());
   
@@ -154,6 +162,21 @@ export default function ChatLayout() {
     messages?.pages.flatMap((page) => page.data || []).filter(Boolean) || [],
     [messages]
   );
+  const audioQueue = useMemo(
+    () =>
+      [...allMessages]
+        .reverse()
+        .filter((message) => message.type === 'voice' && !!message.media?.url)
+        .map((message) => ({
+          id: message.id,
+          src: message.media?.url || '',
+          durationMs: message.media?.duration_ms || 0,
+          createdAt: message.created_at,
+          isRead: message.status === 'read',
+          isMe: message.sender_id === userId,
+        })),
+    [allMessages, userId]
+  );
 
   const readEmittedMessagesRef = useRef<Set<string>>(new Set());
 
@@ -202,12 +225,18 @@ export default function ChatLayout() {
     }
   }, [allMessages, selectedUser, socket, userId]);
 
-  const formatMessageDate = (dateString: string) => {
-    const date = new Date(dateString);
-    if (isToday(date)) return 'Today';
-    if (isYesterday(date)) return 'Yesterday';
-    return format(date, 'MMMM d, yyyy');
-  };
+  useEffect(() => {
+    if (!selectedUser || !isPingAccepted) {
+      setAudioQueue(null, []);
+      return;
+    }
+
+    setAudioQueue(selectedUser, audioQueue);
+  }, [audioQueue, isPingAccepted, selectedUser, setAudioQueue]);
+
+  useEffect(() => {
+    return () => closeAudioPlayer();
+  }, [closeAudioPlayer]);
 
   const selectedConversationUser = contacts.find(c => c.peer_user.id === selectedUser)?.peer_user;
   const displaySelectedUser = selectedConversationUser?.display_name || selectedConversationUser?.username || selectedUser;
@@ -424,134 +453,110 @@ export default function ChatLayout() {
 
             {/* Messages Area */}
             {isPingAccepted ? (
-              <div className="flex-1 overflow-y-auto flex flex-col-reverse p-4 space-y-reverse space-y-6 scroll-smooth overscroll-contain">
-                 {/* Typing Indicator Bubble */}
-                 {isTyping && (
-                   <div className="self-start mb-2 ml-1 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                     <div className="bg-secondary/50 rounded-2xl rounded-tl-none px-4 py-3 text-sm text-muted-foreground flex items-center gap-2 shadow-sm">
-                       <div className="flex gap-1">
-                         <span className="w-1.5 h-1.5 bg-primary/40 rounded-full animate-bounce [animation-delay:-0.3s]"></span>
-                         <span className="w-1.5 h-1.5 bg-primary/40 rounded-full animate-bounce [animation-delay:-0.15s]"></span>
-                         <span className="w-1.5 h-1.5 bg-primary/40 rounded-full animate-bounce"></span>
+              <>
+                <GlobalAudioPlayerBar />
+
+                <div className="flex-1 overflow-y-auto flex flex-col-reverse p-4 space-y-reverse space-y-6 scroll-smooth overscroll-contain">
+                   {/* Typing Indicator Bubble */}
+                   {isTyping && (
+                     <div className="self-start mb-2 ml-1 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                       <div className="bg-secondary/50 rounded-2xl rounded-tl-none px-4 py-3 text-sm text-muted-foreground flex items-center gap-2 shadow-sm">
+                         <div className="flex gap-1">
+                           <span className="w-1.5 h-1.5 bg-primary/40 rounded-full animate-bounce [animation-delay:-0.3s]"></span>
+                           <span className="w-1.5 h-1.5 bg-primary/40 rounded-full animate-bounce [animation-delay:-0.15s]"></span>
+                           <span className="w-1.5 h-1.5 bg-primary/40 rounded-full animate-bounce"></span>
+                         </div>
                        </div>
                      </div>
-                   </div>
-                 )}
+                   )}
 
-               {allMessages.map((message, index) => {
-                   const isMe = message.sender_id === userId;
-                   const nextMessage = allMessages[index + 1];
-                   const showDateHeader = !nextMessage || 
-                     format(new Date(message.created_at), 'yyyy-MM-dd') !== 
-                     format(new Date(nextMessage.created_at), 'yyyy-MM-dd');
+                 {allMessages.map((message, index) => {
+                     const isMe = message.sender_id === userId;
+                     const nextMessage = allMessages[index + 1];
+                     const showDateHeader = !nextMessage ||
+                       !isSameLocalDay(message.created_at, nextMessage.created_at);
+                     const messageTime = formatMessageTime(message.created_at);
 
-                   return (
-                     <div key={message.id} className="flex flex-col w-full min-w-0">
-                       <div
-                         className={cn(
-                           "flex flex-col max-w-[85%] md:max-w-[70%] mb-1 relative group min-w-0",
-                           isMe ? "self-end items-end" : "self-start items-start"
-                         )}
-                       >
-                         {/* Precise Timestamp Tooltip */}
-                         <div className={cn(
-                           "absolute bottom-full mb-1 z-50 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none",
-                           isMe ? "right-0" : "left-0"
-                         )}>
-                           <div className="bg-zinc-900/90 backdrop-blur-sm text-white text-[10px] p-2 rounded-lg shadow-xl border border-white/10 flex flex-col gap-1 min-w-[140px]">
-                             <div className="flex justify-between gap-4">
-                               <span className="text-zinc-400">Sent</span>
-                               <span>{format(new Date(message.created_at), 'MMM d, h:mm:ss a')}</span>
-                             </div>
-                             {message.delivered_at && (
-                               <div className="flex justify-between gap-4">
-                                 <span className="text-zinc-400">Delivered</span>
-                                 <span>{format(new Date(message.delivered_at), 'MMM d, h:mm:ss a')}</span>
-                               </div>
-                             )}
-                             {message.read_at && (
-                               <div className="flex justify-between gap-4">
-                                 <span className="text-zinc-400">Read</span>
-                                 <span>{format(new Date(message.read_at), 'MMM d, h:mm:ss a')}</span>
-                               </div>
-                             )}
-                           </div>
-                         </div>
-
-                          <MessageRenderer 
-                            message={message}
-                            isMe={isMe}
-                            highlighted={highlightedMessageIds.has(message.id)}
-                            onMediaClick={handleMediaClick}
-                          />
-
-                         <div className={cn(
-                           "flex items-center gap-1 mt-1 px-1 text-[10px] text-muted-foreground/70 cursor-help",
-                           isMe ? "justify-end" : "justify-start"
-                         )}>
-                           <span title={`Sent: ${format(new Date(message.created_at), 'MMM d, yyyy h:mm:ss a')}${message.delivered_at ? `\nDelivered: ${format(new Date(message.delivered_at), 'MMM d, yyyy h:mm:ss a')}` : ''}${message.read_at ? `\nRead: ${format(new Date(message.read_at), 'MMM d, yyyy h:mm:ss a')}` : ''}`}>
-                             {format(new Date(message.created_at), 'h:mm a')}
-                           </span>
-                           {isMe && (
-                             <span 
-                               className={cn(
-                                 "flex items-center",
-                                 message.status === 'read' ? "text-blue-500" : ""
-                               )}
-                               title={message.read_at ? `Read at ${format(new Date(message.read_at), 'h:mm a')}` : undefined}
-                             >
-                               {message.status === 'read' ? (
-                                 <CheckCheck className="h-3 w-3" />
-                               ) : (
-                                 <Check className="h-3 w-3" />
-                               )}
-                             </span>
+                     return (
+                       <div key={message.id} className="flex flex-col w-full min-w-0">
+                         <div
+                           className={cn(
+                             "flex flex-col max-w-[85%] md:max-w-[70%] mb-1 min-w-0",
+                             isMe ? "self-end items-end" : "self-start items-start"
                            )}
-                         </div>
-                       </div>
-                       
-                       {showDateHeader && (
-                         <div className="flex justify-center my-6">
-                           <div className="bg-muted/50 text-muted-foreground text-[10px] font-medium px-3 py-1 rounded-full uppercase tracking-wider shadow-sm border border-border/50">
-                             {formatMessageDate(message.created_at)}
+                         >
+                            <MessageRenderer 
+                              message={message}
+                              isMe={isMe}
+                              highlighted={highlightedMessageIds.has(message.id)}
+                              onMediaClick={handleMediaClick}
+                            />
+
+                           <div className={cn(
+                             "flex items-center gap-1 mt-1 px-1 text-[10px] text-muted-foreground/70",
+                             isMe ? "justify-end" : "justify-start"
+                           )}>
+                             <span>{messageTime}</span>
+                             {isMe && (
+                               <span 
+                                 className={cn(
+                                   "flex items-center",
+                                   message.status === 'read' ? "text-blue-500" : ""
+                                 )}
+                               >
+                                 {message.status === 'read' ? (
+                                   <CheckCheck className="h-3 w-3" />
+                                 ) : (
+                                   <Check className="h-3 w-3" />
+                                 )}
+                               </span>
+                             )}
                            </div>
                          </div>
-                       )}
+                         
+                         {showDateHeader && (
+                           <div className="flex justify-center my-6">
+                             <div className="bg-muted/50 text-muted-foreground text-[10px] font-medium px-3 py-1 rounded-full shadow-sm border border-border/50">
+                               {formatMessageDay(message.created_at)}
+                             </div>
+                           </div>
+                         )}
+                       </div>
+                     );
+                   })}
+                   
+                   {isFetchingNextPage && (
+                     <div className="flex justify-center py-4">
+                       <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
                      </div>
-                   );
-                 })}
-                 
-                 {isFetchingNextPage && (
-                   <div className="flex justify-center py-4">
-                     <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-                   </div>
-                 )}
-                 
-                 <div 
-                   className="h-1 w-full" 
-                   ref={(node) => {
-                       if (node && hasNextPage && !isFetchingNextPage) {
-                           const observer = new IntersectionObserver((entries) => {
-                               if (entries[0].isIntersecting) {
-                                   fetchNextPage();
-                               }
-                           });
-                           observer.observe(node);
-                           return () => observer.disconnect();
-                       }
-                   }}
-                 />
-                 
-                 {allMessages.length === 0 && !isFetchingNextPage && (
-                    <div className="flex flex-col items-center justify-center py-12 text-center opacity-50">
-                        <div className="bg-muted/30 p-4 rounded-full mb-3">
-                            <MessageSquare className="h-8 w-8 text-muted-foreground" />
-                        </div>
-                        <p className="text-sm text-muted-foreground font-medium">No messages yet</p>
-                        <p className="text-xs text-muted-foreground">Start the conversation by sending a message</p>
-                    </div>
-                 )}
-            </div>
+                   )}
+                   
+                   <div 
+                     className="h-1 w-full" 
+                     ref={(node) => {
+                         if (node && hasNextPage && !isFetchingNextPage) {
+                             const observer = new IntersectionObserver((entries) => {
+                                 if (entries[0].isIntersecting) {
+                                     fetchNextPage();
+                                 }
+                             });
+                             observer.observe(node);
+                             return () => observer.disconnect();
+                         }
+                     }}
+                   />
+                   
+                   {allMessages.length === 0 && !isFetchingNextPage && (
+                      <div className="flex flex-col items-center justify-center py-12 text-center opacity-50">
+                          <div className="bg-muted/30 p-4 rounded-full mb-3">
+                              <MessageSquare className="h-8 w-8 text-muted-foreground" />
+                          </div>
+                          <p className="text-sm text-muted-foreground font-medium">No messages yet</p>
+                          <p className="text-xs text-muted-foreground">Start the conversation by sending a message</p>
+                      </div>
+                   )}
+              </div>
+              </>
             ) : (
               <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground bg-muted/5 p-4 text-center">
                 {(() => {
