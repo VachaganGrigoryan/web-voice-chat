@@ -11,8 +11,13 @@
     "lint": "tsc --noEmit"
   },
   "dependencies": {
+    "@capacitor/android": "^8.2.0",
+    "@capacitor/camera": "^8.0.2",
+    "@capacitor/cli": "^8.2.0",
+    "@capacitor/core": "^8.2.0",
     "@google/genai": "^1.29.0",
     "@hookform/resolvers": "^5.2.2",
+    "@mozartec/capacitor-microphone": "^7.1.0",
     "@radix-ui/react-avatar": "^1.1.11",
     "@radix-ui/react-dialog": "^1.1.15",
     "@radix-ui/react-scroll-area": "^1.2.10",
@@ -25,6 +30,7 @@
     "@vitejs/plugin-react": "^5.0.4",
     "axios": "^1.13.6",
     "better-sqlite3": "^12.4.1",
+    "capacitor-voice-recorder": "^7.0.6",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",

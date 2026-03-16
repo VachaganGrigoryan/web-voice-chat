@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">voca</string>
+    <string name="title_activity_main">voca</string>
+    <string name="package_name">com.blackway.voca</string>
+    <string name="custom_url_scheme">com.blackway.voca</string>
+</resources>

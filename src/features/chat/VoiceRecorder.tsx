@@ -1,4 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { Capacitor } from '@capacitor/core';
+import { Microphone } from '@mozartec/capacitor-microphone';
 import { Button } from '@/components/ui/Button';
 import { Mic, Square, Loader2, Trash2, Send, StopCircle, Smile, Pause, Play } from 'lucide-react';
 import { getSocket } from '@/socket/socket';
@@ -72,8 +74,33 @@ export default function VoiceRecorder({ receiverId, onSendVoice, onSendText }: V
     socket?.emit(EVENTS.CLIENT_TYPING_STOP, { to: receiverId, receiver_id: receiverId });
   };
 
+  const ensureMicrophonePermission = async () => {
+    if (!Capacitor.isNativePlatform() || Capacitor.getPlatform() !== 'android') {
+      return true;
+    }
+
+    try {
+      const permissionStatus = await Microphone.checkPermissions();
+      if (permissionStatus.microphone === 'granted') {
+        return true;
+      }
+
+      const requestedStatus = await Microphone.requestPermissions();
+      return requestedStatus.microphone === 'granted';
+    } catch (error) {
+      console.warn('Failed to request native microphone permission:', error);
+      return true;
+    }
+  };
+
   const startRecording = async () => {
     try {
+      const hasPermission = await ensureMicrophonePermission();
+      if (!hasPermission) {
+        alert('Microphone permission is required to record voice messages.');
+        return;
+      }
+
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const mediaRecorder = new MediaRecorder(stream);
       mediaRecorderRef.current = mediaRecorder;
@@ -111,7 +138,7 @@ export default function VoiceRecorder({ receiverId, onSendVoice, onSendText }: V
 
     } catch (err) {
       console.error('Error accessing microphone:', err);
-      alert('Could not access microphone');
+      alert('Could not access microphone. Please allow microphone access in Android app settings.');
     }
   };
 
