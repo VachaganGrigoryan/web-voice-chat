@@ -1,0 +1,15 @@
+[
+  {
+    "relation": [
+      "delegate_permission/common.handle_all_urls",
+      "delegate_permission/common.get_login_creds"
+    ],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.blackway.voca",
+      "sha256_cert_fingerprints": [
+        "1A:64:1E:26:F0:2C:FB:18:B0:75:2E:24:89:6E:D3:03:20:11:F7:2E:48:60:C8:80:C8:1B:D5:41:DF:66:D5:BE"
+      ]
+    }
+  }
+]
