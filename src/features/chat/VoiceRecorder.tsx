@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Capacitor } from '@capacitor/core';
-import { Microphone } from '@mozartec/capacitor-microphone';
+import { VoiceRecorder as CapacitorVoiceRecorder } from 'capacitor-voice-recorder';
 import { Button } from '@/components/ui/Button';
 import { Mic, Square, Loader2, Trash2, Send, StopCircle, Smile, Pause, Play } from 'lucide-react';
 import { getSocket } from '@/socket/socket';
@@ -28,6 +28,8 @@ export default function VoiceRecorder({ receiverId, onSendVoice, onSendText }: V
   const [duration, setDuration] = useState(0);
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
+  const [audioMimeType, setAudioMimeType] = useState('audio/webm');
+  const [audioFileName, setAudioFileName] = useState('voice.webm');
   const [isPlayingPreview, setIsPlayingPreview] = useState(false);
   const [previewProgress, setPreviewProgress] = useState(0);
   const [text, setText] = useState('');
@@ -74,30 +76,52 @@ export default function VoiceRecorder({ receiverId, onSendVoice, onSendText }: V
     socket?.emit(EVENTS.CLIENT_TYPING_STOP, { to: receiverId, receiver_id: receiverId });
   };
 
-  const ensureMicrophonePermission = async () => {
-    if (!Capacitor.isNativePlatform() || Capacitor.getPlatform() !== 'android') {
-      return true;
-    }
+  const isNativeAndroid = Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android';
 
-    try {
-      const permissionStatus = await Microphone.checkPermissions();
-      if (permissionStatus.microphone === 'granted') {
-        return true;
-      }
+  const getFileExtension = (mimeType: string) => {
+    if (mimeType.includes('aac') || mimeType.includes('mp4')) return 'm4a';
+    if (mimeType.includes('mpeg') || mimeType.includes('mp3')) return 'mp3';
+    if (mimeType.includes('ogg')) return 'ogg';
+    if (mimeType.includes('wav')) return 'wav';
+    return 'webm';
+  };
 
-      const requestedStatus = await Microphone.requestPermissions();
-      return requestedStatus.microphone === 'granted';
-    } catch (error) {
-      console.warn('Failed to request native microphone permission:', error);
-      return true;
-    }
+  const blobFromBase64 = (base64: string, mimeType: string) => {
+    const binary = atob(base64);
+    const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
+    return new Blob([bytes], { type: mimeType });
   };
 
   const startRecording = async () => {
     try {
-      const hasPermission = await ensureMicrophonePermission();
-      if (!hasPermission) {
-        alert('Microphone permission is required to record voice messages.');
+      if (isNativeAndroid) {
+        const permission = await CapacitorVoiceRecorder.requestAudioRecordingPermission();
+        if (!permission.value) {
+          alert('Microphone permission is required to record voice messages.');
+          return;
+        }
+
+        const canRecord = await CapacitorVoiceRecorder.canDeviceVoiceRecord();
+        if (!canRecord.value) {
+          alert('This Android device cannot record audio.');
+          return;
+        }
+
+        await CapacitorVoiceRecorder.startRecording();
+        setAudioBlob(null);
+        setAudioMimeType('audio/aac');
+        setAudioFileName('voice.m4a');
+        setIsRecording(true);
+        setIsRecordingPaused(false);
+        isRecordingPausedRef.current = false;
+        setDuration(0);
+
+        timerRef.current = setInterval(() => {
+          setDuration(prev => prev + 1);
+        }, 1000);
+
+        const socket = getSocket();
+        socket?.emit(EVENTS.CLIENT_TYPING_START, { to: receiverId, receiver_id: receiverId });
         return;
       }
 
@@ -115,6 +139,8 @@ export default function VoiceRecorder({ receiverId, onSendVoice, onSendText }: V
       mediaRecorder.onstop = () => {
         const blob = new Blob(chunksRef.current, { type: 'audio/webm' });
         setAudioBlob(blob);
+        setAudioMimeType('audio/webm');
+        setAudioFileName('voice.webm');
         
         const socket = getSocket();
         socket?.emit(EVENTS.CLIENT_TYPING_STOP, { to: receiverId, receiver_id: receiverId });
@@ -138,33 +164,72 @@ export default function VoiceRecorder({ receiverId, onSendVoice, onSendText }: V
 
     } catch (err) {
       console.error('Error accessing microphone:', err);
-      alert('Could not access microphone. Please allow microphone access in Android app settings.');
+      alert('Could not start recording. Please allow microphone access and try again.');
     }
   };
 
-  const pauseRecording = () => {
-    if (mediaRecorderRef.current && isRecording && !isRecordingPaused) {
-      mediaRecorderRef.current.pause();
+  const pauseRecording = async () => {
+    if (!isRecording || isRecordingPaused) return;
+
+    try {
+      if (isNativeAndroid) {
+        await CapacitorVoiceRecorder.pauseRecording();
+      } else if (mediaRecorderRef.current) {
+        mediaRecorderRef.current.pause();
+      } else {
+        return;
+      }
+
       setIsRecordingPaused(true);
       isRecordingPausedRef.current = true;
       if (timerRef.current) clearInterval(timerRef.current);
+    } catch (err) {
+      console.error('Error pausing recording:', err);
     }
   };
 
-  const resumeRecording = () => {
-    if (mediaRecorderRef.current && isRecording && isRecordingPaused) {
-      mediaRecorderRef.current.resume();
+  const resumeRecording = async () => {
+    if (!isRecording || !isRecordingPaused) return;
+
+    try {
+      if (isNativeAndroid) {
+        await CapacitorVoiceRecorder.resumeRecording();
+      } else if (mediaRecorderRef.current) {
+        mediaRecorderRef.current.resume();
+      } else {
+        return;
+      }
+
       setIsRecordingPaused(false);
       isRecordingPausedRef.current = false;
       timerRef.current = setInterval(() => {
         setDuration(prev => prev + 1);
       }, 1000);
+    } catch (err) {
+      console.error('Error resuming recording:', err);
     }
   };
 
-  const stopRecording = () => {
-    if (mediaRecorderRef.current && isRecording) {
-      mediaRecorderRef.current.stop();
+  const stopRecording = async () => {
+    if (!isRecording) return;
+
+    try {
+      if (isNativeAndroid) {
+        const { value } = await CapacitorVoiceRecorder.stopRecording();
+        if (value.recordDataBase64) {
+          setAudioBlob(blobFromBase64(value.recordDataBase64, value.mimeType));
+        }
+        setAudioMimeType(value.mimeType);
+        setAudioFileName(`voice.${getFileExtension(value.mimeType)}`);
+        setDuration(Math.max(1, Math.round(value.msDuration / 1000)));
+        emitTypingStop();
+      } else if (mediaRecorderRef.current) {
+        mediaRecorderRef.current.stop();
+      }
+    } catch (err) {
+      console.error('Error stopping recording:', err);
+      alert('Failed to finish recording.');
+    } finally {
       setIsRecording(false);
       setIsRecordingPaused(false);
       isRecordingPausedRef.current = false;
@@ -172,9 +237,11 @@ export default function VoiceRecorder({ receiverId, onSendVoice, onSendText }: V
     }
   };
 
-  const cancelRecording = () => {
-    stopRecording();
+  const cancelRecording = async () => {
+    await stopRecording();
     setAudioBlob(null);
+    setAudioMimeType('audio/webm');
+    setAudioFileName('voice.webm');
     setDuration(0);
   };
 
@@ -194,7 +261,7 @@ export default function VoiceRecorder({ receiverId, onSendVoice, onSendText }: V
     
     setIsUploading(true);
     try {
-      const file = new File([audioBlob], 'voice.webm', { type: 'audio/webm' });
+      const file = new File([audioBlob], audioFileName, { type: audioMimeType });
       
       await onSendVoice({
         type: 'voice',
