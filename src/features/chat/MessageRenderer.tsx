@@ -12,17 +12,27 @@ import { MessageBubble, MessageContent } from './components/MessageShell';
 interface MessageRendererProps {
   message: ChatMessage;
   highlighted?: boolean;
+  groupedWithAbove?: boolean;
+  groupedWithBelow?: boolean;
   onMediaClick?: (type: 'image' | 'video', url: string) => void;
 }
 
 export const MessageRenderer: React.FC<MessageRendererProps> = ({
   message,
   highlighted = false,
+  groupedWithAbove = false,
+  groupedWithBelow = false,
   onMediaClick,
 }) => {
   if (message.isDeleted) {
     return (
-      <MessageBubble isOwn={message.isOwn} highlighted={highlighted} className="max-w-full min-w-0">
+      <MessageBubble
+        isOwn={message.isOwn}
+        highlighted={highlighted}
+        groupedWithAbove={groupedWithAbove}
+        groupedWithBelow={groupedWithBelow}
+        className="max-w-full min-w-0"
+      >
         <MessageContent className="italic text-muted-foreground">
           Message deleted
         </MessageContent>
@@ -32,19 +42,19 @@ export const MessageRenderer: React.FC<MessageRendererProps> = ({
 
   switch (message.kind) {
     case 'text':
-      return <TextMessageRenderer message={message} highlighted={highlighted} />;
+      return <TextMessageRenderer message={message} highlighted={highlighted} groupedWithAbove={groupedWithAbove} groupedWithBelow={groupedWithBelow} />;
     case 'image':
-      return <ImageMessageRenderer message={message} highlighted={highlighted} onMediaClick={onMediaClick} />;
+      return <ImageMessageRenderer message={message} highlighted={highlighted} groupedWithAbove={groupedWithAbove} groupedWithBelow={groupedWithBelow} onMediaClick={onMediaClick} />;
     case 'video':
-      return <VideoMessageRenderer message={message} highlighted={highlighted} onMediaClick={onMediaClick} />;
+      return <VideoMessageRenderer message={message} highlighted={highlighted} groupedWithAbove={groupedWithAbove} groupedWithBelow={groupedWithBelow} onMediaClick={onMediaClick} />;
     case 'audio':
-      return <AudioMessageRenderer message={message} highlighted={highlighted} />;
+      return <AudioMessageRenderer message={message} highlighted={highlighted} groupedWithAbove={groupedWithAbove} groupedWithBelow={groupedWithBelow} />;
     case 'system':
       return <SystemMessageRenderer message={message} />;
     case 'emoji':
-      return <EmojiMessageRenderer message={message} />;
+      return <EmojiMessageRenderer message={message} groupedWithAbove={groupedWithAbove} groupedWithBelow={groupedWithBelow} />;
     case 'sticker':
-      return <StickerMessageRenderer message={message} />;
+      return <StickerMessageRenderer message={message} groupedWithAbove={groupedWithAbove} groupedWithBelow={groupedWithBelow} />;
     default:
       return <div className="px-4 py-2 text-sm text-muted-foreground">Unknown message type</div>;
   }

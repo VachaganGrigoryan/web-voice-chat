@@ -1,13 +1,20 @@
 import React from 'react';
 import { Check, CheckCheck } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { formatMessageTime } from '@/utils/dateUtils';
+import { formatChatMessageTime } from '@/utils/dateUtils';
 import { ChatMessage } from '../types/message';
+
+export interface MessageMenuAnchor {
+  x: number;
+  y: number;
+  rect: DOMRect;
+  source: 'mouse' | 'touch';
+}
 
 interface MessageItemProps {
   isOwn: boolean;
   children: React.ReactNode;
-  onOpenMenu?: () => void;
+  onOpenMenu?: (anchor: MessageMenuAnchor) => void;
 }
 
 export const MessageItem: React.FC<MessageItemProps> = ({ isOwn, children, onOpenMenu }) => {
@@ -20,11 +27,17 @@ export const MessageItem: React.FC<MessageItemProps> = ({ isOwn, children, onOpe
     }
   };
 
-  const handleTouchStart = () => {
+  const handleTouchStart = (event: React.TouchEvent<HTMLDivElement>) => {
     if (!onOpenMenu) return;
     clearTouchTimer();
+    const rect = event.currentTarget.getBoundingClientRect();
     touchTimerRef.current = window.setTimeout(() => {
-      onOpenMenu();
+      onOpenMenu({
+        x: rect.left + rect.width / 2,
+        y: rect.top + rect.height / 2,
+        rect,
+        source: 'touch',
+      });
       touchTimerRef.current = null;
     }, 450);
   };
@@ -39,7 +52,12 @@ export const MessageItem: React.FC<MessageItemProps> = ({ isOwn, children, onOpe
         onOpenMenu
           ? (event) => {
               event.preventDefault();
-              onOpenMenu();
+              onOpenMenu({
+                x: event.clientX,
+                y: event.clientY,
+                rect: event.currentTarget.getBoundingClientRect(),
+                source: 'mouse',
+              });
             }
           : undefined
       }
@@ -56,20 +74,44 @@ export const MessageItem: React.FC<MessageItemProps> = ({ isOwn, children, onOpe
 interface MessageBubbleProps {
   isOwn: boolean;
   highlighted?: boolean;
+  groupedWithAbove?: boolean;
+  groupedWithBelow?: boolean;
   children: React.ReactNode;
   className?: string;
 }
 
-export const MessageBubble: React.FC<MessageBubbleProps> = ({ isOwn, highlighted, children, className }) => {
+export const MessageBubble: React.FC<MessageBubbleProps> = ({
+  isOwn,
+  highlighted,
+  groupedWithAbove = false,
+  groupedWithBelow = false,
+  children,
+  className,
+}) => {
   return (
     <div
       className={cn(
         "rounded-2xl px-1 py-1 shadow-sm overflow-hidden transition-all duration-300",
         isOwn
-          ? "bg-primary text-primary-foreground rounded-br-none"
+          ? "bg-primary text-primary-foreground"
           : highlighted
-          ? "bg-blue-100 border border-blue-300 rounded-bl-none dark:bg-blue-900/30 dark:border-blue-800"
-          : "bg-muted text-foreground rounded-bl-none border border-border",
+          ? "bg-blue-100 border border-blue-300 dark:bg-blue-900/30 dark:border-blue-800"
+          : "bg-muted text-foreground border border-border",
+        isOwn
+          ? groupedWithAbove
+            ? "rounded-tr-md"
+            : "rounded-tr-2xl"
+          : groupedWithAbove
+          ? "rounded-tl-md"
+          : "rounded-tl-2xl",
+        isOwn ? "rounded-tl-2xl rounded-bl-2xl" : "rounded-tr-2xl rounded-br-2xl",
+        isOwn
+          ? groupedWithBelow
+            ? "rounded-br-md"
+            : "rounded-br-none"
+          : groupedWithBelow
+          ? "rounded-bl-md"
+          : "rounded-bl-none",
         className
       )}
     >
@@ -99,9 +141,14 @@ export const MessageContent: React.FC<MessageContentProps> = ({ children, classN
 
 interface MessageMetaProps {
   message: ChatMessage;
+  showTimestamp?: boolean;
 }
 
-export const MessageMeta: React.FC<MessageMetaProps> = ({ message }) => {
+export const MessageMeta: React.FC<MessageMetaProps> = ({ message, showTimestamp = true }) => {
+  if (!showTimestamp) {
+    return null;
+  }
+
   return (
     <div
       className={cn(
@@ -111,7 +158,7 @@ export const MessageMeta: React.FC<MessageMetaProps> = ({ message }) => {
     >
       {message.isDeleted ? <span>deleted</span> : null}
       {!message.isDeleted && message.editedAt ? <span>edited</span> : null}
-      <span>{formatMessageTime(message.createdAt)}</span>
+      <span>{formatChatMessageTime(message.createdAt)}</span>
       {message.isOwn ? (
         <span
           className={cn(

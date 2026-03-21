@@ -5,11 +5,21 @@ import { StickerMessage } from '../types/message';
 
 interface StickerMessageRendererProps {
   message: StickerMessage;
+  groupedWithAbove?: boolean;
+  groupedWithBelow?: boolean;
 }
 
-export const StickerMessageRenderer: React.FC<StickerMessageRendererProps> = ({ message }) => {
+export const StickerMessageRenderer: React.FC<StickerMessageRendererProps> = ({
+  message,
+  groupedWithAbove = false,
+  groupedWithBelow = false,
+}) => {
   return (
-    <MessageBubble isOwn={message.isOwn}>
+    <MessageBubble
+      isOwn={message.isOwn}
+      groupedWithAbove={groupedWithAbove}
+      groupedWithBelow={groupedWithBelow}
+    >
       <MessageReplyPreview message={message} />
       <div className="p-1">
         <img

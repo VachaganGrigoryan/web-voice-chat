@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/Button';
 import { ScrollArea } from '@/components/ui/ScrollArea';
 import { Loader2, MessageSquareText, X } from 'lucide-react';
 import { ChatMessage } from '../types/message';
-import { MessageItem, MessageMeta } from './MessageShell';
+import { MessageItem, MessageMenuAnchor, MessageMeta } from './MessageShell';
 import { MessageRenderer } from '../MessageRenderer';
 
 interface ThreadPanelProps {
@@ -15,7 +15,7 @@ interface ThreadPanelProps {
   hasNextPage: boolean;
   fetchNextPage: () => void;
   onClose: () => void;
-  onOpenMenu: (message: ChatMessage) => void;
+  onOpenMenu: (message: ChatMessage, anchor: MessageMenuAnchor) => void;
   onMediaClick?: (type: 'image' | 'video', url: string) => void;
   composer?: React.ReactNode;
 }
@@ -68,7 +68,7 @@ export function ThreadPanel({
               <MessageSquareText className="h-3.5 w-3.5" />
               Original Message
             </div>
-            <MessageItem isOwn={rootMessage.isOwn} onOpenMenu={() => onOpenMenu(rootMessage)}>
+            <MessageItem isOwn={rootMessage.isOwn} onOpenMenu={(anchor) => onOpenMenu(rootMessage, anchor)}>
               <MessageRenderer message={rootMessage} onMediaClick={onMediaClick} />
               <MessageMeta message={rootMessage} />
             </MessageItem>
@@ -81,7 +81,11 @@ export function ThreadPanel({
               </div>
             ) : orderedMessages.length > 0 ? (
               orderedMessages.map((message) => (
-                <MessageItem key={message.id} isOwn={message.isOwn} onOpenMenu={() => onOpenMenu(message)}>
+                <MessageItem
+                  key={message.id}
+                  isOwn={message.isOwn}
+                  onOpenMenu={(anchor) => onOpenMenu(message, anchor)}
+                >
                   <MessageRenderer message={message} onMediaClick={onMediaClick} />
                   <MessageMeta message={message} />
                 </MessageItem>

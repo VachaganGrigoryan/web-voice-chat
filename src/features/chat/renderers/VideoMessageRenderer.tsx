@@ -8,16 +8,25 @@ import { MessageReplyPreview } from '../components/MessageReplyPreview';
 interface VideoMessageRendererProps {
   message: VideoMessage;
   highlighted?: boolean;
+  groupedWithAbove?: boolean;
+  groupedWithBelow?: boolean;
   onMediaClick?: (type: 'image' | 'video', url: string) => void;
 }
 
 export const VideoMessageRenderer: React.FC<VideoMessageRendererProps> = ({
   message,
   highlighted = false,
+  groupedWithAbove = false,
+  groupedWithBelow = false,
   onMediaClick,
 }) => {
   return (
-    <MessageBubble isOwn={message.isOwn} highlighted={highlighted}>
+    <MessageBubble
+      isOwn={message.isOwn}
+      highlighted={highlighted}
+      groupedWithAbove={groupedWithAbove}
+      groupedWithBelow={groupedWithBelow}
+    >
       <MessageReplyPreview message={message} />
       <div
         className={cn("p-1", onMediaClick && "cursor-pointer")}

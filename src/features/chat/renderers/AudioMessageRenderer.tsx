@@ -8,11 +8,23 @@ import { MessageReplyPreview } from '../components/MessageReplyPreview';
 interface AudioMessageRendererProps {
   message: AudioMessage;
   highlighted?: boolean;
+  groupedWithAbove?: boolean;
+  groupedWithBelow?: boolean;
 }
 
-export const AudioMessageRenderer: React.FC<AudioMessageRendererProps> = ({ message, highlighted = false }) => {
+export const AudioMessageRenderer: React.FC<AudioMessageRendererProps> = ({
+  message,
+  highlighted = false,
+  groupedWithAbove = false,
+  groupedWithBelow = false,
+}) => {
   return (
-    <MessageBubble isOwn={message.isOwn} highlighted={highlighted}>
+    <MessageBubble
+      isOwn={message.isOwn}
+      highlighted={highlighted}
+      groupedWithAbove={groupedWithAbove}
+      groupedWithBelow={groupedWithBelow}
+    >
       <MessageReplyPreview message={message} />
       <AudioPlayer
         src={message.audioUrl}

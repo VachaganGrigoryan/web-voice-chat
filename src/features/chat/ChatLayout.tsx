@@ -24,7 +24,7 @@ import { MessageActionsDialog } from './components/MessageActionsDialog';
 import { ThreadPanel } from './components/ThreadPanel';
 import { ThreadReplyBadge } from './components/ThreadReplyBadge';
 import { useChatAudioPlayerStore } from './audioPlayerStore';
-import { MessageItem, MessageMeta } from './components/MessageShell';
+import { MessageItem, MessageMenuAnchor, MessageMeta } from './components/MessageShell';
 import { ProfileTriggerButton } from './components/ProfileTriggerButton';
 import { cn } from '@/lib/utils';
 import { useTypingIndicator, useSocketStore } from '@/socket/socket';
@@ -101,6 +101,7 @@ export default function ChatLayout() {
   const pendingIncomingCount = incoming.filter(item => item.ping.status === 'pending').length;
   const [highlightedMessageIds, setHighlightedMessageIds] = useState<Set<string>>(new Set());
   const [activeMessage, setActiveMessage] = useState<ChatMessage | null>(null);
+  const [activeMessageAnchor, setActiveMessageAnchor] = useState<MessageMenuAnchor | null>(null);
   const [replyTarget, setReplyTarget] = useState<ComposerReplyTarget | null>(null);
   const [selectedThreadRootId, setSelectedThreadRootId] = useState<string | null>(null);
   
@@ -231,6 +232,7 @@ export default function ChatLayout() {
     readEmittedMessagesRef.current.clear();
     setHighlightedMessageIds(new Set());
     setActiveMessage(null);
+    setActiveMessageAnchor(null);
     setReplyTarget(null);
     setSelectedThreadRootId(null);
   }, [selectedUser]);
@@ -315,6 +317,17 @@ export default function ChatLayout() {
     selectedConversationUser.chat_allowed || selectedConversationUser.ping_status === 'accepted'
   );
 
+  const shouldGroupMessages = (current: ChatMessage, adjacent?: ChatMessage) => {
+    if (!adjacent) return false;
+    if (current.kind === 'system' || adjacent.kind === 'system') return false;
+    if (current.senderId !== adjacent.senderId) return false;
+    if (!isSameLocalDay(current.createdAt, adjacent.createdAt)) return false;
+
+    const currentTime = new Date(current.createdAt).getTime();
+    const adjacentTime = new Date(adjacent.createdAt).getTime();
+    return Math.abs(currentTime - adjacentTime) <= 60 * 1000;
+  };
+
   const getMessagePreviewText = (message: ChatMessage) => {
     if (message.isDeleted) return 'Message deleted';
     if (message.kind === 'text' || message.kind === 'emoji') return message.text;
@@ -332,16 +345,26 @@ export default function ChatLayout() {
     senderLabel: message.isOwn ? 'You' : displaySelectedUser || 'Contact',
   });
 
+  const closeMessageMenu = () => {
+    setActiveMessage(null);
+    setActiveMessageAnchor(null);
+  };
+
+  const openMessageMenu = (message: ChatMessage, anchor: MessageMenuAnchor) => {
+    setActiveMessage(message);
+    setActiveMessageAnchor(anchor);
+  };
+
   const handleSelectReplyMode = (mode: ComposerReplyTarget['mode']) => {
     if (!activeMessage) return;
     setReplyTarget(createReplyTarget(activeMessage, mode));
-    setActiveMessage(null);
+    closeMessageMenu();
   };
 
   const openThreadForMessage = (message: ChatMessage) => {
     const rootMessageId = message.isThreadRoot ? message.id : message.threadRootId || message.id;
     setSelectedThreadRootId(rootMessageId);
-    setActiveMessage(null);
+    closeMessageMenu();
   };
 
   const handleSendText = async (data: { receiver_id: string; text: string }) => {
@@ -395,13 +418,13 @@ export default function ChatLayout() {
   const handleEditMessage = async (text: string) => {
     if (!activeMessage) return;
     await editMessage({ messageId: activeMessage.id, text });
-    setActiveMessage(null);
+    closeMessageMenu();
   };
 
   const handleDeleteMessage = async () => {
     if (!activeMessage) return;
     await deleteMessage(activeMessage.id);
-    setActiveMessage(null);
+    closeMessageMenu();
   };
 
   const handleMediaClick = (type: 'image' | 'video', url: string) => {
@@ -434,8 +457,9 @@ export default function ChatLayout() {
       <UserSettings isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />
       <MessageActionsDialog
         open={!!activeMessage}
+        anchor={activeMessageAnchor}
         message={activeMessage}
-        onOpenChange={(open) => !open && setActiveMessage(null)}
+        onOpenChange={(open) => !open && closeMessageMenu()}
         onReply={() => handleSelectReplyMode('quote')}
         onThread={() => activeMessage && openThreadForMessage(activeMessage)}
         onEdit={handleEditMessage}
@@ -611,7 +635,7 @@ export default function ChatLayout() {
 
                 <div className="flex min-h-0 flex-1">
                   <div className="flex min-w-0 flex-1 flex-col">
-                    <div className="flex-1 overflow-y-auto flex flex-col-reverse p-4 space-y-reverse space-y-6 scroll-smooth overscroll-contain">
+                    <div className="flex-1 overflow-y-auto flex flex-col-reverse p-4 scroll-smooth overscroll-contain">
                    {/* Typing Indicator Bubble */}
                    {isTyping && (
                      <div className="self-start mb-2 ml-1 animate-in fade-in slide-in-from-bottom-2 duration-300">
@@ -626,12 +650,21 @@ export default function ChatLayout() {
                    )}
 
                  {mainChatMessages.map((message, index) => {
+                     const newerMessage = mainChatMessages[index - 1];
                      const nextMessage = mainChatMessages[index + 1];
                      const showDateHeader = !nextMessage ||
                        !isSameLocalDay(message.createdAt, nextMessage.createdAt);
+                     const groupedWithAbove = shouldGroupMessages(message, nextMessage);
+                     const groupedWithBelow = shouldGroupMessages(message, newerMessage);
 
                      return (
-                       <div key={message.id} className="flex flex-col w-full min-w-0">
+                       <div
+                         key={message.id}
+                         className={cn(
+                           "flex flex-col w-full min-w-0",
+                           groupedWithAbove ? "mt-px" : index === mainChatMessages.length - 1 ? "" : "mt-6"
+                         )}
+                       >
                          {message.kind === 'system' ? (
                            <MessageRenderer
                              message={message}
@@ -639,13 +672,15 @@ export default function ChatLayout() {
                              onMediaClick={handleMediaClick}
                            />
                          ) : (
-                           <MessageItem isOwn={message.isOwn} onOpenMenu={() => setActiveMessage(message)}>
+                           <MessageItem isOwn={message.isOwn} onOpenMenu={(anchor) => openMessageMenu(message, anchor)}>
                              <MessageRenderer
                                message={message}
                                highlighted={highlightedMessageIds.has(message.id)}
+                               groupedWithAbove={groupedWithAbove}
+                               groupedWithBelow={groupedWithBelow}
                                onMediaClick={handleMediaClick}
                              />
-                             <MessageMeta message={message} />
+                             <MessageMeta message={message} showTimestamp={!groupedWithBelow} />
                              {message.isThreadRoot || message.threadReplyCount > 0 ? (
                                <ThreadReplyBadge message={message} onOpenThread={() => openThreadForMessage(message)} />
                              ) : null}
@@ -715,7 +750,7 @@ export default function ChatLayout() {
                     hasNextPage={!!hasNextThreadPage}
                     fetchNextPage={fetchNextThreadPage}
                     onClose={() => setSelectedThreadRootId(null)}
-                    onOpenMenu={(message) => setActiveMessage(message)}
+                    onOpenMenu={(message, anchor) => openMessageMenu(message, anchor)}
                     onMediaClick={handleMediaClick}
                     composer={
                       selectedThreadRootMessage ? (
