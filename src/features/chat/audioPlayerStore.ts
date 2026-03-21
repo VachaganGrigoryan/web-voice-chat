@@ -21,9 +21,18 @@ interface ChatAudioPlayerState {
   shouldAutoplay: boolean;
   playedMessageIds: string[];
   setAudioElement: (audioElement: HTMLAudioElement | null) => void;
-  setQueue: (queueKey: string | null, queue: ChatAudioQueueItem[]) => void;
-  openTrack: (item: ChatAudioQueueItem, autoplay?: boolean) => void;
-  toggleTrack: (item: ChatAudioQueueItem) => void;
+  syncQueue: (queueKey: string, queue: ChatAudioQueueItem[]) => void;
+  openTrack: (
+    item: ChatAudioQueueItem,
+    autoplay?: boolean,
+    queueKey?: string | null,
+    queue?: ChatAudioQueueItem[]
+  ) => void;
+  toggleTrack: (
+    item: ChatAudioQueueItem,
+    queueKey?: string | null,
+    queue?: ChatAudioQueueItem[]
+  ) => void;
   play: () => void;
   pause: () => void;
   togglePlayback: () => void;
@@ -72,8 +81,12 @@ export const useChatAudioPlayerStore = create<ChatAudioPlayerState>((set, get) =
 
   setAudioElement: (audioElement) => set({ audioElement }),
 
-  setQueue: (queueKey, queue) =>
+  syncQueue: (queueKey, queue) =>
     set((state) => {
+      if (state.queueKey !== queueKey) {
+        return state;
+      }
+
       const nextActiveItem = state.activeItem
         ? queue.find((item) => item.id === state.activeItem?.id) ?? null
         : null;
@@ -104,10 +117,15 @@ export const useChatAudioPlayerStore = create<ChatAudioPlayerState>((set, get) =
       };
     }),
 
-  openTrack: (item, autoplay = true) =>
+  openTrack: (item, autoplay = true, queueKey = null, queue) =>
     set((state) => {
       const isSameTrack = state.activeItem?.id === item.id;
+      const nextQueue = queue ?? state.queue;
+      const nextQueueKey = queueKey ?? state.queueKey;
+
       return {
+        queueKey: nextQueueKey,
+        queue: nextQueue,
         activeItem: item,
         currentTime: isSameTrack ? state.currentTime : 0,
         duration: item.durationMs ? item.durationMs / 1000 : isSameTrack ? state.duration : 0,
@@ -117,15 +135,15 @@ export const useChatAudioPlayerStore = create<ChatAudioPlayerState>((set, get) =
       };
     }),
 
-  toggleTrack: (item) => {
-    const { activeItem, togglePlayback, openTrack } = get();
+  toggleTrack: (item, queueKey = null, queue) => {
+    const { activeItem, queueKey: activeQueueKey, togglePlayback, openTrack } = get();
 
-    if (activeItem?.id === item.id) {
+    if (activeItem?.id === item.id && activeQueueKey === (queueKey ?? activeQueueKey)) {
       togglePlayback();
       return;
     }
 
-    openTrack(item, true);
+    openTrack(item, true, queueKey, queue);
   },
 
   play: () => {

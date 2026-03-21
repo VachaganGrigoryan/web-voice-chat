@@ -12,6 +12,8 @@ interface AudioPlayerProps {
   durationMs?: number | null;
   className?: string;
   messageId?: string;
+  queueKey?: string | null;
+  queue?: ChatAudioQueueItem[];
   isRead?: boolean;
   isMe?: boolean;
   createdAt?: string;
@@ -22,6 +24,8 @@ export default function AudioPlayer({
   durationMs,
   className,
   messageId,
+  queueKey,
+  queue,
   isRead,
   isMe,
   createdAt,
@@ -54,13 +58,13 @@ export default function AudioPlayer({
       isMe,
     };
 
-    toggleTrack(item);
+    toggleTrack(item, queueKey, queue);
   };
 
   return (
     <div
       className={cn(
-        "flex items-center gap-3 rounded-2xl border border-black/5 p-2.5 pr-3.5 shadow-sm transition-colors",
+        "flex items-center gap-3 rounded-2xl border border-black/5 p-2.5 pr-3 shadow-sm transition-colors",
         isActive && "ring-1 ring-primary/30",
         className
       )}
@@ -88,25 +92,6 @@ export default function AudioPlayer({
       </Button>
 
       <div className="min-w-0 flex-1">
-        <div className="mb-1.5 flex items-center justify-between gap-2">
-          <span
-            className={cn(
-              "truncate text-[11px] font-semibold uppercase tracking-[0.18em]",
-              isMe ? "text-primary-foreground/70" : "text-muted-foreground"
-            )}
-          >
-            Voice
-          </span>
-          <span
-            className={cn(
-              "shrink-0 text-[11px] font-mono",
-              isMe ? "text-primary-foreground/80" : "text-muted-foreground"
-            )}
-          >
-            {formatDuration(visibleCurrentTime * 1000)} / {formatDuration(visibleDuration * 1000)}
-          </span>
-        </div>
-
         <div
           className={cn(
             "h-1.5 w-full overflow-hidden rounded-full",
@@ -120,6 +105,25 @@ export default function AudioPlayer({
             )}
             style={{ width: `${progress}%` }}
           />
+        </div>
+
+        <div className="mt-1.5 flex items-center justify-between gap-2">
+          <span
+            className={cn(
+              "truncate text-[11px] font-semibold uppercase tracking-[0.16em]",
+              isMe ? "text-primary-foreground/70" : "text-muted-foreground"
+            )}
+          >
+            Voice
+          </span>
+          <span
+            className={cn(
+              "shrink-0 text-[11px] font-mono",
+              isMe ? "text-primary-foreground/80" : "text-muted-foreground"
+            )}
+          >
+            {isActive ? formatDuration(visibleCurrentTime * 1000) : formatDuration(visibleDuration * 1000)}
+          </span>
         </div>
       </div>
     </div>
