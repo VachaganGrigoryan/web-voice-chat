@@ -36,12 +36,13 @@ import {
 } from '@/socket/socket';
 import { EVENTS } from '@/socket/events';
 import { useProfile } from '@/hooks/useProfile';
-import { AudioMessage, ChatMessage, ComposerReplyTarget } from './types/message';
+import { AudioMessage, ChatMessage, ComposerReplyTarget, ImageMessage, MediaClickPayload } from './types/message';
 import {
   formatMessageDay,
   isSameLocalDay,
 } from '@/utils/dateUtils';
 import { parseMessages } from './utils/messageParser';
+import { MediaViewerImageItem } from './MediaViewer';
 
 import { UserSearch } from './UserSearch';
 
@@ -52,6 +53,10 @@ type ConversationMenuState = {
   x: number;
   y: number;
 } | null;
+type MediaViewerState =
+  | { open: false; type: 'image' | 'video'; url: ''; items: MediaViewerImageItem[]; initialItemId: null; downloadName?: string }
+  | { open: true; type: 'image'; url: ''; items: MediaViewerImageItem[]; initialItemId: string; downloadName?: string }
+  | { open: true; type: 'video'; url: string; items: []; initialItemId: null; downloadName?: string };
 
 const MOBILE_BREAKPOINT = 768;
 const THREAD_PANEL_MODES: ThreadPanelMode[] = ['minimal', 'center', 'full'];
@@ -132,7 +137,13 @@ export default function ChatLayout() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isPingsOpen, setIsPingsOpen] = useState(false);
   const [isUserProfileOpen, setIsUserProfileOpen] = useState(false);
-  const [mediaViewer, setMediaViewer] = useState<{ open: boolean; type: 'image' | 'video'; url: string }>({ open: false, type: 'image', url: '' });
+  const [mediaViewer, setMediaViewer] = useState<MediaViewerState>({
+    open: false,
+    type: 'image',
+    url: '',
+    items: [],
+    initialItemId: null,
+  });
   const { profile } = useProfile();
   const { socket } = useSocketStore();
   const { incoming, outgoing, sendPing, acceptPing, declinePing, isSending: isSendingPing, isAccepting: isAcceptingPing, isDeclining: isDecliningPing } = usePings();
@@ -303,6 +314,30 @@ export default function ChatLayout() {
         isMe: message.isOwn,
       }));
   }, [selectedThreadRootMessage, threadMessages]);
+  const mainImageGallery = useMemo(
+    () =>
+      [...mainChatMessages]
+        .reverse()
+        .filter((message): message is ImageMessage => message.kind === 'image' && !!message.imageUrl)
+        .map((message) => ({
+          id: message.id,
+          url: message.imageUrl,
+          downloadName: message.fileName,
+        })),
+    [mainChatMessages]
+  );
+  const threadImageGallery = useMemo(
+    () =>
+      [selectedThreadRootMessage, ...threadMessages]
+        .filter((message): message is ImageMessage => !!message && message.kind === 'image' && !!message.imageUrl)
+        .sort((left, right) => new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime())
+        .map((message) => ({
+          id: message.id,
+          url: message.imageUrl,
+          downloadName: message.fileName,
+        })),
+    [selectedThreadRootMessage, threadMessages]
+  );
 
   const mainReadEmittedMessagesRef = useRef<Set<string>>(new Set());
   const threadReadEmittedMessagesRef = useRef<Set<string>>(new Set());
@@ -724,8 +759,44 @@ export default function ChatLayout() {
     await toggleReaction({ messageId, emoji });
   };
 
-  const handleMediaClick = (type: 'image' | 'video', url: string) => {
-    setMediaViewer({ open: true, type, url });
+  const openImageViewer = (items: MediaViewerImageItem[], initialItemId: string) => {
+    setMediaViewer({
+      open: true,
+      type: 'image',
+      url: '',
+      items,
+      initialItemId,
+    });
+  };
+  const handleMainMediaClick = (payload: MediaClickPayload) => {
+    if (payload.type === 'image') {
+      openImageViewer(mainImageGallery, payload.messageId);
+      return;
+    }
+
+    setMediaViewer({
+      open: true,
+      type: 'video',
+      url: payload.url,
+      items: [],
+      initialItemId: null,
+      downloadName: payload.downloadName,
+    });
+  };
+  const handleThreadMediaClick = (payload: MediaClickPayload) => {
+    if (payload.type === 'image') {
+      openImageViewer(threadImageGallery, payload.messageId);
+      return;
+    }
+
+    setMediaViewer({
+      open: true,
+      type: 'video',
+      url: payload.url,
+      items: [],
+      initialItemId: null,
+      downloadName: payload.downloadName,
+    });
   };
 
   const isMainChatNearBottom = (container: HTMLDivElement | null) => {
@@ -828,7 +899,18 @@ export default function ChatLayout() {
         open={mediaViewer.open}
         type={mediaViewer.type}
         url={mediaViewer.url}
-        onClose={() => setMediaViewer(prev => ({ ...prev, open: false }))}
+        items={mediaViewer.items}
+        initialItemId={mediaViewer.initialItemId}
+        downloadName={mediaViewer.downloadName}
+        onClose={() =>
+          setMediaViewer({
+            open: false,
+            type: 'image',
+            url: '',
+            items: [],
+            initialItemId: null,
+          })
+        }
       />
       <PingsModal 
         isOpen={isPingsOpen} 
@@ -1113,7 +1195,7 @@ export default function ChatLayout() {
                            <MessageRenderer
                              message={message}
                              highlighted={highlightedMessageIds.has(message.id)}
-                             onMediaClick={handleMediaClick}
+                             onMediaClick={handleMainMediaClick}
                            />
                          ) : (
                            <MessageItem
@@ -1123,10 +1205,10 @@ export default function ChatLayout() {
                            >
                             <MessageRenderer
                               message={message}
-                              highlighted={highlightedMessageIds.has(message.id)}
+                             highlighted={highlightedMessageIds.has(message.id)}
                               groupedWithAbove={groupedWithAbove}
                               groupedWithBelow={groupedWithBelow}
-                              onMediaClick={handleMediaClick}
+                              onMediaClick={handleMainMediaClick}
                               audioQueueKey={mainAudioQueueKey}
                               audioQueue={mainAudioQueue}
                               bubbleFooter={
@@ -1269,7 +1351,7 @@ export default function ChatLayout() {
 
                       highlightReadMessages(unreadIds);
                     }}
-                    onMediaClick={handleMediaClick}
+                    onMediaClick={handleThreadMediaClick}
                     audioQueueKey={threadAudioQueueKey}
                     audioQueue={threadAudioQueue}
                     isMobile={isMobileViewport}

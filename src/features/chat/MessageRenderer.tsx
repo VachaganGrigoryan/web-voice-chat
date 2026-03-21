@@ -1,5 +1,5 @@
 import React from 'react';
-import { ChatMessage } from './types/message';
+import { ChatMessage, MediaClickPayload } from './types/message';
 import { AudioMessageRenderer } from './renderers/AudioMessageRenderer';
 import { EmojiMessageRenderer } from './renderers/EmojiMessageRenderer';
 import { ImageMessageRenderer } from './renderers/ImageMessageRenderer';
@@ -15,7 +15,7 @@ interface MessageRendererProps {
   highlighted?: boolean;
   groupedWithAbove?: boolean;
   groupedWithBelow?: boolean;
-  onMediaClick?: (type: 'image' | 'video', url: string) => void;
+  onMediaClick?: (payload: MediaClickPayload) => void;
   bubbleFooter?: React.ReactNode;
   audioQueueKey?: string | null;
   audioQueue?: ChatAudioQueueItem[];

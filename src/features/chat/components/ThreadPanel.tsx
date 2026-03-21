@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/Button';
 import { ArrowDown, Loader2, MessageSquareText, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { formatMessageDay, isSameLocalDay } from '@/utils/dateUtils';
-import { ChatMessage } from '../types/message';
+import { ChatMessage, MediaClickPayload } from '../types/message';
 import { DaySeparator, MessageItem, MessageMenuAnchor, MessageMeta } from './MessageShell';
 import { MessageReactions } from './MessageReactions';
 import { MessageRenderer } from '../MessageRenderer';
@@ -23,7 +23,7 @@ interface ThreadPanelProps {
   onToggleReaction: (messageId: string, emoji: string) => Promise<void>;
   isTogglingReaction?: boolean;
   onVisibleUnreadMessages?: (messageIds: string[]) => void;
-  onMediaClick?: (type: 'image' | 'video', url: string) => void;
+  onMediaClick?: (payload: MediaClickPayload) => void;
   audioQueueKey?: string | null;
   audioQueue?: ChatAudioQueueItem[];
   composer?: React.ReactNode;

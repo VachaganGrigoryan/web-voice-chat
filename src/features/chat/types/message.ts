@@ -111,3 +111,10 @@ export interface ComposerReplyTarget {
   previewText: string;
   senderLabel: string;
 }
+
+export interface MediaClickPayload {
+  type: 'image' | 'video';
+  messageId: string;
+  url: string;
+  downloadName?: string;
+}

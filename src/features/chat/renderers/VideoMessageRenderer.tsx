@@ -2,7 +2,7 @@ import React from 'react';
 import { cn } from '@/lib/utils';
 import { MessageBubble, MessageContent } from '../components/MessageShell';
 import { MessageMarkdown } from '../components/MessageMarkdown';
-import { VideoMessage } from '../types/message';
+import { MediaClickPayload, VideoMessage } from '../types/message';
 import { MessageReplyPreview } from '../components/MessageReplyPreview';
 
 interface VideoMessageRendererProps {
@@ -10,7 +10,7 @@ interface VideoMessageRendererProps {
   highlighted?: boolean;
   groupedWithAbove?: boolean;
   groupedWithBelow?: boolean;
-  onMediaClick?: (type: 'image' | 'video', url: string) => void;
+  onMediaClick?: (payload: MediaClickPayload) => void;
   bubbleFooter?: React.ReactNode;
 }
 
@@ -32,7 +32,17 @@ export const VideoMessageRenderer: React.FC<VideoMessageRendererProps> = ({
       <MessageReplyPreview message={message} />
       <div
         className={cn("p-1", onMediaClick && "cursor-pointer")}
-        onClick={onMediaClick ? () => onMediaClick('video', message.videoUrl) : undefined}
+        onClick={
+          onMediaClick
+            ? () =>
+                onMediaClick({
+                  type: 'video',
+                  messageId: message.id,
+                  url: message.videoUrl,
+                  downloadName: message.fileName,
+                })
+            : undefined
+        }
       >
         <video src={message.videoUrl} className="max-w-full max-h-64 rounded-lg object-contain" />
       </div>
