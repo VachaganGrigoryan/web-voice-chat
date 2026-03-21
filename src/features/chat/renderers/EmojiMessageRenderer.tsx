@@ -7,12 +7,14 @@ interface EmojiMessageRendererProps {
   message: EmojiMessage;
   groupedWithAbove?: boolean;
   groupedWithBelow?: boolean;
+  bubbleFooter?: React.ReactNode;
 }
 
 export const EmojiMessageRenderer: React.FC<EmojiMessageRendererProps> = ({
   message,
   groupedWithAbove = false,
   groupedWithBelow = false,
+  bubbleFooter,
 }) => {
   return (
     <MessageBubble
@@ -23,6 +25,7 @@ export const EmojiMessageRenderer: React.FC<EmojiMessageRendererProps> = ({
     >
       <MessageReplyPreview message={message} />
       <div className="px-4 py-2 text-4xl">{message.text}</div>
+      {bubbleFooter}
     </MessageBubble>
   );
 };

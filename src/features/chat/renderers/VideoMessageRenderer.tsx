@@ -11,6 +11,7 @@ interface VideoMessageRendererProps {
   groupedWithAbove?: boolean;
   groupedWithBelow?: boolean;
   onMediaClick?: (type: 'image' | 'video', url: string) => void;
+  bubbleFooter?: React.ReactNode;
 }
 
 export const VideoMessageRenderer: React.FC<VideoMessageRendererProps> = ({
@@ -19,6 +20,7 @@ export const VideoMessageRenderer: React.FC<VideoMessageRendererProps> = ({
   groupedWithAbove = false,
   groupedWithBelow = false,
   onMediaClick,
+  bubbleFooter,
 }) => {
   return (
     <MessageBubble
@@ -39,6 +41,7 @@ export const VideoMessageRenderer: React.FC<VideoMessageRendererProps> = ({
           <MessageMarkdown text={message.caption} isOwn={message.isOwn} />
         </MessageContent>
       ) : null}
+      {bubbleFooter}
     </MessageBubble>
   );
 };

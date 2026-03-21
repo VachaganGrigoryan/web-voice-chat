@@ -10,7 +10,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/Dialog';
-import { formatMessageDateTime } from '@/utils/dateUtils';
+import { formatMessageDateTime, toLocalBrowserDate } from '@/utils/dateUtils';
 import { cn } from '@/lib/utils';
 import { ChatMessage } from '../types/message';
 import { MessageMenuAnchor } from './MessageShell';
@@ -43,6 +43,7 @@ const MENU_WIDTH = 220;
 const MOBILE_WIDTH = 320;
 const DESKTOP_GAP = 12;
 const VIEWPORT_PADDING = 12;
+const EDIT_WINDOW_MS = 15 * 60 * 1000;
 
 const getCopyText = (message: ChatMessage) => {
   if (message.isDeleted) return '';
@@ -110,6 +111,21 @@ function getPanelStyle(anchor: MessageMenuAnchor | null, view: DialogView) {
     left,
     top,
   } as const;
+}
+
+function canEditMessage(message: ChatMessage | null): boolean {
+  if (!message || !message.isOwn || message.kind !== 'text' || message.isDeleted) {
+    return false;
+  }
+
+  const createdAt = toLocalBrowserDate(message.createdAt);
+  const createdAtMs = createdAt.getTime();
+
+  if (Number.isNaN(createdAtMs)) {
+    return false;
+  }
+
+  return Date.now() - createdAtMs <= EDIT_WINDOW_MS;
 }
 
 const ActionButton = ({
@@ -206,8 +222,14 @@ export function MessageActionsDialog({
   const canReply = !!message && message.kind !== 'system' && !message.isDeleted;
   const canThread = canReply;
   const canCopy = !!copyText;
-  const canEdit = !!message && message.isOwn && message.kind === 'text' && !message.isDeleted;
+  const canEdit = canEditMessage(message);
   const canDelete = !!message && message.kind !== 'system' && !message.isDeleted;
+
+  useEffect(() => {
+    if (view === 'edit' && !canEdit) {
+      setView('actions');
+    }
+  }, [canEdit, view]);
 
   const actions = useMemo<ActionItem[]>(() => {
     if (!message) return [];

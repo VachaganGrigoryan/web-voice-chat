@@ -7,12 +7,14 @@ interface StickerMessageRendererProps {
   message: StickerMessage;
   groupedWithAbove?: boolean;
   groupedWithBelow?: boolean;
+  bubbleFooter?: React.ReactNode;
 }
 
 export const StickerMessageRenderer: React.FC<StickerMessageRendererProps> = ({
   message,
   groupedWithAbove = false,
   groupedWithBelow = false,
+  bubbleFooter,
 }) => {
   return (
     <MessageBubble
@@ -29,6 +31,7 @@ export const StickerMessageRenderer: React.FC<StickerMessageRendererProps> = ({
           referrerPolicy="no-referrer"
         />
       </div>
+      {bubbleFooter}
     </MessageBubble>
   );
 };

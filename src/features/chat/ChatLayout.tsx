@@ -24,7 +24,7 @@ import { MessageActionsDialog } from './components/MessageActionsDialog';
 import { ThreadPanel } from './components/ThreadPanel';
 import { ThreadReplyBadge } from './components/ThreadReplyBadge';
 import { useChatAudioPlayerStore } from './audioPlayerStore';
-import { MessageItem, MessageMenuAnchor, MessageMeta } from './components/MessageShell';
+import { MessageBubbleFooter, MessageItem, MessageMenuAnchor, MessageMeta } from './components/MessageShell';
 import { ProfileTriggerButton } from './components/ProfileTriggerButton';
 import { cn } from '@/lib/utils';
 import {
@@ -1085,19 +1085,26 @@ export default function ChatLayout() {
                              onOpenMenu={(anchor) => openMessageMenu(message, anchor, 'main')}
                              openMenuOnClick={!!activeMessage}
                            >
-                             <MessageRenderer
-                               message={message}
-                               highlighted={highlightedMessageIds.has(message.id)}
-                               groupedWithAbove={groupedWithAbove}
-                               groupedWithBelow={groupedWithBelow}
-                               onMediaClick={handleMediaClick}
-                             />
-                             <MessageMeta message={message} showTimestamp={!groupedWithBelow} />
-                             {message.isThreadRoot || message.threadReplyCount > 0 ? (
-                               <ThreadReplyBadge message={message} onOpenThread={() => openThreadForMessage(message)} />
-                             ) : null}
-                           </MessageItem>
-                         )}
+                            <MessageRenderer
+                              message={message}
+                              highlighted={highlightedMessageIds.has(message.id)}
+                              groupedWithAbove={groupedWithAbove}
+                              groupedWithBelow={groupedWithBelow}
+                              onMediaClick={handleMediaClick}
+                              bubbleFooter={
+                                message.isThreadRoot || message.threadReplyCount > 0 ? (
+                                  <MessageBubbleFooter>
+                                    <ThreadReplyBadge
+                                      message={message}
+                                      onOpenThread={() => openThreadForMessage(message)}
+                                    />
+                                  </MessageBubbleFooter>
+                                ) : undefined
+                              }
+                            />
+                            <MessageMeta message={message} showTimestamp={!groupedWithBelow} />
+                          </MessageItem>
+                        )}
                          
                          {showDateHeader && (
                            <div className="flex justify-center my-6">

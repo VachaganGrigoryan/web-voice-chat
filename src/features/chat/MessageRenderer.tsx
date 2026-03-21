@@ -15,6 +15,7 @@ interface MessageRendererProps {
   groupedWithAbove?: boolean;
   groupedWithBelow?: boolean;
   onMediaClick?: (type: 'image' | 'video', url: string) => void;
+  bubbleFooter?: React.ReactNode;
 }
 
 export const MessageRenderer: React.FC<MessageRendererProps> = ({
@@ -23,6 +24,7 @@ export const MessageRenderer: React.FC<MessageRendererProps> = ({
   groupedWithAbove = false,
   groupedWithBelow = false,
   onMediaClick,
+  bubbleFooter,
 }) => {
   if (message.isDeleted && !message.isOwn) {
     return (
@@ -41,25 +43,26 @@ export const MessageRenderer: React.FC<MessageRendererProps> = ({
             deleted
           </span>
         </MessageContent>
+        {bubbleFooter}
       </MessageBubble>
     );
   }
 
   switch (message.kind) {
     case 'text':
-      return <TextMessageRenderer message={message} highlighted={highlighted} groupedWithAbove={groupedWithAbove} groupedWithBelow={groupedWithBelow} />;
+      return <TextMessageRenderer message={message} highlighted={highlighted} groupedWithAbove={groupedWithAbove} groupedWithBelow={groupedWithBelow} bubbleFooter={bubbleFooter} />;
     case 'image':
-      return <ImageMessageRenderer message={message} highlighted={highlighted} groupedWithAbove={groupedWithAbove} groupedWithBelow={groupedWithBelow} onMediaClick={onMediaClick} />;
+      return <ImageMessageRenderer message={message} highlighted={highlighted} groupedWithAbove={groupedWithAbove} groupedWithBelow={groupedWithBelow} onMediaClick={onMediaClick} bubbleFooter={bubbleFooter} />;
     case 'video':
-      return <VideoMessageRenderer message={message} highlighted={highlighted} groupedWithAbove={groupedWithAbove} groupedWithBelow={groupedWithBelow} onMediaClick={onMediaClick} />;
+      return <VideoMessageRenderer message={message} highlighted={highlighted} groupedWithAbove={groupedWithAbove} groupedWithBelow={groupedWithBelow} onMediaClick={onMediaClick} bubbleFooter={bubbleFooter} />;
     case 'audio':
-      return <AudioMessageRenderer message={message} highlighted={highlighted} groupedWithAbove={groupedWithAbove} groupedWithBelow={groupedWithBelow} />;
+      return <AudioMessageRenderer message={message} highlighted={highlighted} groupedWithAbove={groupedWithAbove} groupedWithBelow={groupedWithBelow} bubbleFooter={bubbleFooter} />;
     case 'system':
       return <SystemMessageRenderer message={message} />;
     case 'emoji':
-      return <EmojiMessageRenderer message={message} groupedWithAbove={groupedWithAbove} groupedWithBelow={groupedWithBelow} />;
+      return <EmojiMessageRenderer message={message} groupedWithAbove={groupedWithAbove} groupedWithBelow={groupedWithBelow} bubbleFooter={bubbleFooter} />;
     case 'sticker':
-      return <StickerMessageRenderer message={message} groupedWithAbove={groupedWithAbove} groupedWithBelow={groupedWithBelow} />;
+      return <StickerMessageRenderer message={message} groupedWithAbove={groupedWithAbove} groupedWithBelow={groupedWithBelow} bubbleFooter={bubbleFooter} />;
     default:
       return <div className="px-4 py-2 text-sm text-muted-foreground">Unknown message type</div>;
   }

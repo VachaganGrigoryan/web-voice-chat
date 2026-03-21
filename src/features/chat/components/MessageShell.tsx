@@ -163,6 +163,27 @@ export const MessageContent: React.FC<MessageContentProps> = ({ children, classN
   );
 };
 
+interface MessageBubbleFooterProps {
+  children: React.ReactNode;
+  className?: string;
+}
+
+export const MessageBubbleFooter: React.FC<MessageBubbleFooterProps> = ({
+  children,
+  className,
+}) => {
+  return (
+    <div
+      className={cn(
+        "px-2 pb-2 pt-1",
+        className
+      )}
+    >
+      {children}
+    </div>
+  );
+};
+
 interface MessageMetaProps {
   message: ChatMessage;
   showTimestamp?: boolean;

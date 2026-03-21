@@ -10,6 +10,7 @@ interface AudioMessageRendererProps {
   highlighted?: boolean;
   groupedWithAbove?: boolean;
   groupedWithBelow?: boolean;
+  bubbleFooter?: React.ReactNode;
 }
 
 export const AudioMessageRenderer: React.FC<AudioMessageRendererProps> = ({
@@ -17,6 +18,7 @@ export const AudioMessageRenderer: React.FC<AudioMessageRendererProps> = ({
   highlighted = false,
   groupedWithAbove = false,
   groupedWithBelow = false,
+  bubbleFooter,
 }) => {
   return (
     <MessageBubble
@@ -38,6 +40,7 @@ export const AudioMessageRenderer: React.FC<AudioMessageRendererProps> = ({
           message.isOwn ? "bg-primary-foreground/10" : "bg-background/50"
         )}
       />
+      {bubbleFooter}
     </MessageBubble>
   );
 };

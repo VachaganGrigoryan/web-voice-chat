@@ -9,6 +9,7 @@ interface TextMessageRendererProps {
   highlighted?: boolean;
   groupedWithAbove?: boolean;
   groupedWithBelow?: boolean;
+  bubbleFooter?: React.ReactNode;
 }
 
 export const TextMessageRenderer: React.FC<TextMessageRendererProps> = ({
@@ -16,6 +17,7 @@ export const TextMessageRenderer: React.FC<TextMessageRendererProps> = ({
   highlighted = false,
   groupedWithAbove = false,
   groupedWithBelow = false,
+  bubbleFooter,
 }) => {
   return (
     <MessageBubble
@@ -29,6 +31,7 @@ export const TextMessageRenderer: React.FC<TextMessageRendererProps> = ({
       <MessageContent>
         <MessageMarkdown text={message.text} isOwn={message.isOwn} />
       </MessageContent>
+      {bubbleFooter}
     </MessageBubble>
   );
 };
