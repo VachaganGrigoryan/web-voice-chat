@@ -15,8 +15,10 @@ interface ThreadPanelProps {
   isFetchingNextPage: boolean;
   hasNextPage: boolean;
   fetchNextPage: () => void;
+  currentUserId?: string | null;
   onClose: () => void;
   onOpenMenu: (message: ChatMessage, anchor: MessageMenuAnchor) => void;
+  onVisibleUnreadMessages?: (messageIds: string[]) => void;
   onMediaClick?: (type: 'image' | 'video', url: string) => void;
   composer?: React.ReactNode;
   isMobile?: boolean;
@@ -33,8 +35,10 @@ export function ThreadPanel({
   isFetchingNextPage,
   hasNextPage,
   fetchNextPage,
+  currentUserId,
   onClose,
   onOpenMenu,
+  onVisibleUnreadMessages,
   onMediaClick,
   composer,
   isMobile = false,
@@ -44,6 +48,7 @@ export function ThreadPanel({
 }: ThreadPanelProps) {
   const BOTTOM_THRESHOLD = 80;
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+  const messageElementRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const pendingInitialScrollRef = useRef(false);
   const activeRootIdRef = useRef<string | null>(null);
   const latestMessageIdRef = useRef<string | null>(null);
@@ -93,6 +98,27 @@ export function ThreadPanel({
     });
   };
 
+  const emitVisibleUnreadMessages = () => {
+    if (!onVisibleUnreadMessages || !scrollContainerRef.current) {
+      return;
+    }
+
+    const containerRect = scrollContainerRef.current.getBoundingClientRect();
+    const visibleIds = threadReplyMessages
+      .filter((message) => message.receiverId === currentUserId && message.status !== 'read')
+      .filter((message) => {
+        const element = messageElementRefs.current.get(message.id);
+        if (!element) return false;
+        const rect = element.getBoundingClientRect();
+        return rect.bottom > containerRect.top && rect.top < containerRect.bottom;
+      })
+      .map((message) => message.id);
+
+    if (visibleIds.length > 0) {
+      onVisibleUnreadMessages(visibleIds);
+    }
+  };
+
   useEffect(() => {
     if (!open || !rootMessage) {
       activeRootIdRef.current = null;
@@ -129,6 +155,7 @@ export function ThreadPanel({
         container.scrollTop = container.scrollHeight;
         isNearBottomRef.current = true;
         pendingInitialScrollRef.current = false;
+        emitVisibleUnreadMessages();
       });
     });
 
@@ -168,6 +195,19 @@ export function ThreadPanel({
     setPendingNewMessageCount((current) => current + 1);
   }, [open, rootMessage, isLoading, threadReplyMessages]);
 
+  useEffect(() => {
+    if (!open || !rootMessage || isLoading) {
+      return;
+    }
+
+    let frame = 0;
+    frame = window.requestAnimationFrame(() => {
+      emitVisibleUnreadMessages();
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [open, rootMessage, isLoading, threadReplyMessages, onVisibleUnreadMessages, currentUserId]);
+
   if (!open || !rootMessage) {
     return null;
   }
@@ -206,6 +246,7 @@ export function ThreadPanel({
           if (nextIsNearBottom) {
             setPendingNewMessageCount(0);
           }
+          emitVisibleUnreadMessages();
         }}
       >
         <div className="p-4">
@@ -241,6 +282,13 @@ export function ThreadPanel({
                 return (
                   <div
                     key={message.id}
+                    ref={(node) => {
+                      if (node) {
+                        messageElementRefs.current.set(message.id, node);
+                      } else {
+                        messageElementRefs.current.delete(message.id);
+                      }
+                    }}
                     className={cn(
                       'flex flex-col w-full min-w-0',
                       groupedWithAbove ? 'mt-px' : index === 0 ? '' : 'mt-6'

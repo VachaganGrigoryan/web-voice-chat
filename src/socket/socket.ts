@@ -7,6 +7,22 @@ import { MessageDoc, MessageReactionsUpdate, ThreadSummary } from '@/api/types';
 import { socketClient } from './socketClient';
 import { useAuthStore } from '@/store/authStore';
 
+export type MessageStatusScope = 'main' | 'thread';
+
+export interface MessageStatusPayload {
+  message_id?: string;
+  message_ids?: string[];
+  status: 'sent' | 'delivered' | 'read';
+  conversation_id?: string;
+  peer_user_id?: string;
+  scope?: MessageStatusScope;
+  thread_root_id?: string | null;
+  updated_at?: string;
+  delivered_at?: string | null;
+  read_at?: string | null;
+  user_id?: string;
+}
+
 interface SocketState {
   socket: Socket | null;
   isConnected: boolean;
@@ -347,6 +363,100 @@ const updateThreadUnreadCount = (
   );
 };
 
+const updateConversationStatuses = (
+  queryClient: ReturnType<typeof useQueryClient>,
+  messageIds: string[],
+  status: MessageStatusPayload['status']
+) => {
+  const messageIdSet = new Set(messageIds);
+  queryClient.setQueryData(['conversations'], (old: any) => {
+    if (!old?.pages) return old;
+
+    let changed = false;
+    const pages = old.pages.map((page: any) => ({
+      ...page,
+      data: (page.data || []).map((conversation: any) => {
+        if (!conversation.last_message?.id || !messageIdSet.has(conversation.last_message.id)) {
+          return conversation;
+        }
+
+        changed = true;
+        return {
+          ...conversation,
+          last_message: {
+            ...conversation.last_message,
+            status,
+          },
+        };
+      }),
+    }));
+
+    return changed ? { ...old, pages } : old;
+  });
+};
+
+const getMessageStatusIds = (payload: MessageStatusPayload) => {
+  const ids = new Set<string>();
+  if (payload.message_id) {
+    ids.add(payload.message_id);
+  }
+  for (const id of payload.message_ids || []) {
+    if (id) {
+      ids.add(id);
+    }
+  }
+  return [...ids];
+};
+
+export const applyMessageStatusUpdateToCaches = (
+  queryClient: ReturnType<typeof useQueryClient>,
+  payload: MessageStatusPayload
+) => {
+  const messageIds = getMessageStatusIds(payload);
+  if (!messageIds.length) {
+    return false;
+  }
+
+  const messageIdSet = new Set(messageIds);
+  const statusAt =
+    payload.status === 'read'
+      ? payload.read_at || payload.updated_at || new Date().toISOString()
+      : payload.delivered_at || payload.updated_at || new Date().toISOString();
+
+  const updateStatus = (message: MessageDoc): MessageDoc => ({
+    ...message,
+    status: payload.status,
+    delivered_at:
+      payload.status === 'delivered'
+        ? payload.delivered_at || payload.updated_at || message.delivered_at
+        : message.delivered_at,
+    read_at: payload.status === 'read' ? payload.read_at || payload.updated_at || message.read_at : message.read_at,
+    updated_at: statusAt,
+  });
+
+  updateMessageAcrossCacheGroup(
+    queryClient,
+    'messages',
+    (message) => messageIdSet.has(message.id),
+    updateStatus
+  );
+
+  updateMessageAcrossCacheGroup(
+    queryClient,
+    'threadMessages',
+    (message) => messageIdSet.has(message.id),
+    updateStatus
+  );
+
+  if (payload.status === 'read' && payload.scope === 'thread' && payload.thread_root_id) {
+    updateThreadUnreadCount(queryClient, payload.thread_root_id, () => 0);
+  }
+
+  updateConversationStatuses(queryClient, messageIds, payload.status);
+
+  return true;
+};
+
 const updateReactionCaches = (
   queryClient: ReturnType<typeof useQueryClient>,
   payload: MessageReactionsUpdate
@@ -577,8 +687,12 @@ export const useRealtimeMessages = (
       }
     };
 
-    const handleMessageStatus = ({ message_id, status }: { message_id: string, status: 'delivered' | 'read' }) => {
-      queryClient.invalidateQueries({ queryKey: ['messages'] });
+    const handleMessageStatus = (payload: MessageStatusPayload) => {
+      const handled = applyMessageStatusUpdateToCaches(queryClient, payload);
+      if (!handled) {
+        queryClient.invalidateQueries({ queryKey: ['messages'] });
+        queryClient.invalidateQueries({ queryKey: ['threadMessages'] });
+      }
     };
 
     const handleMessageEdited = (message: MessageDoc) => {

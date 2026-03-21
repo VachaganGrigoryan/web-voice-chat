@@ -3,7 +3,7 @@ import { useChat, useConversations, useThreadMessages } from '@/hooks/useChat';
 import { usePings } from '@/hooks/usePings';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '@/store/authStore';
-import { Conversation } from '@/api/types';
+import { Conversation, MessageDoc } from '@/api/types';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { ScrollArea } from '@/components/ui/ScrollArea';
@@ -11,7 +11,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/Avatar';
 import { Separator } from '@/components/ui/Separator';
 import { LogOut, User, MessageSquare, Plus, Loader2, Mic, ArrowDown, ArrowLeft, Check, CheckCheck, Bell, Clock, UserPlus, X } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { authApi } from '@/api/endpoints';
+import { authApi, messagesApi } from '@/api/endpoints';
 import VoiceRecorder from './VoiceRecorder';
 import MediaComposer from './MediaComposer';
 import { MessageRenderer } from './MessageRenderer';
@@ -27,7 +27,12 @@ import { useChatAudioPlayerStore } from './audioPlayerStore';
 import { MessageItem, MessageMenuAnchor, MessageMeta } from './components/MessageShell';
 import { ProfileTriggerButton } from './components/ProfileTriggerButton';
 import { cn } from '@/lib/utils';
-import { useTypingIndicator, useSocketStore } from '@/socket/socket';
+import {
+  applyMessageStatusUpdateToCaches,
+  MessageStatusPayload,
+  useTypingIndicator,
+  useSocketStore,
+} from '@/socket/socket';
 import { EVENTS } from '@/socket/events';
 import { useProfile } from '@/hooks/useProfile';
 import { AudioMessage, ChatMessage, ComposerReplyTarget } from './types/message';
@@ -41,6 +46,11 @@ import { UserSearch } from './UserSearch';
 
 type ThreadPanelMode = 'minimal' | 'center' | 'full';
 type ActiveMessageSurface = 'main' | 'thread';
+type ConversationMenuState = {
+  peerUserId: string;
+  x: number;
+  y: number;
+} | null;
 
 const MOBILE_BREAKPOINT = 768;
 const THREAD_PANEL_MODES: ThreadPanelMode[] = ['minimal', 'center', 'full'];
@@ -143,6 +153,9 @@ export default function ChatLayout() {
   const latestMainMessageIdRef = useRef<string | null>(null);
   const isMainNearBottomRef = useRef(true);
   const [pendingMainNewMessageCount, setPendingMainNewMessageCount] = useState(0);
+  const [conversationMenu, setConversationMenu] = useState<ConversationMenuState>(null);
+  const mainMessageElementRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+  const conversationMenuRef = useRef<HTMLDivElement | null>(null);
   
   const { isTyping, typingUsers } = useTypingIndicator(selectedUser || undefined);
 
@@ -269,10 +282,13 @@ export default function ChatLayout() {
     [mainChatMessages]
   );
 
-  const readEmittedMessagesRef = useRef<Set<string>>(new Set());
+  const mainReadEmittedMessagesRef = useRef<Set<string>>(new Set());
+  const threadReadEmittedMessagesRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
-    readEmittedMessagesRef.current.clear();
+    mainReadEmittedMessagesRef.current.clear();
+    threadReadEmittedMessagesRef.current.clear();
+    mainMessageElementRefs.current.clear();
     setHighlightedMessageIds(new Set());
     setActiveMessage(null);
     setActiveMessageAnchor(null);
@@ -284,11 +300,39 @@ export default function ChatLayout() {
     latestMainMessageIdRef.current = null;
     isMainNearBottomRef.current = true;
     setPendingMainNewMessageCount(0);
+    setConversationMenu(null);
   }, [selectedUser]);
 
   useEffect(() => {
     setThreadReplyTarget(null);
+    threadReadEmittedMessagesRef.current.clear();
   }, [selectedThreadRootId]);
+
+  useEffect(() => {
+    if (!conversationMenu) return;
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target as Node | null;
+      if (target && conversationMenuRef.current?.contains(target)) {
+        return;
+      }
+
+      setConversationMenu(null);
+    };
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setConversationMenu(null);
+      }
+    };
+
+    document.addEventListener('pointerdown', handlePointerDown, true);
+    window.addEventListener('keydown', handleEscape);
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown, true);
+      window.removeEventListener('keydown', handleEscape);
+    };
+  }, [conversationMenu]);
 
   useEffect(() => {
     const handleResize = () => {
@@ -331,43 +375,86 @@ export default function ChatLayout() {
     return () => observer.disconnect();
   }, [selectedUser, isPingAccepted, selectedThreadRootId]);
 
-  useEffect(() => {
-    if (!socket || !selectedUser || !allMessages.length) return;
+  const emitMessageRead = (messageIds: string[], payload: MessageStatusPayload) => {
+    if (!messageIds.length) return;
 
-    const unreadMessages = allMessages.filter(
-      (m) => m.receiver_id === userId && 
-             m.status !== 'read' && 
-             m.type !== 'voice' &&
-             !readEmittedMessagesRef.current.has(m.id)
-    );
+    if (socket) {
+      messageIds.forEach((messageId) => {
+        socket.emit(EVENTS.MESSAGE_READ, { message_id: messageId });
+      });
+    }
 
-    if (unreadMessages.length > 0) {
-      const newIds = unreadMessages.map(m => m.id);
-      
-      // Mark as emitted immediately to avoid re-processing in next render
-      newIds.forEach(id => readEmittedMessagesRef.current.add(id));
+    applyMessageStatusUpdateToCaches(queryClient, payload);
+  };
 
-      // Emit conversation-level read event for the open chat
-      socket.emit(EVENTS.CONVERSATION_READ, { user_id: selectedUser });
+  const highlightReadMessages = (messageIds: string[]) => {
+    if (!messageIds.length) return;
 
-      // Update UI highlight
+    setHighlightedMessageIds((prev) => {
+      const next = new Set(prev);
+      messageIds.forEach((id) => next.add(id));
+      return next;
+    });
+
+    window.setTimeout(() => {
       setHighlightedMessageIds((prev) => {
         const next = new Set(prev);
-        newIds.forEach(id => next.add(id));
+        messageIds.forEach((id) => next.delete(id));
         return next;
       });
+    }, 3000);
+  };
 
-      const timer = setTimeout(() => {
-        setHighlightedMessageIds((prev) => {
-          const next = new Set(prev);
-          newIds.forEach(id => next.delete(id));
-          return next;
-        });
-      }, 3000);
-
-      return () => clearTimeout(timer);
+  const emitVisibleMainReadMessages = () => {
+    if (!socket || !selectedUser || !mainChatScrollRef.current) {
+      return;
     }
-  }, [allMessages, selectedUser, socket, userId]);
+
+    const containerRect = mainChatScrollRef.current.getBoundingClientRect();
+    const unreadVisibleMessages = mainChatMessages.filter(
+      (message) =>
+        message.receiverId === userId &&
+        message.status !== 'read' &&
+        !mainReadEmittedMessagesRef.current.has(message.id)
+    );
+
+    const visibleIds = unreadVisibleMessages
+      .filter((message) => {
+        const element = mainMessageElementRefs.current.get(message.id);
+        if (!element) return false;
+        const rect = element.getBoundingClientRect();
+        return rect.bottom > containerRect.top && rect.top < containerRect.bottom;
+      })
+      .map((message) => message.id);
+
+    if (!visibleIds.length) {
+      return;
+    }
+
+    visibleIds.forEach((id) => mainReadEmittedMessagesRef.current.add(id));
+
+    emitMessageRead(visibleIds, {
+      conversation_id: unreadVisibleMessages[0]?.chatId,
+      peer_user_id: selectedUser,
+      message_ids: visibleIds,
+      status: 'read',
+      scope: 'main',
+      read_at: new Date().toISOString(),
+    } as MessageStatusPayload & { peer_user_id: string });
+
+    highlightReadMessages(visibleIds);
+  };
+
+  useEffect(() => {
+    if (!selectedUser || !mainChatMessages.length) return;
+
+    let frame = 0;
+    frame = window.requestAnimationFrame(() => {
+      emitVisibleMainReadMessages();
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [mainChatMessages, selectedUser]);
 
   useEffect(() => {
     if (!selectedUser || !isPingAccepted) {
@@ -404,6 +491,75 @@ export default function ChatLayout() {
     if (!selectedUser) return;
     resetConversationUnreadCount(selectedUser);
   }, [selectedUser]);
+
+  const markConversationCachesAsRead = (conversationId: string) => {
+    const collectedIds = new Set<string>();
+
+    const collectUnreadIds = (datasets: Array<[unknown, any]>) => {
+      datasets.forEach(([, data]) => {
+        const pages = data?.pages || [];
+        pages.forEach((page: any) => {
+          (page.data || []).forEach((message: MessageDoc) => {
+            if (message.conversation_id === conversationId && message.receiver_id === userId && message.status !== 'read') {
+              collectedIds.add(message.id);
+            }
+          });
+        });
+      });
+    };
+
+    collectUnreadIds(queryClient.getQueriesData({ queryKey: ['messages'] }));
+    collectUnreadIds(queryClient.getQueriesData({ queryKey: ['threadMessages'] }));
+
+    if (collectedIds.size > 0) {
+      applyMessageStatusUpdateToCaches(queryClient, {
+        conversation_id: conversationId,
+        message_ids: [...collectedIds],
+        status: 'read',
+        read_at: new Date().toISOString(),
+        scope: 'main',
+      });
+    }
+
+    queryClient.setQueriesData({ queryKey: ['messages'] }, (old: any) => {
+      if (!old?.pages) return old;
+
+      let changed = false;
+      const pages = old.pages.map((page: any) => ({
+        ...page,
+        data: (page.data || []).map((message: MessageDoc) => {
+          if (message.conversation_id !== conversationId) {
+            return message;
+          }
+
+          if ((message.thread_unread_count ?? 0) === 0) {
+            return message;
+          }
+
+          changed = true;
+          return {
+            ...message,
+            thread_unread_count: 0,
+          };
+        }),
+      }));
+
+      return changed ? { ...old, pages } : old;
+    });
+  };
+
+  const handleMarkConversationAsRead = async (peerUserId: string) => {
+    const conversation = contacts.find((item) => item.peer_user.id === peerUserId);
+    setConversationMenu(null);
+    if (!conversation) return;
+
+    await messagesApi.markConversationRead(peerUserId);
+    socket?.emit(EVENTS.CONVERSATION_READ, {
+      peer_user_id: peerUserId,
+    });
+    resetConversationUnreadCount(peerUserId);
+    markConversationCachesAsRead(conversation.conversation_id);
+  };
 
   const selectedConversationUser = contacts.find(c => c.peer_user.id === selectedUser)?.peer_user;
   const displaySelectedUser = selectedConversationUser?.display_name || selectedConversationUser?.username || selectedUser;
@@ -673,6 +829,26 @@ export default function ChatLayout() {
         isEditing={isEditingMessage}
         isDeleting={isDeletingMessage}
       />
+      {conversationMenu ? (
+        <div className="fixed inset-0 z-50 pointer-events-none">
+          <div
+            ref={conversationMenuRef}
+            className="pointer-events-auto absolute w-48 overflow-hidden rounded-2xl border border-border/70 bg-background/98 p-2 shadow-2xl backdrop-blur"
+            style={{
+              left: Math.min(conversationMenu.x, window.innerWidth - 204),
+              top: Math.min(conversationMenu.y, window.innerHeight - 80),
+            }}
+          >
+            <button
+              type="button"
+              className="flex w-full items-center rounded-xl px-3 py-2 text-left text-sm font-medium text-foreground transition-colors hover:bg-muted/80"
+              onClick={() => void handleMarkConversationAsRead(conversationMenu.peerUserId)}
+            >
+              Mark All As Read
+            </button>
+          </div>
+        </div>
+      ) : null}
       {/* Sidebar */}
       <div className={cn(
         "w-full md:w-80 border-r flex flex-col bg-muted/10 h-full",
@@ -720,6 +896,14 @@ export default function ChatLayout() {
                   onClick={() => {
                     setSelectedUser(conv.peer_user.id);
                     resetConversationUnreadCount(conv.peer_user.id);
+                  }}
+                  onContextMenu={(event) => {
+                    event.preventDefault();
+                    setConversationMenu({
+                      peerUserId: conv.peer_user.id,
+                      x: event.clientX,
+                      y: event.clientY,
+                    });
                   }}
                 >
                   <div className="relative mr-3">
@@ -850,6 +1034,7 @@ export default function ChatLayout() {
                         if (nextIsNearBottom) {
                           setPendingMainNewMessageCount(0);
                         }
+                        emitVisibleMainReadMessages();
                       }}
                     >
                    {/* Typing Indicator Bubble */}
@@ -876,6 +1061,13 @@ export default function ChatLayout() {
                      return (
                        <div
                          key={message.id}
+                         ref={(node) => {
+                           if (node) {
+                             mainMessageElementRefs.current.set(message.id, node);
+                           } else {
+                             mainMessageElementRefs.current.delete(message.id);
+                           }
+                         }}
                          className={cn(
                            "flex flex-col w-full min-w-0",
                            groupedWithAbove ? "mt-px" : index === mainChatMessages.length - 1 ? "" : "mt-6"
@@ -1007,8 +1199,31 @@ export default function ChatLayout() {
                     isFetchingNextPage={isFetchingNextThreadPage}
                     hasNextPage={!!hasNextThreadPage}
                     fetchNextPage={fetchNextThreadPage}
+                    currentUserId={userId}
                     onClose={() => setSelectedThreadRootId(null)}
                     onOpenMenu={(message, anchor) => openMessageMenu(message, anchor, 'thread')}
+                    onVisibleUnreadMessages={(messageIds) => {
+                      if (!socket || !selectedThreadRootId || !messageIds.length) return;
+
+                      const unreadIds = messageIds.filter(
+                        (id) => !threadReadEmittedMessagesRef.current.has(id)
+                      );
+                      if (!unreadIds.length) return;
+
+                      unreadIds.forEach((id) => threadReadEmittedMessagesRef.current.add(id));
+
+                      emitMessageRead(unreadIds, {
+                        conversation_id: selectedThreadRootMessage?.chatId,
+                        peer_user_id: selectedUser,
+                        thread_root_id: selectedThreadRootId,
+                        message_ids: unreadIds,
+                        status: 'read',
+                        scope: 'thread',
+                        read_at: new Date().toISOString(),
+                      } as MessageStatusPayload & { peer_user_id: string });
+
+                      highlightReadMessages(unreadIds);
+                    }}
                     onMediaClick={handleMediaClick}
                     isMobile={isMobileViewport}
                     isMessageMenuOpen={!!activeMessage}
