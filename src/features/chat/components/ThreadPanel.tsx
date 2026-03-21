@@ -1,6 +1,6 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '@/components/ui/Button';
-import { Loader2, MessageSquareText, X } from 'lucide-react';
+import { ArrowDown, Loader2, MessageSquareText, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { formatMessageDay, isSameLocalDay } from '@/utils/dateUtils';
 import { ChatMessage } from '../types/message';
@@ -42,6 +42,13 @@ export function ThreadPanel({
   className,
   style,
 }: ThreadPanelProps) {
+  const BOTTOM_THRESHOLD = 80;
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+  const pendingInitialScrollRef = useRef(false);
+  const activeRootIdRef = useRef<string | null>(null);
+  const latestMessageIdRef = useRef<string | null>(null);
+  const isNearBottomRef = useRef(true);
+  const [pendingNewMessageCount, setPendingNewMessageCount] = useState(0);
   const orderedMessages = useMemo(
     () =>
       [...messages].sort(
@@ -64,6 +71,102 @@ export function ThreadPanel({
     const adjacentTime = new Date(adjacent.createdAt).getTime();
     return Math.abs(currentTime - adjacentTime) <= 60 * 1000;
   };
+
+  const isNearBottom = (container: HTMLDivElement | null) => {
+    if (!container) return true;
+    return container.scrollHeight - container.clientHeight - container.scrollTop <= BOTTOM_THRESHOLD;
+  };
+
+  const scrollToLatest = (behavior: ScrollBehavior = 'smooth') => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        container.scrollTo({
+          top: container.scrollHeight,
+          behavior,
+        });
+        isNearBottomRef.current = true;
+        setPendingNewMessageCount(0);
+      });
+    });
+  };
+
+  useEffect(() => {
+    if (!open || !rootMessage) {
+      activeRootIdRef.current = null;
+      pendingInitialScrollRef.current = false;
+      latestMessageIdRef.current = null;
+      isNearBottomRef.current = true;
+      setPendingNewMessageCount(0);
+      return;
+    }
+
+    if (activeRootIdRef.current !== rootMessage.id) {
+      activeRootIdRef.current = rootMessage.id;
+      pendingInitialScrollRef.current = true;
+      latestMessageIdRef.current = threadReplyMessages[threadReplyMessages.length - 1]?.id || null;
+      setPendingNewMessageCount(0);
+    }
+  }, [open, rootMessage, threadReplyMessages]);
+
+  useEffect(() => {
+    if (!open || !rootMessage || isLoading || !pendingInitialScrollRef.current) {
+      return;
+    }
+
+    let frameOne = 0;
+    let frameTwo = 0;
+
+    frameOne = window.requestAnimationFrame(() => {
+      frameTwo = window.requestAnimationFrame(() => {
+        const container = scrollContainerRef.current;
+        if (!container) {
+          return;
+        }
+
+        container.scrollTop = container.scrollHeight;
+        isNearBottomRef.current = true;
+        pendingInitialScrollRef.current = false;
+      });
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frameOne);
+      window.cancelAnimationFrame(frameTwo);
+    };
+  }, [open, rootMessage, isLoading, threadReplyMessages.length]);
+
+  useEffect(() => {
+    if (!open || !rootMessage || isLoading) {
+      return;
+    }
+
+    const latestMessageId = threadReplyMessages[threadReplyMessages.length - 1]?.id || null;
+    if (!latestMessageId) {
+      latestMessageIdRef.current = null;
+      return;
+    }
+
+    if (!latestMessageIdRef.current) {
+      latestMessageIdRef.current = latestMessageId;
+      return;
+    }
+
+    if (latestMessageIdRef.current === latestMessageId) {
+      return;
+    }
+
+    latestMessageIdRef.current = latestMessageId;
+
+    if (pendingInitialScrollRef.current || isNearBottomRef.current) {
+      scrollToLatest();
+      return;
+    }
+
+    setPendingNewMessageCount((current) => current + 1);
+  }, [open, rootMessage, isLoading, threadReplyMessages]);
 
   if (!open || !rootMessage) {
     return null;
@@ -94,7 +197,17 @@ export function ThreadPanel({
         </Button>
       </div>
 
-      <div className="scrollbar-hidden flex-1 overflow-y-auto overscroll-contain">
+      <div
+        ref={scrollContainerRef}
+        className="scrollbar-hidden flex-1 overflow-y-auto overscroll-contain"
+        onScroll={(event) => {
+          const nextIsNearBottom = isNearBottom(event.currentTarget);
+          isNearBottomRef.current = nextIsNearBottom;
+          if (nextIsNearBottom) {
+            setPendingNewMessageCount(0);
+          }
+        }}
+      >
         <div className="p-4">
           <div className="rounded-3xl border border-border/70 bg-muted/20 p-3 shadow-sm">
             <div className="mb-2 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
@@ -183,6 +296,19 @@ export function ThreadPanel({
           </div>
         </div>
       </div>
+
+      {pendingNewMessageCount > 0 ? (
+        <div className={cn('absolute right-4 z-20', composer ? 'bottom-28' : 'bottom-4')}>
+          <Button
+            size="sm"
+            className="gap-2 rounded-full shadow-lg"
+            onClick={() => scrollToLatest()}
+          >
+            <ArrowDown className="h-4 w-4" />
+            <span>{pendingNewMessageCount === 1 ? '1 new reply' : `${pendingNewMessageCount} new replies`}</span>
+          </Button>
+        </div>
+      ) : null}
 
       {composer ? <div className="border-t">{composer}</div> : null}
     </aside>

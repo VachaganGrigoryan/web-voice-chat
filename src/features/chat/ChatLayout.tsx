@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/Input';
 import { ScrollArea } from '@/components/ui/ScrollArea';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/Avatar';
 import { Separator } from '@/components/ui/Separator';
-import { LogOut, User, MessageSquare, Plus, Loader2, Mic, ArrowLeft, Check, CheckCheck, Bell, Clock, UserPlus, X } from 'lucide-react';
+import { LogOut, User, MessageSquare, Plus, Loader2, Mic, ArrowDown, ArrowLeft, Check, CheckCheck, Bell, Clock, UserPlus, X } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { authApi } from '@/api/endpoints';
 import VoiceRecorder from './VoiceRecorder';
@@ -77,6 +77,7 @@ const createAcceptedPingConversation = (
 });
 
 export default function ChatLayout() {
+  const MAIN_CHAT_BOTTOM_THRESHOLD = 80;
   const [selectedThreadRootId, setSelectedThreadRootId] = useState<string | null>(null);
   const [searchParams, setSearchParams] = useSearchParams();
   const {
@@ -138,6 +139,10 @@ export default function ChatLayout() {
     () => typeof window !== 'undefined' && window.innerWidth < MOBILE_BREAKPOINT
   );
   const splitLayoutRef = useRef<HTMLDivElement | null>(null);
+  const mainChatScrollRef = useRef<HTMLDivElement | null>(null);
+  const latestMainMessageIdRef = useRef<string | null>(null);
+  const isMainNearBottomRef = useRef(true);
+  const [pendingMainNewMessageCount, setPendingMainNewMessageCount] = useState(0);
   
   const { isTyping, typingUsers } = useTypingIndicator(selectedUser || undefined);
 
@@ -276,6 +281,9 @@ export default function ChatLayout() {
     setThreadReplyTarget(null);
     setSelectedThreadRootId(null);
     setIsResizingThread(false);
+    latestMainMessageIdRef.current = null;
+    isMainNearBottomRef.current = true;
+    setPendingMainNewMessageCount(0);
   }, [selectedUser]);
 
   useEffect(() => {
@@ -535,6 +543,53 @@ export default function ChatLayout() {
     setMediaViewer({ open: true, type, url });
   };
 
+  const isMainChatNearBottom = (container: HTMLDivElement | null) => {
+    if (!container) return true;
+    return container.scrollTop <= MAIN_CHAT_BOTTOM_THRESHOLD;
+  };
+
+  const scrollMainChatToLatest = (behavior: ScrollBehavior = 'smooth') => {
+    const container = mainChatScrollRef.current;
+    if (!container) return;
+
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        container.scrollTo({ top: 0, behavior });
+        isMainNearBottomRef.current = true;
+        setPendingMainNewMessageCount(0);
+      });
+    });
+  };
+
+  useEffect(() => {
+    if (!selectedUser) return;
+
+    const latestMessageId = mainChatMessages[0]?.id || null;
+    if (!latestMessageId) {
+      latestMainMessageIdRef.current = null;
+      return;
+    }
+
+    if (!latestMainMessageIdRef.current) {
+      latestMainMessageIdRef.current = latestMessageId;
+      scrollMainChatToLatest('auto');
+      return;
+    }
+
+    if (latestMainMessageIdRef.current === latestMessageId) {
+      return;
+    }
+
+    latestMainMessageIdRef.current = latestMessageId;
+
+    if (isMainNearBottomRef.current) {
+      scrollMainChatToLatest();
+      return;
+    }
+
+    setPendingMainNewMessageCount((current) => current + 1);
+  }, [selectedUser, mainChatMessages]);
+
   const updateThreadPanelModeFromPointer = (clientX: number) => {
     if (isMobileViewport) return;
 
@@ -785,8 +840,18 @@ export default function ChatLayout() {
                 <GlobalAudioPlayerBar />
 
                 <div ref={splitLayoutRef} className="flex min-h-0 flex-1">
-                  <div className="flex min-w-0 flex-1 flex-col">
-                    <div className="scrollbar-hidden flex-1 overflow-y-auto flex flex-col-reverse p-4 scroll-smooth overscroll-contain">
+                  <div className="relative flex min-w-0 flex-1 flex-col">
+                    <div
+                      ref={mainChatScrollRef}
+                      className="scrollbar-hidden flex-1 overflow-y-auto flex flex-col-reverse p-4 scroll-smooth overscroll-contain"
+                      onScroll={(event) => {
+                        const nextIsNearBottom = isMainChatNearBottom(event.currentTarget);
+                        isMainNearBottomRef.current = nextIsNearBottom;
+                        if (nextIsNearBottom) {
+                          setPendingMainNewMessageCount(0);
+                        }
+                      }}
+                    >
                    {/* Typing Indicator Bubble */}
                    {isTyping && (
                      <div className="self-start mb-2 ml-1 animate-in fade-in slide-in-from-bottom-2 duration-300">
@@ -884,6 +949,23 @@ export default function ChatLayout() {
                       </div>
                    )}
                     </div>
+
+                    {pendingMainNewMessageCount > 0 ? (
+                      <div className="absolute bottom-24 right-4 z-20">
+                        <Button
+                          size="sm"
+                          className="gap-2 rounded-full shadow-lg"
+                          onClick={() => scrollMainChatToLatest()}
+                        >
+                          <ArrowDown className="h-4 w-4" />
+                          <span>
+                            {pendingMainNewMessageCount === 1
+                              ? '1 new message'
+                              : `${pendingMainNewMessageCount} new messages`}
+                          </span>
+                        </Button>
+                      </div>
+                    ) : null}
 
                     <div className="shrink-0 z-20 bg-background flex items-center gap-2 p-4">
                       <VoiceRecorder 
