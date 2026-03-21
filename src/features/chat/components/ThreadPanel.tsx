@@ -7,6 +7,7 @@ import { ChatMessage } from '../types/message';
 import { DaySeparator, MessageItem, MessageMenuAnchor, MessageMeta } from './MessageShell';
 import { MessageReactions } from './MessageReactions';
 import { MessageRenderer } from '../MessageRenderer';
+import { ChatAudioQueueItem } from '../audioPlayerStore';
 
 interface ThreadPanelProps {
   open: boolean;
@@ -23,6 +24,8 @@ interface ThreadPanelProps {
   isTogglingReaction?: boolean;
   onVisibleUnreadMessages?: (messageIds: string[]) => void;
   onMediaClick?: (type: 'image' | 'video', url: string) => void;
+  audioQueueKey?: string | null;
+  audioQueue?: ChatAudioQueueItem[];
   composer?: React.ReactNode;
   isMobile?: boolean;
   isMessageMenuOpen?: boolean;
@@ -45,6 +48,8 @@ export function ThreadPanel({
   isTogglingReaction = false,
   onVisibleUnreadMessages,
   onMediaClick,
+  audioQueueKey,
+  audioQueue,
   composer,
   isMobile = false,
   isMessageMenuOpen = false,
@@ -265,7 +270,12 @@ export function ThreadPanel({
               onOpenMenu={(anchor) => onOpenMenu(rootMessage, anchor)}
               openMenuOnClick={isMessageMenuOpen}
             >
-              <MessageRenderer message={rootMessage} onMediaClick={onMediaClick} />
+              <MessageRenderer
+                message={rootMessage}
+                onMediaClick={onMediaClick}
+                audioQueueKey={audioQueueKey}
+                audioQueue={audioQueue}
+              />
               <MessageReactions
                 message={rootMessage}
                 currentUserId={currentUserId}
@@ -322,6 +332,8 @@ export function ThreadPanel({
                         groupedWithAbove={groupedWithAbove}
                         groupedWithBelow={groupedWithBelow}
                         onMediaClick={onMediaClick}
+                        audioQueueKey={audioQueueKey}
+                        audioQueue={audioQueue}
                       />
                       <MessageReactions
                         message={message}

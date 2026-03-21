@@ -5,12 +5,15 @@ import { AudioMessage } from '../types/message';
 import { cn } from '@/lib/utils';
 import { MessageReplyPreview } from '../components/MessageReplyPreview';
 
+import { ChatAudioQueueItem } from '../audioPlayerStore';
 interface AudioMessageRendererProps {
   message: AudioMessage;
   highlighted?: boolean;
   groupedWithAbove?: boolean;
   groupedWithBelow?: boolean;
   bubbleFooter?: React.ReactNode;
+  audioQueueKey?: string | null;
+  audioQueue?: ChatAudioQueueItem[];
 }
 
 export const AudioMessageRenderer: React.FC<AudioMessageRendererProps> = ({
@@ -19,6 +22,8 @@ export const AudioMessageRenderer: React.FC<AudioMessageRendererProps> = ({
   groupedWithAbove = false,
   groupedWithBelow = false,
   bubbleFooter,
+  audioQueueKey,
+  audioQueue,
 }) => {
   return (
     <MessageBubble
@@ -32,6 +37,8 @@ export const AudioMessageRenderer: React.FC<AudioMessageRendererProps> = ({
         src={message.audioUrl}
         durationMs={message.durationSec ? message.durationSec * 1000 : 0}
         messageId={message.id}
+        queueKey={audioQueueKey}
+        queue={audioQueue}
         isRead={message.status === 'read'}
         isMe={message.isOwn}
         createdAt={message.createdAt}

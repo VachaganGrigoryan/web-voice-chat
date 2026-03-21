@@ -8,6 +8,7 @@ import { SystemMessageRenderer } from './renderers/SystemMessageRenderer';
 import { TextMessageRenderer } from './renderers/TextMessageRenderer';
 import { VideoMessageRenderer } from './renderers/VideoMessageRenderer';
 import { MessageBubble, MessageContent } from './components/MessageShell';
+import { ChatAudioQueueItem } from './audioPlayerStore';
 
 interface MessageRendererProps {
   message: ChatMessage;
@@ -16,6 +17,8 @@ interface MessageRendererProps {
   groupedWithBelow?: boolean;
   onMediaClick?: (type: 'image' | 'video', url: string) => void;
   bubbleFooter?: React.ReactNode;
+  audioQueueKey?: string | null;
+  audioQueue?: ChatAudioQueueItem[];
 }
 
 export const MessageRenderer: React.FC<MessageRendererProps> = ({
@@ -25,6 +28,8 @@ export const MessageRenderer: React.FC<MessageRendererProps> = ({
   groupedWithBelow = false,
   onMediaClick,
   bubbleFooter,
+  audioQueueKey,
+  audioQueue,
 }) => {
   if (message.isDeleted && !message.isOwn) {
     return (
@@ -56,7 +61,7 @@ export const MessageRenderer: React.FC<MessageRendererProps> = ({
     case 'video':
       return <VideoMessageRenderer message={message} highlighted={highlighted} groupedWithAbove={groupedWithAbove} groupedWithBelow={groupedWithBelow} onMediaClick={onMediaClick} bubbleFooter={bubbleFooter} />;
     case 'audio':
-      return <AudioMessageRenderer message={message} highlighted={highlighted} groupedWithAbove={groupedWithAbove} groupedWithBelow={groupedWithBelow} bubbleFooter={bubbleFooter} />;
+      return <AudioMessageRenderer message={message} highlighted={highlighted} groupedWithAbove={groupedWithAbove} groupedWithBelow={groupedWithBelow} bubbleFooter={bubbleFooter} audioQueueKey={audioQueueKey} audioQueue={audioQueue} />;
     case 'system':
       return <SystemMessageRenderer message={message} />;
     case 'emoji':

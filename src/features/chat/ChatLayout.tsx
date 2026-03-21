@@ -136,7 +136,7 @@ export default function ChatLayout() {
   const { profile } = useProfile();
   const { socket } = useSocketStore();
   const { incoming, outgoing, sendPing, acceptPing, declinePing, isSending: isSendingPing, isAccepting: isAcceptingPing, isDeclining: isDecliningPing } = usePings();
-  const setAudioQueue = useChatAudioPlayerStore((state) => state.setQueue);
+  const syncAudioQueue = useChatAudioPlayerStore((state) => state.syncQueue);
   const closeAudioPlayer = useChatAudioPlayerStore((state) => state.close);
   const pendingIncomingCount = incoming.filter(item => item.ping.status === 'pending').length;
   const [highlightedMessageIds, setHighlightedMessageIds] = useState<Set<string>>(new Set());
@@ -269,7 +269,8 @@ export default function ChatLayout() {
     () => getThreadPanelWidths(splitLayoutWidth),
     [splitLayoutWidth]
   );
-  const audioQueue = useMemo(
+  const mainAudioQueueKey = selectedUser ? `main:${selectedUser}` : null;
+  const mainAudioQueue = useMemo(
     () =>
       mainChatMessages
         .filter((message): message is AudioMessage => message.kind === 'audio')
@@ -284,6 +285,24 @@ export default function ChatLayout() {
         })),
     [mainChatMessages]
   );
+  const threadAudioQueueKey = selectedThreadRootId ? `thread:${selectedThreadRootId}` : null;
+  const threadAudioQueue = useMemo(() => {
+    if (!selectedThreadRootMessage) {
+      return [];
+    }
+
+    return [selectedThreadRootMessage, ...threadMessages]
+      .filter((message): message is AudioMessage => message.kind === 'audio')
+      .sort((left, right) => new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime())
+      .map((message) => ({
+        id: message.id,
+        src: message.audioUrl,
+        durationMs: message.durationSec ? message.durationSec * 1000 : 0,
+        createdAt: message.createdAt,
+        isRead: message.status === 'read',
+        isMe: message.isOwn,
+      }));
+  }, [selectedThreadRootMessage, threadMessages]);
 
   const mainReadEmittedMessagesRef = useRef<Set<string>>(new Set());
   const threadReadEmittedMessagesRef = useRef<Set<string>>(new Set());
@@ -460,13 +479,16 @@ export default function ChatLayout() {
   }, [mainChatMessages, selectedUser]);
 
   useEffect(() => {
-    if (!selectedUser || !isPingAccepted) {
-      setAudioQueue(null, []);
-      return;
+    if (selectedUser && isPingAccepted && mainAudioQueueKey) {
+      syncAudioQueue(mainAudioQueueKey, mainAudioQueue);
     }
+  }, [isPingAccepted, mainAudioQueue, mainAudioQueueKey, selectedUser, syncAudioQueue]);
 
-    setAudioQueue(selectedUser, audioQueue);
-  }, [audioQueue, isPingAccepted, selectedUser, setAudioQueue]);
+  useEffect(() => {
+    if (threadAudioQueueKey) {
+      syncAudioQueue(threadAudioQueueKey, threadAudioQueue);
+    }
+  }, [syncAudioQueue, threadAudioQueue, threadAudioQueueKey]);
 
   useEffect(() => {
     return () => closeAudioPlayer();
@@ -1105,6 +1127,8 @@ export default function ChatLayout() {
                               groupedWithAbove={groupedWithAbove}
                               groupedWithBelow={groupedWithBelow}
                               onMediaClick={handleMediaClick}
+                              audioQueueKey={mainAudioQueueKey}
+                              audioQueue={mainAudioQueue}
                               bubbleFooter={
                                 message.isThreadRoot || message.threadReplyCount > 0 ? (
                                   <MessageBubbleFooter>
@@ -1246,6 +1270,8 @@ export default function ChatLayout() {
                       highlightReadMessages(unreadIds);
                     }}
                     onMediaClick={handleMediaClick}
+                    audioQueueKey={threadAudioQueueKey}
+                    audioQueue={threadAudioQueue}
                     isMobile={isMobileViewport}
                     isMessageMenuOpen={!!activeMessage}
                     style={{ width: threadPanelWidth }}
