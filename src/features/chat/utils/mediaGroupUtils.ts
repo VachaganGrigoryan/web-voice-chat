@@ -9,8 +9,10 @@ export interface SingleMessageRenderItem {
   isOwn: boolean;
   message: ChatMessage;
   messages: [ChatMessage];
-  newestMessage: ChatMessage;
-  oldestMessage: ChatMessage;
+  firstMessage: ChatMessage;
+  lastMessage: ChatMessage;
+  earliestMessage: ChatMessage;
+  latestMessage: ChatMessage;
 }
 
 export interface MediaGroupRenderItem {
@@ -18,8 +20,12 @@ export interface MediaGroupRenderItem {
   type: 'media-group';
   isOwn: boolean;
   messages: MediaCollageMessage[];
-  newestMessage: MediaCollageMessage;
-  oldestMessage: MediaCollageMessage;
+  firstMessage: MediaCollageMessage;
+  lastMessage: MediaCollageMessage;
+  earliestMessage: MediaCollageMessage;
+  latestMessage: MediaCollageMessage;
+  caption?: string;
+  captionMessageId?: string;
 }
 
 export type ChatRenderItem = SingleMessageRenderItem | MediaGroupRenderItem;
@@ -41,7 +47,6 @@ export const shouldGroupMessages = (current: ChatMessage, adjacent?: ChatMessage
 const isEligibleForMediaCollage = (message: ChatMessage): message is MediaCollageMessage =>
   isMediaCollageMessage(message) &&
   !message.isDeleted &&
-  !message.caption &&
   !message.replyPreview &&
   !message.isThreadRoot &&
   message.threadReplyCount === 0 &&
@@ -68,6 +73,31 @@ const shouldGroupMediaMessages = (
   return Math.abs(currentTime - adjacentTime) <= 60 * 1000;
 };
 
+const getMessageTime = (message: ChatMessage) => new Date(message.createdAt).getTime();
+
+const getEarliestMessage = <T extends ChatMessage>(messages: T[]) =>
+  messages.reduce((earliest, message) =>
+    getMessageTime(message) < getMessageTime(earliest) ? message : earliest
+  );
+
+const getLatestMessage = <T extends ChatMessage>(messages: T[]) =>
+  messages.reduce((latest, message) =>
+    getMessageTime(message) > getMessageTime(latest) ? message : latest
+  );
+
+const getGroupCaptionMeta = (messages: MediaCollageMessage[]) => {
+  const captionMessages = messages.filter((message) => !!message.caption?.trim());
+  if (captionMessages.length !== 1) {
+    return { caption: undefined, captionMessageId: undefined };
+  }
+
+  const captionMessage = captionMessages[0];
+  return {
+    caption: captionMessage.caption?.trim(),
+    captionMessageId: captionMessage.id,
+  };
+};
+
 export const buildChatRenderItems = (messages: ChatMessage[]): ChatRenderItem[] => {
   const renderItems: ChatRenderItem[] = [];
   let index = 0;
@@ -82,8 +112,10 @@ export const buildChatRenderItems = (messages: ChatMessage[]): ChatRenderItem[] 
         isOwn: current.isOwn,
         message: current,
         messages: [current],
-        newestMessage: current,
-        oldestMessage: current,
+        firstMessage: current,
+        lastMessage: current,
+        earliestMessage: current,
+        latestMessage: current,
       });
       index += 1;
       continue;
@@ -109,17 +141,24 @@ export const buildChatRenderItems = (messages: ChatMessage[]): ChatRenderItem[] 
         isOwn: current.isOwn,
         message: current,
         messages: [current],
-        newestMessage: current,
-        oldestMessage: current,
+        firstMessage: current,
+        lastMessage: current,
+        earliestMessage: current,
+        latestMessage: current,
       });
     } else {
+      const { caption, captionMessageId } = getGroupCaptionMeta(group);
       renderItems.push({
         id: group.map((message) => message.id).join(':'),
         type: 'media-group',
         isOwn: current.isOwn,
         messages: group,
-        newestMessage: group[0],
-        oldestMessage: group[group.length - 1],
+        firstMessage: group[0],
+        lastMessage: group[group.length - 1],
+        earliestMessage: getEarliestMessage(group),
+        latestMessage: getLatestMessage(group),
+        caption,
+        captionMessageId,
       });
     }
 

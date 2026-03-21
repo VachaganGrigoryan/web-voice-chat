@@ -291,9 +291,9 @@ export function ThreadPanel({
                 const previousItem = threadRenderItems[index - 1];
                 const nextItem = threadRenderItems[index + 1];
                 const showDateHeader =
-                  !previousItem || !isSameLocalDay(item.oldestMessage.createdAt, previousItem.newestMessage.createdAt);
-                const groupedWithAbove = shouldGroupMessages(item.oldestMessage, previousItem?.newestMessage);
-                const groupedWithBelow = shouldGroupMessages(item.newestMessage, nextItem?.oldestMessage);
+                  !previousItem || !isSameLocalDay(item.firstMessage.createdAt, previousItem.lastMessage.createdAt);
+                const groupedWithAbove = shouldGroupMessages(item.firstMessage, previousItem?.lastMessage);
+                const groupedWithBelow = shouldGroupMessages(item.lastMessage, nextItem?.firstMessage);
 
                 return (
                   <div
@@ -314,7 +314,7 @@ export function ThreadPanel({
                   >
                     {showDateHeader ? (
                       <DaySeparator
-                        label={formatMessageDay(item.oldestMessage.createdAt)}
+                        label={formatMessageDay(item.firstMessage.createdAt)}
                         className="pb-3"
                       />
                     ) : null}
@@ -322,16 +322,17 @@ export function ThreadPanel({
                     {item.type === 'media-group' ? (
                       <MessageItem
                         isOwn={item.isOwn}
-                        onOpenMenu={(anchor) => onOpenMenu(item.newestMessage, anchor)}
+                        onOpenMenu={(anchor) => onOpenMenu(item.latestMessage, anchor)}
                         openMenuOnClick={isMessageMenuOpen}
                       >
                         <MediaCollageGroupRenderer
                           messages={item.messages}
+                          caption={item.caption}
                           groupedWithAbove={groupedWithAbove}
                           groupedWithBelow={groupedWithBelow}
                           onMediaClick={onMediaClick}
                         />
-                        <MessageMeta message={item.newestMessage} showTimestamp={!groupedWithBelow} />
+                        <MessageMeta message={item.latestMessage} showTimestamp={!groupedWithBelow} />
                       </MessageItem>
                     ) : (
                       <MessageItem

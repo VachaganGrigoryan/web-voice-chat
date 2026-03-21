@@ -1,12 +1,14 @@
 import React from 'react';
 import { Video } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { MessageBubble } from '../components/MessageShell';
+import { MessageBubble, MessageContent } from '../components/MessageShell';
+import { MessageMarkdown } from '../components/MessageMarkdown';
 import { MediaClickPayload } from '../types/message';
 import { MediaCollageMessage } from '../utils/mediaGroupUtils';
 
 interface MediaCollageGroupRendererProps {
   messages: MediaCollageMessage[];
+  caption?: string;
   highlighted?: boolean;
   groupedWithAbove?: boolean;
   groupedWithBelow?: boolean;
@@ -35,6 +37,7 @@ const getTileClassName = (index: number, count: number) => {
 
 export const MediaCollageGroupRenderer: React.FC<MediaCollageGroupRendererProps> = ({
   messages,
+  caption,
   highlighted = false,
   groupedWithAbove = false,
   groupedWithBelow = false,
@@ -51,6 +54,11 @@ export const MediaCollageGroupRenderer: React.FC<MediaCollageGroupRendererProps>
       groupedWithBelow={groupedWithBelow}
       className="p-1"
     >
+      {caption ? (
+        <MessageContent className="px-3 pb-2 pt-3 text-sm">
+          <MessageMarkdown text={caption} isOwn={messages[0].isOwn} />
+        </MessageContent>
+      ) : null}
       <div className={cn('grid gap-1 overflow-hidden rounded-[1.1rem]', getGridClassName(visibleMessages.length))}>
         {visibleMessages.map((message, index) => {
           const showOverflow = hiddenCount > 0 && index === visibleMessages.length - 1;

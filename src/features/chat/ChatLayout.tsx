@@ -1168,9 +1168,9 @@ export default function ChatLayout() {
                      const newerItem = mainChatRenderItems[index - 1];
                      const olderItem = mainChatRenderItems[index + 1];
                      const showDaySeparator = !olderItem ||
-                       !isSameLocalDay(item.oldestMessage.createdAt, olderItem.newestMessage.createdAt);
-                     const groupedWithAbove = shouldGroupMessages(item.oldestMessage, olderItem?.newestMessage);
-                     const groupedWithBelow = shouldGroupMessages(item.newestMessage, newerItem?.oldestMessage);
+                       !isSameLocalDay(item.lastMessage.createdAt, olderItem.firstMessage.createdAt);
+                     const groupedWithAbove = shouldGroupMessages(item.lastMessage, olderItem?.firstMessage);
+                     const groupedWithBelow = shouldGroupMessages(item.firstMessage, newerItem?.lastMessage);
                      const isHighlighted = item.messages.some((message) => highlightedMessageIds.has(message.id));
 
                      return (
@@ -1192,7 +1192,7 @@ export default function ChatLayout() {
                        >
                          {showDaySeparator && (
                            <DaySeparator
-                             label={formatMessageDay(item.oldestMessage.createdAt)}
+                             label={formatMessageDay(item.lastMessage.createdAt)}
                              className="mb-3"
                            />
                          )}
@@ -1206,17 +1206,18 @@ export default function ChatLayout() {
                          ) : item.type === 'media-group' ? (
                            <MessageItem
                              isOwn={item.isOwn}
-                             onOpenMenu={(anchor) => openMessageMenu(item.newestMessage, anchor, 'main')}
+                             onOpenMenu={(anchor) => openMessageMenu(item.latestMessage, anchor, 'main')}
                              openMenuOnClick={!!activeMessage}
                            >
                              <MediaCollageGroupRenderer
                                messages={item.messages}
+                               caption={item.caption}
                                highlighted={isHighlighted}
                                groupedWithAbove={groupedWithAbove}
                                groupedWithBelow={groupedWithBelow}
                                onMediaClick={handleMainMediaClick}
                              />
-                             <MessageMeta message={item.newestMessage} showTimestamp={!groupedWithBelow} />
+                             <MessageMeta message={item.latestMessage} showTimestamp={!groupedWithBelow} />
                            </MessageItem>
                          ) : (
                            <MessageItem
