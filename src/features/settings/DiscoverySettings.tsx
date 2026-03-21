@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
+import { APP_ROUTES, getAbsoluteAppUrl } from '@/app/routes';
 import { discoveryApi } from '@/api/endpoints';
 import { Button } from '@/components/ui/Button';
 import { Loader2, RefreshCw, Link as LinkIcon, Copy, Check } from 'lucide-react';
@@ -25,7 +26,7 @@ export default function DiscoverySettings() {
         const urlObj = new URL(backendUrl);
         const token = urlObj.pathname.split('/').pop();
         if (token) {
-          setLink(`${window.location.origin}/#/invite/${token}`);
+          setLink(getAbsoluteAppUrl(APP_ROUTES.invite(token)));
         } else {
           setLink(backendUrl);
         }

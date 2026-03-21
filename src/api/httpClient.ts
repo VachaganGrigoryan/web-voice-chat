@@ -1,4 +1,5 @@
 import axios, { AxiosError, AxiosInstance, InternalAxiosRequestConfig } from 'axios';
+import { APP_ROUTES, getAbsoluteAppUrl } from '@/app/routes';
 import { tokenStore } from '@/auth/tokenStore';
 
 export const API_URL = import.meta.env.VITE_API_URL || 'https://voice-chat.vachagan.dev';
@@ -102,7 +103,7 @@ apiClient.interceptors.response.use(
         if (onLogout) {
           onLogout();
         } else {
-          window.location.href = '/#/auth';
+          window.location.href = getAbsoluteAppUrl(APP_ROUTES.login);
         }
         
         return Promise.reject(err);

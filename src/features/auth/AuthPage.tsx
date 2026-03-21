@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { authApi } from '@/api/endpoints';
+import { getDefaultAuthedPath } from '@/app/routes';
 import { useAuthStore } from '@/store/authStore';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -39,7 +40,7 @@ export default function AuthPage() {
 
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const redirectUrl = searchParams.get('redirect') || '/chat';
+  const redirectUrl = searchParams.get('redirect') || getDefaultAuthedPath();
   const setTokens = useAuthStore((state) => state.setTokens);
 
   const {

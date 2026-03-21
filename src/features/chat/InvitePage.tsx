@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
+import { APP_ROUTES } from '@/app/routes';
 import { discoveryApi } from '@/api/endpoints';
 import { Button } from '@/components/ui/Button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/Avatar';
@@ -38,7 +39,7 @@ export default function InvitePage() {
           <p className="text-muted-foreground text-sm">
             This invite link is no longer valid. It may have expired or reached its usage limit.
           </p>
-          <Button onClick={() => navigate('/')} className="w-full mt-4">
+          <Button onClick={() => navigate(APP_ROUTES.root)} className="w-full mt-4">
             Go to App
           </Button>
         </div>
@@ -76,7 +77,7 @@ export default function InvitePage() {
         <div className="pt-4">
           {isAuthenticated ? (
             <Button 
-              onClick={() => navigate(`/chat?user=${user.id}`)} 
+              onClick={() => navigate(APP_ROUTES.chatPeer(user.id))} 
               className="w-full h-12 text-base"
               disabled={user.ping_status === 'outgoing_pending' || (user.ping_status === 'none' && !user.can_ping)}
             >
@@ -104,7 +105,7 @@ export default function InvitePage() {
             </Button>
           ) : (
             <Button 
-              onClick={() => navigate(`/auth?redirect=${encodeURIComponent(`/chat?user=${user.id}`)}`)} 
+              onClick={() => navigate(`${APP_ROUTES.login}?redirect=${encodeURIComponent(APP_ROUTES.chatPeer(user.id))}`)} 
               className="w-full h-12 text-base"
             >
               Sign in to Chat

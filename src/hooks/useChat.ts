@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useEffect } from 'react';
 import { useInfiniteQuery, useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
 import { messagesApi, realtimeApi, conversationsApi } from '@/api/endpoints';
 import { useSocket, usePresence, useRealtimeMessages, useSocketStore } from '@/socket/socket';
@@ -322,8 +322,7 @@ export const useThreadMessages = (threadRootId: string | null) => {
   });
 };
 
-export const useChat = (openThreadRootId: string | null = null) => {
-  const [selectedUser, setSelectedUser] = useState<string | null>(null);
+export const useChat = (selectedUser: string | null = null, openThreadRootId: string | null = null) => {
   const queryClient = useQueryClient();
   const { userId: currentUserId } = useAuthStore();
   
@@ -484,7 +483,6 @@ export const useChat = (openThreadRootId: string | null = null) => {
 
   return {
     selectedUser,
-    setSelectedUser,
     onlineUsers,
     messages,
     fetchNextPage,

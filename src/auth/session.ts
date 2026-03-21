@@ -1,4 +1,5 @@
 import { tokenStore } from './tokenStore';
+import { APP_ROUTES, getAbsoluteAppUrl } from '@/app/routes';
 import { socketClient } from '@/socket/socketClient';
 import { apiClient, setTokenUpdateCallback, setLogoutCallback } from '@/api/httpClient';
 
@@ -76,7 +77,7 @@ class SessionManager {
     this.notifyListeners(false);
     
     // Force reload to clear any in-memory state if needed, or just redirect
-    window.location.href = '/#/auth';
+    window.location.href = getAbsoluteAppUrl(APP_ROUTES.login);
   }
 
   isAuthenticated() {
