@@ -1,4 +1,4 @@
-import { MediaMeta, MessageDoc } from '@/api/types';
+import { MediaMeta, MessageDoc, MessageReactionGroup, ReplyMode, ReplyPreview } from '@/api/types';
 
 export type MessageKind =
   | 'text'
@@ -20,11 +20,22 @@ export interface BaseMessage {
   createdAt: string;
   updatedAt?: string;
   editedAt?: string;
+  deletedAt?: string;
   deliveredAt?: string;
   readAt?: string;
   kind: MessageKind;
   status: MessageStatus;
   isOwn: boolean;
+  isDeleted: boolean;
+  replyMode: ReplyMode | null;
+  replyToMessageId?: string;
+  threadRootId?: string;
+  replyPreview?: ReplyPreview;
+  replyPreviewIsOwn?: boolean;
+  isThreadRoot: boolean;
+  threadReplyCount: number;
+  lastThreadReplyAt?: string;
+  reactions: MessageReactionGroup[];
 }
 
 export interface TextMessage extends BaseMessage {
@@ -92,3 +103,10 @@ export type ChatMessage =
   | EmojiMessage
   | StickerMessage
   | UnknownMessage;
+
+export interface ComposerReplyTarget {
+  messageId: string;
+  mode: 'quote' | 'thread';
+  previewText: string;
+  senderLabel: string;
+}

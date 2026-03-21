@@ -2,6 +2,7 @@ import React, { useRef } from 'react';
 import { Button } from '@/components/ui/Button';
 import { Paperclip, Loader2 } from 'lucide-react';
 import { getMessageType, validateFile } from '@/utils/fileUtils';
+import { ComposerReplyTarget } from './types/message';
 
 interface MediaComposerProps {
   receiverId: string;
@@ -14,9 +15,16 @@ interface MediaComposerProps {
   }) => Promise<any>;
   isUploading: boolean;
   setIsUploading: (isUploading: boolean) => void;
+  replyTarget?: ComposerReplyTarget | null;
 }
 
-export default function MediaComposer({ receiverId, onSendMedia, isUploading, setIsUploading }: MediaComposerProps) {
+export default function MediaComposer({
+  receiverId,
+  onSendMedia,
+  isUploading,
+  setIsUploading,
+  replyTarget,
+}: MediaComposerProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -56,12 +64,13 @@ export default function MediaComposer({ receiverId, onSendMedia, isUploading, se
       <Button
         variant="ghost"
         size="icon"
-        className="h-10 w-10 rounded-full shrink-0 text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
+        className="relative h-10 w-10 rounded-full shrink-0 text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
         onClick={() => fileInputRef.current?.click()}
         disabled={isUploading}
-        title="Send file"
+        title={replyTarget ? `Send file as ${replyTarget.mode === 'thread' ? 'thread reply' : 'reply'}` : 'Send file'}
       >
         {isUploading ? <Loader2 className="h-5 w-5 animate-spin" /> : <Paperclip className="h-5 w-5" />}
+        {replyTarget ? <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-primary" /> : null}
       </Button>
       <input
         type="file"

@@ -3,6 +3,7 @@ import { cn } from '@/lib/utils';
 import { MessageBubble, MessageContent } from '../components/MessageShell';
 import { MessageMarkdown } from '../components/MessageMarkdown';
 import { ImageMessage } from '../types/message';
+import { MessageReplyPreview } from '../components/MessageReplyPreview';
 
 interface ImageMessageRendererProps {
   message: ImageMessage;
@@ -17,6 +18,7 @@ export const ImageMessageRenderer: React.FC<ImageMessageRendererProps> = ({
 }) => {
   return (
     <MessageBubble isOwn={message.isOwn} highlighted={highlighted}>
+      <MessageReplyPreview message={message} />
       <div
         className={cn("p-1", onMediaClick && "cursor-pointer")}
         onClick={onMediaClick ? () => onMediaClick('image', message.imageUrl) : undefined}

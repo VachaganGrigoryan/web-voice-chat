@@ -37,23 +37,74 @@ export interface MediaMeta {
   duration_ms?: number | null;
 }
 
+export type MessageType = 'voice' | 'text' | 'image' | 'emoji' | 'sticker' | 'video';
+export type ReplyMode = 'quote' | 'thread';
+
+export interface ReplyPreview {
+  message_id: string;
+  sender_id: string;
+  type: MessageType;
+  text: string | null;
+  is_deleted: boolean;
+}
+
+export interface MessageReactionGroup {
+  emoji: string;
+  user_ids: string[];
+  count: number;
+  updated_at: string;
+}
+
+export interface ThreadSummary {
+  thread_root_id: string;
+  thread_reply_count: number;
+  last_thread_reply_at: string | null;
+}
+
 export interface MessageDoc {
   id: string;
   conversation_id: string;
   sender_id: string;
   receiver_id: string;
-  type: 'voice' | 'text' | 'image' | 'emoji' | 'sticker' | 'video';
+  type: MessageType;
   text: string | null;
   media: MediaMeta | null;
+  reply_mode: ReplyMode | null;
+  reply_to_message_id: string | null;
+  thread_root_id: string | null;
+  reply_preview: ReplyPreview | null;
+  is_thread_root: boolean;
+  thread_reply_count: number;
+  last_thread_reply_at: string | null;
+  reactions: MessageReactionGroup[];
   status: 'sent' | 'delivered' | 'read';
   edited_at: string | null;
+  is_deleted?: boolean;
+  deleted_at?: string | null;
   delivered_at: string | null;
   read_at: string | null;
   created_at: string;
   updated_at: string;
 }
 
-export type PingStatus = 'none' | 'incoming_pending' | 'outgoing_pending' | 'accepted' | 'declined';
+export interface MessageReactionsUpdate {
+  message_id: string;
+  conversation_id: string;
+  reactions: MessageReactionGroup[];
+  updated_at: string;
+}
+
+export interface ConversationReadUpdate {
+  updated_count: number;
+}
+
+export type PingStatus =
+  | 'none'
+  | 'incoming_pending'
+  | 'outgoing_pending'
+  | 'accepted'
+  | 'declined'
+  | 'blocked';
 
 export interface UserSummary {
   id: string;
@@ -89,7 +140,7 @@ export interface Ping {
   id: string;
   from_user_id: string;
   to_user_id: string;
-  status: 'pending' | 'accepted' | 'declined';
+  status: 'pending' | 'accepted' | 'declined' | 'cancelled' | 'blocked';
   created_at: string;
   updated_at: string;
   responded_at: string | null;
@@ -99,6 +150,8 @@ export interface PingItem {
   ping: Ping;
   peer: UserSummary;
 }
+
+export type PingResponse = PingItem;
 
 export interface PaginatedResponse<T> {
   success: boolean;

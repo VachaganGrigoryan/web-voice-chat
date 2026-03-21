@@ -2,12 +2,13 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { VoiceRecorder as CapacitorVoiceRecorder } from 'capacitor-voice-recorder';
 import { Button } from '@/components/ui/Button';
-import { Mic, Square, Loader2, Trash2, Send, StopCircle, Smile, Pause, Play } from 'lucide-react';
+import { Mic, Square, Loader2, Trash2, Send, StopCircle, Smile, Pause, Play, X } from 'lucide-react';
 import { getSocket } from '@/socket/socket';
 import { EVENTS } from '@/socket/events';
 import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
 import EmojiPicker, { Theme } from 'emoji-picker-react';
+import { ComposerReplyTarget } from './types/message';
 
 interface VoiceRecorderProps {
   receiverId: string;
@@ -19,9 +20,17 @@ interface VoiceRecorderProps {
     duration_ms?: number;
   }) => Promise<any>;
   onSendText: (data: { receiver_id: string; text: string }) => Promise<any>;
+  replyTarget?: ComposerReplyTarget | null;
+  onClearReplyTarget?: () => void;
 }
 
-export default function VoiceRecorder({ receiverId, onSendVoice, onSendText }: VoiceRecorderProps) {
+export default function VoiceRecorder({
+  receiverId,
+  onSendVoice,
+  onSendText,
+  replyTarget,
+  onClearReplyTarget,
+}: VoiceRecorderProps) {
   const [isRecording, setIsRecording] = useState(false);
   const [isRecordingPaused, setIsRecordingPaused] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
@@ -343,6 +352,23 @@ export default function VoiceRecorder({ receiverId, onSendVoice, onSendText }: V
 
   return (
     <div className="w-full bg-background/80 backdrop-blur-md border-t p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] transition-all duration-300">
+      {replyTarget ? (
+        <div className="max-w-3xl mx-auto mb-3 flex items-start justify-between gap-3 rounded-2xl border border-primary/20 bg-primary/5 px-4 py-3">
+          <div className="min-w-0">
+            <div className="text-xs font-semibold uppercase tracking-wide text-primary">
+              {replyTarget.mode === 'thread' ? 'Thread Reply' : 'Reply'}
+            </div>
+            <div className="text-xs text-muted-foreground">{replyTarget.senderLabel}</div>
+            <div className="truncate text-sm text-foreground">{replyTarget.previewText}</div>
+          </div>
+          {onClearReplyTarget ? (
+            <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={onClearReplyTarget}>
+              <X className="h-4 w-4" />
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
+
       <div className="max-w-3xl mx-auto flex items-center justify-between gap-4 w-full">
         <AnimatePresence mode="wait">
           {!isRecording && !audioBlob ? (

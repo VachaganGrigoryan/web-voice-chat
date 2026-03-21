@@ -26,12 +26,16 @@ export function usePings() {
     socket.on(EVENTS.PING_RECEIVED, handlePingUpdate);
     socket.on(EVENTS.PING_ACCEPTED, handleChatPermission);
     socket.on(EVENTS.PING_DECLINED, handlePingUpdate);
+    socket.on(EVENTS.PING_CANCELLED, handlePingUpdate);
+    socket.on(EVENTS.USER_BLOCKED, handleChatPermission);
     socket.on(EVENTS.CHAT_PERMISSION_UPDATED, handleChatPermission);
 
     return () => {
       socket.off(EVENTS.PING_RECEIVED, handlePingUpdate);
       socket.off(EVENTS.PING_ACCEPTED, handleChatPermission);
       socket.off(EVENTS.PING_DECLINED, handlePingUpdate);
+      socket.off(EVENTS.PING_CANCELLED, handlePingUpdate);
+      socket.off(EVENTS.USER_BLOCKED, handleChatPermission);
       socket.off(EVENTS.CHAT_PERMISSION_UPDATED, handleChatPermission);
     };
   }, [socket, queryClient]);

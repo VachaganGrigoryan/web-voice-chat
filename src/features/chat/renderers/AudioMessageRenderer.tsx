@@ -3,6 +3,7 @@ import AudioPlayer from '../AudioPlayer';
 import { MessageBubble } from '../components/MessageShell';
 import { AudioMessage } from '../types/message';
 import { cn } from '@/lib/utils';
+import { MessageReplyPreview } from '../components/MessageReplyPreview';
 
 interface AudioMessageRendererProps {
   message: AudioMessage;
@@ -12,6 +13,7 @@ interface AudioMessageRendererProps {
 export const AudioMessageRenderer: React.FC<AudioMessageRendererProps> = ({ message, highlighted = false }) => {
   return (
     <MessageBubble isOwn={message.isOwn} highlighted={highlighted}>
+      <MessageReplyPreview message={message} />
       <AudioPlayer
         src={message.audioUrl}
         durationMs={message.durationSec ? message.durationSec * 1000 : 0}

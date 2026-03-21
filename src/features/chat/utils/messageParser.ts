@@ -18,10 +18,24 @@ function createBaseMessage(doc: MessageDoc, currentUserId?: string | null) {
     createdAt: doc.created_at,
     updatedAt: doc.updated_at || undefined,
     editedAt: doc.edited_at || undefined,
+    deletedAt: doc.deleted_at || undefined,
     deliveredAt: doc.delivered_at || undefined,
     readAt: doc.read_at || undefined,
     status: doc.status as MessageStatus,
     isOwn: !!currentUserId && doc.sender_id === currentUserId,
+    isDeleted: !!doc.is_deleted,
+    replyMode: doc.reply_mode,
+    replyToMessageId: doc.reply_to_message_id || undefined,
+    threadRootId: doc.thread_root_id || undefined,
+    replyPreview: doc.reply_preview || undefined,
+    replyPreviewIsOwn:
+      currentUserId && doc.reply_preview
+        ? doc.reply_preview.sender_id === currentUserId
+        : undefined,
+    isThreadRoot: doc.is_thread_root,
+    threadReplyCount: doc.thread_reply_count,
+    lastThreadReplyAt: doc.last_thread_reply_at || undefined,
+    reactions: doc.reactions || [],
   };
 }
 

@@ -7,6 +7,7 @@ import { StickerMessageRenderer } from './renderers/StickerMessageRenderer';
 import { SystemMessageRenderer } from './renderers/SystemMessageRenderer';
 import { TextMessageRenderer } from './renderers/TextMessageRenderer';
 import { VideoMessageRenderer } from './renderers/VideoMessageRenderer';
+import { MessageBubble, MessageContent } from './components/MessageShell';
 
 interface MessageRendererProps {
   message: ChatMessage;
@@ -19,6 +20,16 @@ export const MessageRenderer: React.FC<MessageRendererProps> = ({
   highlighted = false,
   onMediaClick,
 }) => {
+  if (message.isDeleted) {
+    return (
+      <MessageBubble isOwn={message.isOwn} highlighted={highlighted} className="max-w-full min-w-0">
+        <MessageContent className="italic text-muted-foreground">
+          Message deleted
+        </MessageContent>
+      </MessageBubble>
+    );
+  }
+
   switch (message.kind) {
     case 'text':
       return <TextMessageRenderer message={message} highlighted={highlighted} />;

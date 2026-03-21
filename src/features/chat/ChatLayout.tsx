@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
-import { useChat, useConversations } from '@/hooks/useChat';
+import { useChat, useConversations, useThreadMessages } from '@/hooks/useChat';
 import { usePings } from '@/hooks/usePings';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '@/store/authStore';
@@ -20,6 +20,9 @@ import UserSettings from './UserSettings';
 import { PingsModal } from './PingsModal';
 import { GlobalAudioPlayerBar } from './GlobalAudioPlayerBar';
 import { UserProfileModal } from './UserProfileModal';
+import { MessageActionsDialog } from './components/MessageActionsDialog';
+import { ThreadPanel } from './components/ThreadPanel';
+import { ThreadReplyBadge } from './components/ThreadReplyBadge';
 import { useChatAudioPlayerStore } from './audioPlayerStore';
 import { MessageItem, MessageMeta } from './components/MessageShell';
 import { ProfileTriggerButton } from './components/ProfileTriggerButton';
@@ -27,7 +30,7 @@ import { cn } from '@/lib/utils';
 import { useTypingIndicator, useSocketStore } from '@/socket/socket';
 import { EVENTS } from '@/socket/events';
 import { useProfile } from '@/hooks/useProfile';
-import { AudioMessage } from './types/message';
+import { AudioMessage, ChatMessage, ComposerReplyTarget } from './types/message';
 import {
   formatMessageDay,
   isSameLocalDay,
@@ -60,7 +63,11 @@ export default function ChatLayout() {
     isFetchingNextPage,
     sendVoice,
     sendText,
+    editMessage,
+    deleteMessage,
     isSending,
+    isEditingMessage,
+    isDeletingMessage,
   } = useChat();
 
   useEffect(() => {
@@ -93,6 +100,9 @@ export default function ChatLayout() {
   const closeAudioPlayer = useChatAudioPlayerStore((state) => state.close);
   const pendingIncomingCount = incoming.filter(item => item.ping.status === 'pending').length;
   const [highlightedMessageIds, setHighlightedMessageIds] = useState<Set<string>>(new Set());
+  const [activeMessage, setActiveMessage] = useState<ChatMessage | null>(null);
+  const [replyTarget, setReplyTarget] = useState<ComposerReplyTarget | null>(null);
+  const [selectedThreadRootId, setSelectedThreadRootId] = useState<string | null>(null);
   
   const { isTyping, typingUsers } = useTypingIndicator(selectedUser || undefined);
 
@@ -176,9 +186,32 @@ export default function ChatLayout() {
     () => parseMessages(allMessages, userId),
     [allMessages, userId]
   );
+  const mainChatMessages = useMemo(
+    () => chatMessages.filter((message) => message.replyMode !== 'thread'),
+    [chatMessages]
+  );
+  const selectedThreadRootMessage = useMemo(
+    () => chatMessages.find((message) => message.id === selectedThreadRootId) || null,
+    [chatMessages, selectedThreadRootId]
+  );
+  const {
+    data: threadMessagesPages,
+    fetchNextPage: fetchNextThreadPage,
+    hasNextPage: hasNextThreadPage,
+    isFetchingNextPage: isFetchingNextThreadPage,
+    isLoading: isLoadingThread,
+  } = useThreadMessages(selectedThreadRootId);
+  const allThreadMessages = useMemo(
+    () => threadMessagesPages?.pages.flatMap((page) => page.data || []).filter(Boolean) || [],
+    [threadMessagesPages]
+  );
+  const threadMessages = useMemo(
+    () => parseMessages(allThreadMessages, userId),
+    [allThreadMessages, userId]
+  );
   const audioQueue = useMemo(
     () =>
-      chatMessages
+      mainChatMessages
         .filter((message): message is AudioMessage => message.kind === 'audio')
         .reverse()
         .map((message) => ({
@@ -189,7 +222,7 @@ export default function ChatLayout() {
           isRead: message.status === 'read',
           isMe: message.isOwn,
         })),
-    [chatMessages]
+    [mainChatMessages]
   );
 
   const readEmittedMessagesRef = useRef<Set<string>>(new Set());
@@ -197,6 +230,9 @@ export default function ChatLayout() {
   useEffect(() => {
     readEmittedMessagesRef.current.clear();
     setHighlightedMessageIds(new Set());
+    setActiveMessage(null);
+    setReplyTarget(null);
+    setSelectedThreadRootId(null);
   }, [selectedUser]);
 
   useEffect(() => {
@@ -215,10 +251,8 @@ export default function ChatLayout() {
       // Mark as emitted immediately to avoid re-processing in next render
       newIds.forEach(id => readEmittedMessagesRef.current.add(id));
 
-      // Emit events
-      newIds.forEach((id) => {
-        socket.emit(EVENTS.MESSAGE_READ, { message_id: id });
-      });
+      // Emit conversation-level read event for the open chat
+      socket.emit(EVENTS.CONVERSATION_READ, { user_id: selectedUser });
 
       // Update UI highlight
       setHighlightedMessageIds((prev) => {
@@ -281,6 +315,95 @@ export default function ChatLayout() {
     selectedConversationUser.chat_allowed || selectedConversationUser.ping_status === 'accepted'
   );
 
+  const getMessagePreviewText = (message: ChatMessage) => {
+    if (message.isDeleted) return 'Message deleted';
+    if (message.kind === 'text' || message.kind === 'emoji') return message.text;
+    if (message.kind === 'image' || message.kind === 'video') return message.caption || `${message.kind} message`;
+    if (message.kind === 'audio') return 'Voice message';
+    if (message.kind === 'sticker') return 'Sticker';
+    if (message.kind === 'system') return message.text;
+    return 'Message';
+  };
+
+  const createReplyTarget = (message: ChatMessage, mode: ComposerReplyTarget['mode']): ComposerReplyTarget => ({
+    messageId: message.id,
+    mode,
+    previewText: getMessagePreviewText(message),
+    senderLabel: message.isOwn ? 'You' : displaySelectedUser || 'Contact',
+  });
+
+  const handleSelectReplyMode = (mode: ComposerReplyTarget['mode']) => {
+    if (!activeMessage) return;
+    setReplyTarget(createReplyTarget(activeMessage, mode));
+    setActiveMessage(null);
+  };
+
+  const openThreadForMessage = (message: ChatMessage) => {
+    const rootMessageId = message.isThreadRoot ? message.id : message.threadRootId || message.id;
+    setSelectedThreadRootId(rootMessageId);
+    setActiveMessage(null);
+  };
+
+  const handleSendText = async (data: { receiver_id: string; text: string }) => {
+    await sendText({
+      ...data,
+      reply_mode: replyTarget?.mode,
+      reply_to_message_id: replyTarget?.messageId,
+    });
+    setReplyTarget(null);
+  };
+
+  const handleSendThreadText = async (data: { receiver_id: string; text: string }) => {
+    if (!selectedThreadRootId) return;
+    await sendText({
+      ...data,
+      reply_mode: 'thread',
+      reply_to_message_id: selectedThreadRootId,
+    });
+  };
+
+  const handleSendMedia = async (data: {
+    type: 'voice' | 'image' | 'sticker' | 'video' | 'file';
+    receiver_id: string;
+    file: File;
+    text?: string;
+    duration_ms?: number;
+  }) => {
+    await sendVoice({
+      ...data,
+      reply_mode: replyTarget?.mode,
+      reply_to_message_id: replyTarget?.messageId,
+    });
+    setReplyTarget(null);
+  };
+
+  const handleSendThreadMedia = async (data: {
+    type: 'voice' | 'image' | 'sticker' | 'video' | 'file';
+    receiver_id: string;
+    file: File;
+    text?: string;
+    duration_ms?: number;
+  }) => {
+    if (!selectedThreadRootId) return;
+    await sendVoice({
+      ...data,
+      reply_mode: 'thread',
+      reply_to_message_id: selectedThreadRootId,
+    });
+  };
+
+  const handleEditMessage = async (text: string) => {
+    if (!activeMessage) return;
+    await editMessage({ messageId: activeMessage.id, text });
+    setActiveMessage(null);
+  };
+
+  const handleDeleteMessage = async () => {
+    if (!activeMessage) return;
+    await deleteMessage(activeMessage.id);
+    setActiveMessage(null);
+  };
+
   const handleMediaClick = (type: 'image' | 'video', url: string) => {
     setMediaViewer({ open: true, type, url });
   };
@@ -309,6 +432,17 @@ export default function ChatLayout() {
         canAccessProfile={canAccessSelectedUserProfile}
       />
       <UserSettings isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />
+      <MessageActionsDialog
+        open={!!activeMessage}
+        message={activeMessage}
+        onOpenChange={(open) => !open && setActiveMessage(null)}
+        onReply={() => handleSelectReplyMode('quote')}
+        onThread={() => activeMessage && openThreadForMessage(activeMessage)}
+        onEdit={handleEditMessage}
+        onDelete={handleDeleteMessage}
+        isEditing={isEditingMessage}
+        isDeleting={isDeletingMessage}
+      />
       {/* Sidebar */}
       <div className={cn(
         "w-full md:w-80 border-r flex flex-col bg-muted/10 h-full",
@@ -447,9 +581,10 @@ export default function ChatLayout() {
                 {isPingAccepted ? (
                   <MediaComposer 
                     receiverId={selectedUser} 
-                    onSendMedia={sendVoice}
+                    onSendMedia={handleSendMedia}
                     isUploading={isSending}
                     setIsUploading={() => {}}
+                    replyTarget={replyTarget}
                   />
                 ) : (
                   <Button 
@@ -474,7 +609,9 @@ export default function ChatLayout() {
               <>
                 <GlobalAudioPlayerBar />
 
-                <div className="flex-1 overflow-y-auto flex flex-col-reverse p-4 space-y-reverse space-y-6 scroll-smooth overscroll-contain">
+                <div className="flex min-h-0 flex-1">
+                  <div className="flex min-w-0 flex-1 flex-col">
+                    <div className="flex-1 overflow-y-auto flex flex-col-reverse p-4 space-y-reverse space-y-6 scroll-smooth overscroll-contain">
                    {/* Typing Indicator Bubble */}
                    {isTyping && (
                      <div className="self-start mb-2 ml-1 animate-in fade-in slide-in-from-bottom-2 duration-300">
@@ -488,8 +625,8 @@ export default function ChatLayout() {
                      </div>
                    )}
 
-                 {chatMessages.map((message, index) => {
-                     const nextMessage = chatMessages[index + 1];
+                 {mainChatMessages.map((message, index) => {
+                     const nextMessage = mainChatMessages[index + 1];
                      const showDateHeader = !nextMessage ||
                        !isSameLocalDay(message.createdAt, nextMessage.createdAt);
 
@@ -502,13 +639,16 @@ export default function ChatLayout() {
                              onMediaClick={handleMediaClick}
                            />
                          ) : (
-                           <MessageItem isOwn={message.isOwn}>
+                           <MessageItem isOwn={message.isOwn} onOpenMenu={() => setActiveMessage(message)}>
                              <MessageRenderer
                                message={message}
                                highlighted={highlightedMessageIds.has(message.id)}
                                onMediaClick={handleMediaClick}
                              />
                              <MessageMeta message={message} />
+                             {message.isThreadRoot || message.threadReplyCount > 0 ? (
+                               <ThreadReplyBadge message={message} onOpenThread={() => openThreadForMessage(message)} />
+                             ) : null}
                            </MessageItem>
                          )}
                          
@@ -544,7 +684,7 @@ export default function ChatLayout() {
                      }}
                    />
                    
-                   {chatMessages.length === 0 && !isFetchingNextPage && (
+                   {mainChatMessages.length === 0 && !isFetchingNextPage && (
                       <div className="flex flex-col items-center justify-center py-12 text-center opacity-50">
                           <div className="bg-muted/30 p-4 rounded-full mb-3">
                               <MessageSquare className="h-8 w-8 text-muted-foreground" />
@@ -553,7 +693,54 @@ export default function ChatLayout() {
                           <p className="text-xs text-muted-foreground">Start the conversation by sending a message</p>
                       </div>
                    )}
-              </div>
+                    </div>
+
+                    <div className="shrink-0 z-20 bg-background flex items-center gap-2 p-4">
+                      <VoiceRecorder 
+                        receiverId={selectedUser} 
+                        onSendVoice={handleSendMedia}
+                        onSendText={handleSendText}
+                        replyTarget={replyTarget}
+                        onClearReplyTarget={() => setReplyTarget(null)}
+                      />
+                    </div>
+                  </div>
+
+                  <ThreadPanel
+                    open={!!selectedThreadRootMessage}
+                    rootMessage={selectedThreadRootMessage}
+                    messages={threadMessages}
+                    isLoading={isLoadingThread}
+                    isFetchingNextPage={isFetchingNextThreadPage}
+                    hasNextPage={!!hasNextThreadPage}
+                    fetchNextPage={fetchNextThreadPage}
+                    onClose={() => setSelectedThreadRootId(null)}
+                    onOpenMenu={(message) => setActiveMessage(message)}
+                    onMediaClick={handleMediaClick}
+                    composer={
+                      selectedThreadRootMessage ? (
+                        <div className="bg-background">
+                          <div className="flex justify-end px-3 pt-3">
+                            <MediaComposer
+                              receiverId={selectedUser}
+                              onSendMedia={handleSendThreadMedia}
+                              isUploading={isSending}
+                              setIsUploading={() => {}}
+                              replyTarget={createReplyTarget(selectedThreadRootMessage, 'thread')}
+                            />
+                          </div>
+                          <VoiceRecorder
+                            receiverId={selectedUser}
+                            onSendVoice={handleSendThreadMedia}
+                            onSendText={handleSendThreadText}
+                            replyTarget={createReplyTarget(selectedThreadRootMessage, 'thread')}
+                            onClearReplyTarget={() => setSelectedThreadRootId(null)}
+                          />
+                        </div>
+                      ) : null
+                    }
+                  />
+                </div>
               </>
             ) : (
               <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground bg-muted/5 p-4 text-center">
@@ -628,16 +815,6 @@ export default function ChatLayout() {
               </div>
             )}
 
-            {/* Composer Area - Sticky at bottom */}
-            {isPingAccepted && (
-              <div className="shrink-0 z-20 bg-background flex items-center gap-2 p-4">
-                <VoiceRecorder 
-                  receiverId={selectedUser} 
-                  onSendVoice={sendVoice}
-                  onSendText={sendText}
-                />
-              </div>
-            )}
           </>
         ) : (
           <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground bg-muted/5 p-4 text-center">

@@ -1,5 +1,20 @@
 import { apiClient } from './httpClient';
-import { TokenPair, SuccessResponse, PaginatedResponse, MessageDoc, User, Conversation, DiscoveredUser, Ping, PingItem } from './types';
+import {
+  TokenPair,
+  SuccessResponse,
+  PaginatedResponse,
+  MessageDoc,
+  User,
+  Conversation,
+  DiscoveredUser,
+  Ping,
+  PingItem,
+  PingResponse,
+  MessageReactionsUpdate,
+  ReplyMode,
+  ThreadSummary,
+  ConversationReadUpdate,
+} from './types';
 
 export const authApi = {
   register: (email: string) => apiClient.post('/auth/register', { email }),
@@ -36,6 +51,8 @@ export const messagesApi = {
     file: File;
     text?: string;
     duration_ms?: number;
+    reply_mode?: ReplyMode | null;
+    reply_to_message_id?: string;
   }) => {
     const formData = new FormData();
     formData.append('type', data.type);
@@ -43,17 +60,46 @@ export const messagesApi = {
     formData.append('file', data.file);
     if (data.text) formData.append('text', data.text);
     if (data.duration_ms) formData.append('duration_ms', data.duration_ms.toString());
-    
+    if (data.reply_mode) formData.append('reply_mode', data.reply_mode);
+    if (data.reply_to_message_id) formData.append('reply_to_message_id', data.reply_to_message_id);
+
     return apiClient.post<SuccessResponse<MessageDoc>>('/messages/media', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
   },
-  sendText: (receiver_id: string, text: string) => 
-    apiClient.post<SuccessResponse<MessageDoc>>('/messages/text', { receiver_id, text }),
+  sendText: (data: {
+    receiver_id: string;
+    text: string;
+    reply_mode?: ReplyMode | null;
+    reply_to_message_id?: string;
+  }) =>
+    apiClient.post<SuccessResponse<MessageDoc>>('/messages/text', data),
   getHistory: (userId: string, limit = 20, cursor?: string) =>
     apiClient.get<PaginatedResponse<MessageDoc>>(`/messages/conversations/${userId}`, {
       params: { limit, cursor },
     }),
+  markDelivered: (messageId: string) =>
+    apiClient.post<MessageDoc>(`/messages/${messageId}/delivered`),
+  markRead: (messageId: string) =>
+    apiClient.post<MessageDoc>(`/messages/${messageId}/read`),
+  editMessage: (messageId: string, text: string) =>
+    apiClient.patch<MessageDoc>(`/messages/${messageId}`, { text }),
+  deleteMessage: (messageId: string) =>
+    apiClient.delete<MessageDoc>(`/messages/${messageId}`),
+  getThreadMessages: (messageId: string, limit = 20, cursor?: string) =>
+    apiClient.get<PaginatedResponse<MessageDoc>>(`/messages/${messageId}/thread`, {
+      params: { limit, cursor },
+    }),
+  getThreadSummary: (messageId: string) =>
+    apiClient.get<SuccessResponse<ThreadSummary>>(`/messages/${messageId}/thread-summary`),
+  toggleReaction: (messageId: string, emoji: string) =>
+    apiClient.post<SuccessResponse<MessageReactionsUpdate>>(`/messages/${messageId}/reactions`, { emoji }),
+  removeOwnReaction: (messageId: string, emoji: string) =>
+    apiClient.delete<SuccessResponse<MessageReactionsUpdate>>(
+      `/messages/${messageId}/reactions/${encodeURIComponent(emoji)}/me`
+    ),
+  markConversationRead: (userId: string) =>
+    apiClient.post<ConversationReadUpdate>(`/messages/conversations/${userId}/read`),
 };
 
 export const conversationsApi = {
@@ -87,6 +133,10 @@ export const pingsApi = {
     apiClient.get<PaginatedResponse<PingItem>>('/pings/outgoing', { params: { limit, cursor } }),
   acceptPing: (ping_id: string) => apiClient.post<SuccessResponse<Ping>>(`/pings/${ping_id}/accept`),
   declinePing: (ping_id: string) => apiClient.post<SuccessResponse<Ping>>(`/pings/${ping_id}/decline`),
+  cancelPing: (ping_id: string) => apiClient.post<PingResponse>(`/pings/${ping_id}/cancel`),
+  blockUser: (peer_user_id: string) => apiClient.post<PingResponse>('/pings/block', { peer_user_id }),
+  unblockUser: (peer_user_id: string) => apiClient.post<PingResponse>('/pings/unblock', { peer_user_id }),
+  getBlockedUsers: () => apiClient.get<PingResponse[]>('/pings/blocked'),
 };
 
 export const healthApi = {

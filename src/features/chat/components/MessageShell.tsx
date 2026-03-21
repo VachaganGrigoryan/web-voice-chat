@@ -7,15 +7,46 @@ import { ChatMessage } from '../types/message';
 interface MessageItemProps {
   isOwn: boolean;
   children: React.ReactNode;
+  onOpenMenu?: () => void;
 }
 
-export const MessageItem: React.FC<MessageItemProps> = ({ isOwn, children }) => {
+export const MessageItem: React.FC<MessageItemProps> = ({ isOwn, children, onOpenMenu }) => {
+  const touchTimerRef = React.useRef<number | null>(null);
+
+  const clearTouchTimer = () => {
+    if (touchTimerRef.current) {
+      window.clearTimeout(touchTimerRef.current);
+      touchTimerRef.current = null;
+    }
+  };
+
+  const handleTouchStart = () => {
+    if (!onOpenMenu) return;
+    clearTouchTimer();
+    touchTimerRef.current = window.setTimeout(() => {
+      onOpenMenu();
+      touchTimerRef.current = null;
+    }, 450);
+  };
+
   return (
     <div
       className={cn(
         "flex flex-col max-w-[85%] md:max-w-[70%] mb-1 min-w-0",
         isOwn ? "self-end items-end" : "self-start items-start"
       )}
+      onContextMenu={
+        onOpenMenu
+          ? (event) => {
+              event.preventDefault();
+              onOpenMenu();
+            }
+          : undefined
+      }
+      onTouchStart={onOpenMenu ? handleTouchStart : undefined}
+      onTouchEnd={onOpenMenu ? clearTouchTimer : undefined}
+      onTouchMove={onOpenMenu ? clearTouchTimer : undefined}
+      onTouchCancel={onOpenMenu ? clearTouchTimer : undefined}
     >
       {children}
     </div>
@@ -78,6 +109,8 @@ export const MessageMeta: React.FC<MessageMetaProps> = ({ message }) => {
         message.isOwn ? "justify-end" : "justify-start"
       )}
     >
+      {message.isDeleted ? <span>deleted</span> : null}
+      {!message.isDeleted && message.editedAt ? <span>edited</span> : null}
       <span>{formatMessageTime(message.createdAt)}</span>
       {message.isOwn ? (
         <span
