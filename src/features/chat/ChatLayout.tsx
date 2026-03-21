@@ -25,7 +25,7 @@ import { MessageReactions } from './components/MessageReactions';
 import { ThreadPanel } from './components/ThreadPanel';
 import { ThreadReplyBadge } from './components/ThreadReplyBadge';
 import { useChatAudioPlayerStore } from './audioPlayerStore';
-import { MessageBubbleFooter, MessageItem, MessageMenuAnchor, MessageMeta } from './components/MessageShell';
+import { DaySeparator, MessageBubbleFooter, MessageItem, MessageMenuAnchor, MessageMeta } from './components/MessageShell';
 import { ProfileTriggerButton } from './components/ProfileTriggerButton';
 import { cn } from '@/lib/utils';
 import {
@@ -1059,10 +1059,10 @@ export default function ChatLayout() {
 
                  {mainChatMessages.map((message, index) => {
                      const newerMessage = mainChatMessages[index - 1];
-                     const nextMessage = mainChatMessages[index + 1];
-                     const showDateHeader = !nextMessage ||
-                       !isSameLocalDay(message.createdAt, nextMessage.createdAt);
-                     const groupedWithAbove = shouldGroupMessages(message, nextMessage);
+                     const olderMessage = mainChatMessages[index + 1];
+                     const showDaySeparator = !olderMessage ||
+                       !isSameLocalDay(message.createdAt, olderMessage.createdAt);
+                     const groupedWithAbove = shouldGroupMessages(message, olderMessage);
                      const groupedWithBelow = shouldGroupMessages(message, newerMessage);
 
                      return (
@@ -1075,11 +1075,18 @@ export default function ChatLayout() {
                              mainMessageElementRefs.current.delete(message.id);
                            }
                          }}
-                         className={cn(
+                       className={cn(
                            "flex flex-col w-full min-w-0",
                            groupedWithAbove ? "mt-px" : index === mainChatMessages.length - 1 ? "" : "mt-6"
                          )}
                        >
+                         {showDaySeparator && (
+                           <DaySeparator
+                             label={formatMessageDay(message.createdAt)}
+                             className="mb-3"
+                           />
+                         )}
+
                          {message.kind === 'system' ? (
                            <MessageRenderer
                              message={message}
@@ -1118,14 +1125,6 @@ export default function ChatLayout() {
                             <MessageMeta message={message} showTimestamp={!groupedWithBelow} />
                           </MessageItem>
                         )}
-                         
-                         {showDateHeader && (
-                           <div className="flex justify-center my-6">
-                             <div className="bg-muted/50 text-muted-foreground text-[10px] font-medium px-3 py-1 rounded-full shadow-sm border border-border/50">
-                               {formatMessageDay(message.createdAt)}
-                             </div>
-                           </div>
-                         )}
                        </div>
                      );
                    })}

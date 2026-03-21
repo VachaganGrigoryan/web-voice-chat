@@ -157,6 +157,30 @@ export function MessageReactions({
     setView('closed');
   };
 
+  const triggerButton = (
+    <button
+      ref={triggerRef}
+      type="button"
+      disabled={isBusy}
+      className={cn(
+        'inline-flex h-7 items-center gap-1 rounded-full border border-dashed border-border/70 bg-background/70 px-2 text-[11px] font-medium text-muted-foreground transition-all touch-manipulation hover:bg-muted/80 hover:text-foreground',
+        view !== 'closed' && 'border-primary/40 bg-primary/8 text-primary md:opacity-100',
+        isBusy && 'cursor-not-allowed opacity-70'
+      )}
+      onClick={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        setAnchorRect(event.currentTarget.getBoundingClientRect());
+        setView((current) => (current === 'closed' ? 'quick' : 'closed'));
+      }}
+      aria-label="React to message"
+      title="React to message"
+    >
+      <Smile className="h-3.5 w-3.5" />
+      <span className="hidden sm:inline">React</span>
+    </button>
+  );
+
   const renderReactionPanel = () => {
     if (view === 'closed' || typeof document === 'undefined') {
       return null;
@@ -243,63 +267,62 @@ export function MessageReactions({
 
   return (
     <>
-      <div
-        className={cn(
-          'mt-1 flex flex-wrap items-center gap-1 px-1',
-          message.isOwn ? 'justify-end' : 'justify-start',
-          className
-        )}
-      >
-        {reactions.map((reaction) => {
-          const hasOwnReaction = !!currentUserId && reaction.user_ids.includes(currentUserId);
-
-          return (
-            <button
-              key={`${message.id}-${reaction.emoji}`}
-              type="button"
-              disabled={isBusy}
-              className={cn(
-                'inline-flex h-7 items-center gap-1 rounded-full border px-2.5 text-[12px] font-medium transition-colors touch-manipulation',
-                hasOwnReaction
-                  ? 'border-primary/40 bg-primary/12 text-primary'
-                  : 'border-border/70 bg-background/80 text-foreground/80 hover:bg-muted/80',
-                isBusy && 'cursor-not-allowed opacity-70'
-              )}
-              onClick={(event) => {
-                event.preventDefault();
-                event.stopPropagation();
-                void onToggleReaction(reaction.emoji);
-              }}
-            >
-              <span>{reaction.emoji}</span>
-              <span>{reaction.count}</span>
-            </button>
-          );
-        })}
-
-        <button
-          ref={triggerRef}
-          type="button"
-          disabled={isBusy}
+      {reactions.length > 0 ? (
+        <div
           className={cn(
-            'inline-flex h-7 items-center gap-1 rounded-full border border-dashed border-border/70 bg-background/70 px-2 text-[11px] font-medium text-muted-foreground transition-all touch-manipulation hover:bg-muted/80 hover:text-foreground',
-            reactions.length === 0 ? 'opacity-100 md:opacity-0 md:group-hover:opacity-100' : 'opacity-100',
-            view !== 'closed' && 'border-primary/40 bg-primary/8 text-primary md:opacity-100',
-            isBusy && 'cursor-not-allowed opacity-70'
+            'mt-0.5 flex flex-wrap items-center gap-1 px-1',
+            message.isOwn ? 'justify-end' : 'justify-start',
+            className
           )}
-          onClick={(event) => {
-            event.preventDefault();
-            event.stopPropagation();
-            setAnchorRect(event.currentTarget.getBoundingClientRect());
-            setView((current) => (current === 'closed' ? 'quick' : 'closed'));
-          }}
-          aria-label="React to message"
-          title="React to message"
         >
-          <Smile className="h-3.5 w-3.5" />
-          <span className="hidden sm:inline">React</span>
-        </button>
-      </div>
+          {reactions.map((reaction) => {
+            const hasOwnReaction = !!currentUserId && reaction.user_ids.includes(currentUserId);
+
+            return (
+              <button
+                key={`${message.id}-${reaction.emoji}`}
+                type="button"
+                disabled={isBusy}
+                className={cn(
+                  'inline-flex h-7 items-center gap-1 rounded-full border px-2.5 text-[12px] font-medium transition-colors touch-manipulation',
+                  hasOwnReaction
+                    ? 'border-primary/40 bg-primary/12 text-primary'
+                    : 'border-border/70 bg-background/80 text-foreground/80 hover:bg-muted/80',
+                  isBusy && 'cursor-not-allowed opacity-70'
+                )}
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  void onToggleReaction(reaction.emoji);
+                }}
+              >
+                <span>{reaction.emoji}</span>
+                <span>{reaction.count}</span>
+              </button>
+            );
+          })}
+
+          {triggerButton}
+        </div>
+      ) : (
+        <div
+          className={cn(
+            'relative h-0 w-full px-1',
+            message.isOwn ? 'self-end' : 'self-start',
+            className
+          )}
+        >
+          <div
+            className={cn(
+              'absolute -top-2 z-10',
+              message.isOwn ? 'right-1' : 'left-1',
+              'opacity-100 md:opacity-0 md:group-hover:opacity-100'
+            )}
+          >
+            {triggerButton}
+          </div>
+        </div>
+      )}
 
       {renderReactionPanel()}
     </>

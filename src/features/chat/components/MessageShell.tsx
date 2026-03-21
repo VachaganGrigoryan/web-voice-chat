@@ -184,6 +184,23 @@ export const MessageBubbleFooter: React.FC<MessageBubbleFooterProps> = ({
   );
 };
 
+interface DaySeparatorProps {
+  label: string;
+  className?: string;
+}
+
+export const DaySeparator: React.FC<DaySeparatorProps> = ({ label, className }) => {
+  return (
+    <div className={cn('flex items-center gap-3 py-3', className)}>
+      <div className="h-px flex-1 bg-border/60" />
+      <div className="rounded-full border border-border/60 bg-background/90 px-3 py-1 text-[10px] font-semibold text-muted-foreground shadow-sm">
+        {label}
+      </div>
+      <div className="h-px flex-1 bg-border/60" />
+    </div>
+  );
+};
+
 interface MessageMetaProps {
   message: ChatMessage;
   showTimestamp?: boolean;
@@ -197,7 +214,7 @@ export const MessageMeta: React.FC<MessageMetaProps> = ({ message, showTimestamp
   return (
     <div
       className={cn(
-        "flex items-center gap-1 mt-1 px-1 text-[10px] text-muted-foreground/70",
+        "flex items-center gap-1 mt-0.5 px-1 text-[10px] text-muted-foreground/70",
         message.isOwn ? "justify-end" : "justify-start"
       )}
     >

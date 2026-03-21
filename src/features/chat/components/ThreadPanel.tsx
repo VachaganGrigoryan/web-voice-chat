@@ -4,7 +4,7 @@ import { ArrowDown, Loader2, MessageSquareText, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { formatMessageDay, isSameLocalDay } from '@/utils/dateUtils';
 import { ChatMessage } from '../types/message';
-import { MessageItem, MessageMenuAnchor, MessageMeta } from './MessageShell';
+import { DaySeparator, MessageItem, MessageMenuAnchor, MessageMeta } from './MessageShell';
 import { MessageReactions } from './MessageReactions';
 import { MessageRenderer } from '../MessageRenderer';
 
@@ -306,11 +306,10 @@ export function ThreadPanel({
                     )}
                   >
                     {showDateHeader ? (
-                      <div className="flex justify-center pb-4">
-                        <div className="rounded-full border border-border/50 bg-muted/50 px-3 py-1 text-[10px] font-medium text-muted-foreground shadow-sm">
-                          {formatMessageDay(message.createdAt)}
-                        </div>
-                      </div>
+                      <DaySeparator
+                        label={formatMessageDay(message.createdAt)}
+                        className="pb-3"
+                      />
                     ) : null}
 
                     <MessageItem
