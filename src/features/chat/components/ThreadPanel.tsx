@@ -1,6 +1,5 @@
 import React, { useMemo } from 'react';
 import { Button } from '@/components/ui/Button';
-import { ScrollArea } from '@/components/ui/ScrollArea';
 import { Loader2, MessageSquareText, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { formatMessageDay, isSameLocalDay } from '@/utils/dateUtils';
@@ -95,7 +94,7 @@ export function ThreadPanel({
         </Button>
       </div>
 
-      <ScrollArea className="flex-1">
+      <div className="scrollbar-hidden flex-1 overflow-y-auto overscroll-contain">
         <div className="p-4">
           <div className="rounded-3xl border border-border/70 bg-muted/20 p-3 shadow-sm">
             <div className="mb-2 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
@@ -183,7 +182,7 @@ export function ThreadPanel({
             ) : null}
           </div>
         </div>
-      </ScrollArea>
+      </div>
 
       {composer ? <div className="border-t">{composer}</div> : null}
     </aside>

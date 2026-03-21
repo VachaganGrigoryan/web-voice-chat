@@ -786,7 +786,7 @@ export default function ChatLayout() {
 
                 <div ref={splitLayoutRef} className="flex min-h-0 flex-1">
                   <div className="flex min-w-0 flex-1 flex-col">
-                    <div className="flex-1 overflow-y-auto flex flex-col-reverse p-4 scroll-smooth overscroll-contain">
+                    <div className="scrollbar-hidden flex-1 overflow-y-auto flex flex-col-reverse p-4 scroll-smooth overscroll-contain">
                    {/* Typing Indicator Bubble */}
                    {isTyping && (
                      <div className="self-start mb-2 ml-1 animate-in fade-in slide-in-from-bottom-2 duration-300">
