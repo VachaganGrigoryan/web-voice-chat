@@ -13,6 +13,9 @@ export interface SendMediaInput {
   duration_ms?: number;
   reply_mode?: ReplyMode | null;
   reply_to_message_id?: string;
+  client_batch_id?: string;
+  signal?: AbortSignal;
+  onUploadProgress?: (progress: number) => void;
 }
 
 export interface SendTextInput {
@@ -360,13 +363,31 @@ export const useChat = (openThreadRootId: string | null = null) => {
 
   const sendMessageMutation = useMutation({
     mutationFn: async (data: SendMediaInput) => {
-      const response = await messagesApi.uploadMedia(data);
+      const response = await messagesApi.uploadMedia({
+        ...data,
+        onUploadProgress: data.onUploadProgress
+          ? (event) => {
+              if (!event.total) {
+                return;
+              }
+
+              data.onUploadProgress?.(Math.round((event.loaded / event.total) * 100));
+            }
+          : undefined,
+      });
       return response.data.data;
     },
     onSuccess: (newMessage, variables) => {
       if (selectedUser) {
-        emitOutgoingMessage(newMessage, variables.type, selectedUser);
-        integrateCreatedMessage(queryClient, selectedUser, newMessage);
+        const messageWithClientBatchId = variables.client_batch_id
+          ? {
+              ...newMessage,
+              client_batch_id: variables.client_batch_id,
+            }
+          : newMessage;
+
+        emitOutgoingMessage(messageWithClientBatchId, variables.type, selectedUser);
+        integrateCreatedMessage(queryClient, selectedUser, messageWithClientBatchId);
       }
     },
   });

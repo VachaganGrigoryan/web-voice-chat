@@ -84,6 +84,7 @@ export interface MessageDoc {
   deleted_at?: string | null;
   delivered_at: string | null;
   read_at: string | null;
+  client_batch_id?: string | null;
   created_at: string;
   updated_at: string;
 }

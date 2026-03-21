@@ -1,3 +1,4 @@
+import { AxiosProgressEvent } from 'axios';
 import { apiClient } from './httpClient';
 import {
   TokenPair,
@@ -53,6 +54,8 @@ export const messagesApi = {
     duration_ms?: number;
     reply_mode?: ReplyMode | null;
     reply_to_message_id?: string;
+    signal?: AbortSignal;
+    onUploadProgress?: (event: AxiosProgressEvent) => void;
   }) => {
     const formData = new FormData();
     formData.append('type', data.type);
@@ -65,6 +68,8 @@ export const messagesApi = {
 
     return apiClient.post<SuccessResponse<MessageDoc>>('/messages/media', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
+      signal: data.signal,
+      onUploadProgress: data.onUploadProgress,
     });
   },
   sendText: (data: {

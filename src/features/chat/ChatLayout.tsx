@@ -43,6 +43,8 @@ import {
 } from '@/utils/dateUtils';
 import { parseMessages } from './utils/messageParser';
 import { MediaViewerImageItem } from './MediaViewer';
+import { MediaCollageGroupRenderer } from './renderers/MediaCollageGroupRenderer';
+import { buildChatRenderItems, shouldGroupMessages } from './utils/mediaGroupUtils';
 
 import { UserSearch } from './UserSearch';
 
@@ -256,6 +258,10 @@ export default function ChatLayout() {
   const mainChatMessages = useMemo(
     () => chatMessages.filter((message) => message.replyMode !== 'thread'),
     [chatMessages]
+  );
+  const mainChatRenderItems = useMemo(
+    () => buildChatRenderItems(mainChatMessages),
+    [mainChatMessages]
   );
   const selectedThreadRootMessage = useMemo(
     () => chatMessages.find((message) => message.id === selectedThreadRootId) || null,
@@ -627,17 +633,6 @@ export default function ChatLayout() {
     selectedConversationUser.chat_allowed || selectedConversationUser.ping_status === 'accepted'
   );
 
-  const shouldGroupMessages = (current: ChatMessage, adjacent?: ChatMessage) => {
-    if (!adjacent) return false;
-    if (current.kind === 'system' || adjacent.kind === 'system') return false;
-    if (current.senderId !== adjacent.senderId) return false;
-    if (!isSameLocalDay(current.createdAt, adjacent.createdAt)) return false;
-
-    const currentTime = new Date(current.createdAt).getTime();
-    const adjacentTime = new Date(adjacent.createdAt).getTime();
-    return Math.abs(currentTime - adjacentTime) <= 60 * 1000;
-  };
-
   const getMessagePreviewText = (message: ChatMessage) => {
     if (message.isDeleted) return 'Message deleted';
     if (message.kind === 'text' || message.kind === 'emoji') return message.text;
@@ -718,13 +713,17 @@ export default function ChatLayout() {
     file: File;
     text?: string;
     duration_ms?: number;
+    reply_mode?: ComposerReplyTarget['mode'] | null;
+    reply_to_message_id?: string;
+    client_batch_id?: string;
+    signal?: AbortSignal;
+    onUploadProgress?: (progress: number) => void;
   }) => {
     await sendVoice({
       ...data,
-      reply_mode: replyTarget?.mode,
-      reply_to_message_id: replyTarget?.messageId,
+      reply_mode: data.reply_mode ?? replyTarget?.mode,
+      reply_to_message_id: data.reply_to_message_id ?? replyTarget?.messageId,
     });
-    setReplyTarget(null);
   };
 
   const handleSendThreadMedia = async (data: {
@@ -733,14 +732,18 @@ export default function ChatLayout() {
     file: File;
     text?: string;
     duration_ms?: number;
+    reply_mode?: ComposerReplyTarget['mode'] | null;
+    reply_to_message_id?: string;
+    client_batch_id?: string;
+    signal?: AbortSignal;
+    onUploadProgress?: (progress: number) => void;
   }) => {
     if (!selectedThreadRootId) return;
     await sendVoice({
       ...data,
-      reply_mode: 'thread',
-      reply_to_message_id: threadReplyTarget?.messageId || selectedThreadRootId,
+      reply_mode: data.reply_mode ?? 'thread',
+      reply_to_message_id: data.reply_to_message_id ?? threadReplyTarget?.messageId ?? selectedThreadRootId,
     });
-    setThreadReplyTarget(null);
   };
 
   const handleEditMessage = async (text: string) => {
@@ -1108,8 +1111,8 @@ export default function ChatLayout() {
                     receiverId={selectedUser} 
                     onSendMedia={handleSendMedia}
                     isUploading={isSending}
-                    setIsUploading={() => {}}
                     replyTarget={replyTarget}
+                    onClearReplyTarget={() => setReplyTarget(null)}
                   />
                 ) : (
                   <Button 
@@ -1161,74 +1164,92 @@ export default function ChatLayout() {
                      </div>
                    )}
 
-                 {mainChatMessages.map((message, index) => {
-                     const newerMessage = mainChatMessages[index - 1];
-                     const olderMessage = mainChatMessages[index + 1];
-                     const showDaySeparator = !olderMessage ||
-                       !isSameLocalDay(message.createdAt, olderMessage.createdAt);
-                     const groupedWithAbove = shouldGroupMessages(message, olderMessage);
-                     const groupedWithBelow = shouldGroupMessages(message, newerMessage);
+                 {mainChatRenderItems.map((item, index) => {
+                     const newerItem = mainChatRenderItems[index - 1];
+                     const olderItem = mainChatRenderItems[index + 1];
+                     const showDaySeparator = !olderItem ||
+                       !isSameLocalDay(item.oldestMessage.createdAt, olderItem.newestMessage.createdAt);
+                     const groupedWithAbove = shouldGroupMessages(item.oldestMessage, olderItem?.newestMessage);
+                     const groupedWithBelow = shouldGroupMessages(item.newestMessage, newerItem?.oldestMessage);
+                     const isHighlighted = item.messages.some((message) => highlightedMessageIds.has(message.id));
 
                      return (
                        <div
-                         key={message.id}
+                         key={item.id}
                          ref={(node) => {
-                           if (node) {
-                             mainMessageElementRefs.current.set(message.id, node);
-                           } else {
-                             mainMessageElementRefs.current.delete(message.id);
-                           }
+                           item.messages.forEach((message) => {
+                             if (node) {
+                               mainMessageElementRefs.current.set(message.id, node);
+                             } else {
+                               mainMessageElementRefs.current.delete(message.id);
+                             }
+                           });
                          }}
                        className={cn(
                            "flex flex-col w-full min-w-0",
-                           groupedWithAbove ? "mt-px" : index === mainChatMessages.length - 1 ? "" : "mt-6"
+                           groupedWithAbove ? "mt-px" : index === mainChatRenderItems.length - 1 ? "" : "mt-6"
                          )}
                        >
                          {showDaySeparator && (
                            <DaySeparator
-                             label={formatMessageDay(message.createdAt)}
+                             label={formatMessageDay(item.oldestMessage.createdAt)}
                              className="mb-3"
                            />
                          )}
 
-                         {message.kind === 'system' ? (
+                         {item.type === 'single' && item.message.kind === 'system' ? (
                            <MessageRenderer
-                             message={message}
-                             highlighted={highlightedMessageIds.has(message.id)}
+                             message={item.message}
+                             highlighted={isHighlighted}
                              onMediaClick={handleMainMediaClick}
                            />
+                         ) : item.type === 'media-group' ? (
+                           <MessageItem
+                             isOwn={item.isOwn}
+                             onOpenMenu={(anchor) => openMessageMenu(item.newestMessage, anchor, 'main')}
+                             openMenuOnClick={!!activeMessage}
+                           >
+                             <MediaCollageGroupRenderer
+                               messages={item.messages}
+                               highlighted={isHighlighted}
+                               groupedWithAbove={groupedWithAbove}
+                               groupedWithBelow={groupedWithBelow}
+                               onMediaClick={handleMainMediaClick}
+                             />
+                             <MessageMeta message={item.newestMessage} showTimestamp={!groupedWithBelow} />
+                           </MessageItem>
                          ) : (
                            <MessageItem
-                             isOwn={message.isOwn}
-                             onOpenMenu={(anchor) => openMessageMenu(message, anchor, 'main')}
+                             isOwn={item.message.isOwn}
+                             onOpenMenu={(anchor) => openMessageMenu(item.message, anchor, 'main')}
                              openMenuOnClick={!!activeMessage}
                            >
                             <MessageRenderer
-                              message={message}
-                             highlighted={highlightedMessageIds.has(message.id)}
+                              message={item.message}
+                             highlighted={isHighlighted}
                               groupedWithAbove={groupedWithAbove}
                               groupedWithBelow={groupedWithBelow}
                               onMediaClick={handleMainMediaClick}
                               audioQueueKey={mainAudioQueueKey}
                               audioQueue={mainAudioQueue}
                               bubbleFooter={
-                                message.isThreadRoot || message.threadReplyCount > 0 ? (
+                                item.message.isThreadRoot || item.message.threadReplyCount > 0 ? (
                                   <MessageBubbleFooter>
                                     <ThreadReplyBadge
-                                      message={message}
-                                      onOpenThread={() => openThreadForMessage(message)}
+                                      message={item.message}
+                                      onOpenThread={() => openThreadForMessage(item.message)}
                                     />
                                   </MessageBubbleFooter>
                                 ) : undefined
                               }
                             />
                             <MessageReactions
-                              message={message}
+                              message={item.message}
                               currentUserId={userId}
                               isBusy={isTogglingReaction}
-                              onToggleReaction={(emoji) => handleToggleReaction(message.id, emoji)}
+                              onToggleReaction={(emoji) => handleToggleReaction(item.message.id, emoji)}
                             />
-                            <MessageMeta message={message} showTimestamp={!groupedWithBelow} />
+                            <MessageMeta message={item.message} showTimestamp={!groupedWithBelow} />
                           </MessageItem>
                         )}
                        </div>
@@ -1365,8 +1386,8 @@ export default function ChatLayout() {
                               receiverId={selectedUser}
                               onSendMedia={handleSendThreadMedia}
                               isUploading={isSending}
-                              setIsUploading={() => {}}
                               replyTarget={threadReplyTarget}
+                              onClearReplyTarget={() => setThreadReplyTarget(null)}
                             />
                           </div>
                           <VoiceRecorder

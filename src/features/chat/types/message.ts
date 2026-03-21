@@ -37,6 +37,7 @@ export interface BaseMessage {
   unreadThreadReplyCount: number;
   lastThreadReplyAt?: string;
   reactions: MessageReactionGroup[];
+  clientBatchId?: string;
 }
 
 export interface TextMessage extends BaseMessage {

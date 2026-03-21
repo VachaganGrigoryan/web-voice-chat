@@ -18,6 +18,8 @@ interface VoiceRecorderProps {
     file: File;
     text?: string;
     duration_ms?: number;
+    reply_mode?: ComposerReplyTarget['mode'] | null;
+    reply_to_message_id?: string;
   }) => Promise<any>;
   onSendText: (data: { receiver_id: string; text: string }) => Promise<any>;
   replyTarget?: ComposerReplyTarget | null;
@@ -277,9 +279,12 @@ export default function VoiceRecorder({
         receiver_id: receiverId,
         file,
         duration_ms: duration * 1000,
+        reply_mode: replyTarget?.mode,
+        reply_to_message_id: replyTarget?.messageId,
       });
       setAudioBlob(null);
       setDuration(0);
+      onClearReplyTarget?.();
     } catch (err) {
       console.error('Error uploading voice:', err);
       alert('Failed to send voice message');
@@ -323,6 +328,7 @@ export default function VoiceRecorder({
       await onSendText({ receiver_id: receiverId, text: text.trim() });
       setText('');
       setShowEmojiPicker(false);
+      onClearReplyTarget?.();
       if (textareaRef.current) {
         textareaRef.current.style.height = 'auto';
       }

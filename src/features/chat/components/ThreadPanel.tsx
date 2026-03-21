@@ -8,6 +8,8 @@ import { DaySeparator, MessageItem, MessageMenuAnchor, MessageMeta } from './Mes
 import { MessageReactions } from './MessageReactions';
 import { MessageRenderer } from '../MessageRenderer';
 import { ChatAudioQueueItem } from '../audioPlayerStore';
+import { MediaCollageGroupRenderer } from '../renderers/MediaCollageGroupRenderer';
+import { buildChatRenderItems, shouldGroupMessages } from '../utils/mediaGroupUtils';
 
 interface ThreadPanelProps {
   open: boolean;
@@ -75,17 +77,10 @@ export function ThreadPanel({
     () => orderedMessages.filter((message) => message.id !== rootMessage?.id),
     [orderedMessages, rootMessage?.id]
   );
-
-  const shouldGroupMessages = (current: ChatMessage, adjacent?: ChatMessage) => {
-    if (!adjacent) return false;
-    if (current.kind === 'system' || adjacent.kind === 'system') return false;
-    if (current.senderId !== adjacent.senderId) return false;
-    if (!isSameLocalDay(current.createdAt, adjacent.createdAt)) return false;
-
-    const currentTime = new Date(current.createdAt).getTime();
-    const adjacentTime = new Date(adjacent.createdAt).getTime();
-    return Math.abs(currentTime - adjacentTime) <= 60 * 1000;
-  };
+  const threadRenderItems = useMemo(
+    () => buildChatRenderItems(threadReplyMessages),
+    [threadReplyMessages]
+  );
 
   const isNearBottom = (container: HTMLDivElement | null) => {
     if (!container) return true;
@@ -291,24 +286,26 @@ export function ThreadPanel({
               <div className="flex justify-center py-8">
                 <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
               </div>
-            ) : threadReplyMessages.length > 0 ? (
-              threadReplyMessages.map((message, index) => {
-                const previousMessage = threadReplyMessages[index - 1];
-                const nextMessage = threadReplyMessages[index + 1];
+            ) : threadRenderItems.length > 0 ? (
+              threadRenderItems.map((item, index) => {
+                const previousItem = threadRenderItems[index - 1];
+                const nextItem = threadRenderItems[index + 1];
                 const showDateHeader =
-                  !previousMessage || !isSameLocalDay(message.createdAt, previousMessage.createdAt);
-                const groupedWithAbove = shouldGroupMessages(message, previousMessage);
-                const groupedWithBelow = shouldGroupMessages(message, nextMessage);
+                  !previousItem || !isSameLocalDay(item.oldestMessage.createdAt, previousItem.newestMessage.createdAt);
+                const groupedWithAbove = shouldGroupMessages(item.oldestMessage, previousItem?.newestMessage);
+                const groupedWithBelow = shouldGroupMessages(item.newestMessage, nextItem?.oldestMessage);
 
                 return (
                   <div
-                    key={message.id}
+                    key={item.id}
                     ref={(node) => {
-                      if (node) {
-                        messageElementRefs.current.set(message.id, node);
-                      } else {
-                        messageElementRefs.current.delete(message.id);
-                      }
+                      item.messages.forEach((message) => {
+                        if (node) {
+                          messageElementRefs.current.set(message.id, node);
+                        } else {
+                          messageElementRefs.current.delete(message.id);
+                        }
+                      });
                     }}
                     className={cn(
                       'flex flex-col w-full min-w-0',
@@ -317,32 +314,48 @@ export function ThreadPanel({
                   >
                     {showDateHeader ? (
                       <DaySeparator
-                        label={formatMessageDay(message.createdAt)}
+                        label={formatMessageDay(item.oldestMessage.createdAt)}
                         className="pb-3"
                       />
                     ) : null}
 
-                    <MessageItem
-                      isOwn={message.isOwn}
-                      onOpenMenu={(anchor) => onOpenMenu(message, anchor)}
-                      openMenuOnClick={isMessageMenuOpen}
-                    >
-                      <MessageRenderer
-                        message={message}
-                        groupedWithAbove={groupedWithAbove}
-                        groupedWithBelow={groupedWithBelow}
-                        onMediaClick={onMediaClick}
-                        audioQueueKey={audioQueueKey}
-                        audioQueue={audioQueue}
-                      />
-                      <MessageReactions
-                        message={message}
-                        currentUserId={currentUserId}
-                        isBusy={isTogglingReaction}
-                        onToggleReaction={(emoji) => onToggleReaction(message.id, emoji)}
-                      />
-                      <MessageMeta message={message} showTimestamp={!groupedWithBelow} />
-                    </MessageItem>
+                    {item.type === 'media-group' ? (
+                      <MessageItem
+                        isOwn={item.isOwn}
+                        onOpenMenu={(anchor) => onOpenMenu(item.newestMessage, anchor)}
+                        openMenuOnClick={isMessageMenuOpen}
+                      >
+                        <MediaCollageGroupRenderer
+                          messages={item.messages}
+                          groupedWithAbove={groupedWithAbove}
+                          groupedWithBelow={groupedWithBelow}
+                          onMediaClick={onMediaClick}
+                        />
+                        <MessageMeta message={item.newestMessage} showTimestamp={!groupedWithBelow} />
+                      </MessageItem>
+                    ) : (
+                      <MessageItem
+                        isOwn={item.message.isOwn}
+                        onOpenMenu={(anchor) => onOpenMenu(item.message, anchor)}
+                        openMenuOnClick={isMessageMenuOpen}
+                      >
+                        <MessageRenderer
+                          message={item.message}
+                          groupedWithAbove={groupedWithAbove}
+                          groupedWithBelow={groupedWithBelow}
+                          onMediaClick={onMediaClick}
+                          audioQueueKey={audioQueueKey}
+                          audioQueue={audioQueue}
+                        />
+                        <MessageReactions
+                          message={item.message}
+                          currentUserId={currentUserId}
+                          isBusy={isTogglingReaction}
+                          onToggleReaction={(emoji) => onToggleReaction(item.message.id, emoji)}
+                        />
+                        <MessageMeta message={item.message} showTimestamp={!groupedWithBelow} />
+                      </MessageItem>
+                    )}
                   </div>
                 );
               })
