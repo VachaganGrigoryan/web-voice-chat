@@ -7,6 +7,22 @@ interface MessageReplyPreviewProps {
   message: ChatMessage;
 }
 
+const shouldRenderReplyPreview = (message: ChatMessage) => {
+  if (!message.replyPreview) {
+    return false;
+  }
+
+  if (message.replyMode === 'quote') {
+    return true;
+  }
+
+  return (
+    message.replyMode === 'thread' &&
+    !!message.threadRootId &&
+    message.replyPreview.message_id !== message.threadRootId
+  );
+};
+
 const getReplyTypeLabel = (type: MessageType) => {
   switch (type) {
     case 'image':
@@ -26,7 +42,7 @@ const getReplyTypeLabel = (type: MessageType) => {
 
 const getReplyText = (message: ChatMessage) => {
   const preview = message.replyPreview;
-  if (!preview || message.replyMode !== 'quote') return null;
+  if (!preview || !shouldRenderReplyPreview(message)) return null;
   if (preview.is_deleted) return 'Deleted message';
 
   const trimmed = preview.text?.trim();
@@ -36,7 +52,7 @@ const getReplyText = (message: ChatMessage) => {
 };
 
 export function MessageReplyPreview({ message }: MessageReplyPreviewProps) {
-  if (message.replyMode !== 'quote' || !message.replyPreview) {
+  if (!shouldRenderReplyPreview(message)) {
     return null;
   }
 

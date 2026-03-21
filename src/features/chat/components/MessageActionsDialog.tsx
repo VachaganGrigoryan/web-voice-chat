@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Copy, Info, MessageSquareReply, Pencil, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -158,6 +158,7 @@ export function MessageActionsDialog({
 }: MessageActionsDialogProps) {
   const [view, setView] = useState<DialogView>('actions');
   const [draftText, setDraftText] = useState('');
+  const panelRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (!open) {
@@ -182,6 +183,22 @@ export function MessageActionsDialog({
     window.addEventListener('keydown', handleEscape);
     return () => window.removeEventListener('keydown', handleEscape);
   }, [open, onOpenChange]);
+
+  useEffect(() => {
+    if (!open || view === 'details') return;
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target as Node | null;
+      if (target && panelRef.current?.contains(target)) {
+        return;
+      }
+
+      onOpenChange(false);
+    };
+
+    document.addEventListener('pointerdown', handlePointerDown, true);
+    return () => document.removeEventListener('pointerdown', handlePointerDown, true);
+  }, [open, onOpenChange, view]);
 
   const panelStyle = useMemo(() => getPanelStyle(anchor, view), [anchor, view]);
   const copyText = useMemo(() => (message ? getCopyText(message) : ''), [message]);
@@ -353,22 +370,16 @@ export function MessageActionsDialog({
   return createPortal(
     <>
       {view !== 'details' ? (
-        <div className="fixed inset-0 z-50" aria-hidden={!open}>
-          <button
-            type="button"
-            className="absolute inset-0 cursor-default bg-transparent"
-            onClick={() => onOpenChange(false)}
-            aria-label="Close message actions"
-          />
+        <div className="fixed inset-0 z-50 pointer-events-none" aria-hidden={!open}>
           <div
+            ref={panelRef}
             role="dialog"
             aria-modal="true"
             className={cn(
-              'absolute overflow-hidden rounded-3xl border border-border/70 bg-background/98 shadow-2xl backdrop-blur',
+              'pointer-events-auto absolute overflow-hidden rounded-3xl border border-border/70 bg-background/98 shadow-2xl backdrop-blur',
               isMobileLayout(anchor) ? 'w-[min(320px,calc(100vw-24px))]' : 'w-[220px]'
             )}
             style={panelStyle}
-            onClick={(event) => event.stopPropagation()}
           >
             {view === 'actions' ? renderActions() : null}
             {view === 'edit' ? renderEdit() : null}

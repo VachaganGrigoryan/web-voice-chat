@@ -34,6 +34,7 @@ function createBaseMessage(doc: MessageDoc, currentUserId?: string | null) {
         : undefined,
     isThreadRoot: doc.is_thread_root,
     threadReplyCount: doc.thread_reply_count,
+    unreadThreadReplyCount: doc.thread_unread_count ?? 0,
     lastThreadReplyAt: doc.last_thread_reply_at || undefined,
     reactions: doc.reactions || [],
   };

@@ -21,6 +21,7 @@ export function ThreadReplyBadge({ message, onOpenThread }: ThreadReplyBadgeProp
   if (!rootId) return null;
 
   const count = message.threadReplyCount;
+  const unreadCount = message.unreadThreadReplyCount;
   const label = count === 1 ? '1 reply' : `${count} replies`;
   const timestamp = formatTimestamp(message.lastThreadReplyAt);
 
@@ -32,6 +33,11 @@ export function ThreadReplyBadge({ message, onOpenThread }: ThreadReplyBadgeProp
     >
       <MessageSquareText className="h-3.5 w-3.5" />
       <span>{count > 0 ? label : 'Reply in thread'}</span>
+      {unreadCount > 0 ? (
+        <span className="inline-flex min-w-5 items-center justify-center rounded-full bg-primary px-1.5 py-0.5 text-[10px] font-semibold text-primary-foreground">
+          {unreadCount > 99 ? '99+' : unreadCount}
+        </span>
+      ) : null}
       {timestamp ? <span className="text-muted-foreground/70">{timestamp}</span> : null}
     </button>
   );

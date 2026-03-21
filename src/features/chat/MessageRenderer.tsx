@@ -24,7 +24,7 @@ export const MessageRenderer: React.FC<MessageRendererProps> = ({
   groupedWithBelow = false,
   onMediaClick,
 }) => {
-  if (message.isDeleted) {
+  if (message.isDeleted && !message.isOwn) {
     return (
       <MessageBubble
         isOwn={message.isOwn}
@@ -33,8 +33,13 @@ export const MessageRenderer: React.FC<MessageRendererProps> = ({
         groupedWithBelow={groupedWithBelow}
         className="max-w-full min-w-0"
       >
-        <MessageContent className="italic text-muted-foreground">
-          Message deleted
+        <MessageContent className="py-1.5">
+          <span
+            className="text-xs font-medium tracking-wide text-current/45"
+            aria-label="deleted"
+          >
+            deleted
+          </span>
         </MessageContent>
       </MessageBubble>
     );

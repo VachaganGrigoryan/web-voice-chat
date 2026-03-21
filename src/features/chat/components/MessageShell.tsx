@@ -15,10 +15,23 @@ interface MessageItemProps {
   isOwn: boolean;
   children: React.ReactNode;
   onOpenMenu?: (anchor: MessageMenuAnchor) => void;
+  openMenuOnClick?: boolean;
 }
 
-export const MessageItem: React.FC<MessageItemProps> = ({ isOwn, children, onOpenMenu }) => {
+export const MessageItem: React.FC<MessageItemProps> = ({
+  isOwn,
+  children,
+  onOpenMenu,
+  openMenuOnClick = false,
+}) => {
   const touchTimerRef = React.useRef<number | null>(null);
+
+  const getAnchorFromRect = (rect: DOMRect, x?: number, y?: number): MessageMenuAnchor => ({
+    x: x ?? rect.left + rect.width / 2,
+    y: y ?? rect.top + rect.height / 2,
+    rect,
+    source: 'mouse',
+  });
 
   const clearTouchTimer = () => {
     if (touchTimerRef.current) {
@@ -48,16 +61,27 @@ export const MessageItem: React.FC<MessageItemProps> = ({ isOwn, children, onOpe
         "flex flex-col max-w-[85%] md:max-w-[70%] mb-1 min-w-0",
         isOwn ? "self-end items-end" : "self-start items-start"
       )}
+      onClickCapture={
+        onOpenMenu && openMenuOnClick
+          ? (event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              const rect = event.currentTarget.getBoundingClientRect();
+              onOpenMenu(getAnchorFromRect(rect, event.clientX, event.clientY));
+            }
+          : undefined
+      }
       onContextMenu={
         onOpenMenu
           ? (event) => {
               event.preventDefault();
-              onOpenMenu({
-                x: event.clientX,
-                y: event.clientY,
-                rect: event.currentTarget.getBoundingClientRect(),
-                source: 'mouse',
-              });
+              onOpenMenu(
+                getAnchorFromRect(
+                  event.currentTarget.getBoundingClientRect(),
+                  event.clientX,
+                  event.clientY
+                )
+              );
             }
           : undefined
       }
@@ -156,7 +180,11 @@ export const MessageMeta: React.FC<MessageMetaProps> = ({ message, showTimestamp
         message.isOwn ? "justify-end" : "justify-start"
       )}
     >
-      {message.isDeleted ? <span>deleted</span> : null}
+      {message.isDeleted ? (
+        <span className="rounded-full bg-muted/60 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide text-muted-foreground/90">
+          deleted
+        </span>
+      ) : null}
       {!message.isDeleted && message.editedAt ? <span>edited</span> : null}
       <span>{formatChatMessageTime(message.createdAt)}</span>
       {message.isOwn ? (

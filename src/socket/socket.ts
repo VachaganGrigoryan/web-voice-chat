@@ -324,8 +324,25 @@ const incrementThreadSummaryCache = (
       ...message,
       is_thread_root: true,
       thread_reply_count: (message.thread_reply_count ?? 0) + 1,
+      thread_unread_count: message.thread_unread_count ?? 0,
       last_thread_reply_at: replyCreatedAt,
       updated_at: replyCreatedAt,
+    })
+  );
+};
+
+const updateThreadUnreadCount = (
+  queryClient: ReturnType<typeof useQueryClient>,
+  threadRootId: string,
+  updater: (current: number) => number
+) => {
+  updateMessageAcrossCacheGroup(
+    queryClient,
+    'messages',
+    (message) => message.id === threadRootId,
+    (message) => ({
+      ...message,
+      thread_unread_count: Math.max(0, updater(message.thread_unread_count ?? 0)),
     })
   );
 };
@@ -378,6 +395,87 @@ const updateMessageDocumentCaches = (
   updateConversationPreview(queryClient, message);
 };
 
+const isThreadMessage = (message: MessageDoc) =>
+  message.reply_mode === 'thread' && !!message.thread_root_id;
+
+const routeIncomingThreadMessage = (
+  queryClient: ReturnType<typeof useQueryClient>,
+  message: MessageDoc,
+  openThreadRootId: string | null,
+  currentUserId?: string | null,
+  selectedUser?: string | null
+) => {
+  if (!message.thread_root_id) {
+    return;
+  }
+
+  queryClient.setQueryData(['threadMessages', message.thread_root_id], (old: any) =>
+    prependMessageToMessageCache(old, message)
+  );
+
+  incrementThreadSummaryCache(queryClient, message.thread_root_id, message.created_at);
+  if (openThreadRootId === message.thread_root_id) {
+    updateThreadUnreadCount(queryClient, message.thread_root_id, () => 0);
+  } else if (message.sender_id !== currentUserId) {
+    updateThreadUnreadCount(queryClient, message.thread_root_id, (current) => current + 1);
+  }
+  updateConversationActivity(
+    queryClient,
+    message.conversation_id,
+    message.created_at,
+    message.sender_id !== currentUserId && selectedUser !== message.sender_id ? 1 : 0
+  );
+};
+
+const routeIncomingMainChatMessage = (
+  queryClient: ReturnType<typeof useQueryClient>,
+  message: MessageDoc,
+  currentUserId?: string | null,
+  selectedUser?: string | null
+) => {
+  const conversationPartnerId = message.sender_id === currentUserId
+    ? message.receiver_id
+    : message.sender_id;
+
+  queryClient.setQueryData(
+    ['messages', conversationPartnerId],
+    (old: any) => prependMessageToMessageCache(old, message)
+  );
+
+  const peerId = getPeerIdForConversation(queryClient, message.conversation_id);
+  if (peerId) {
+    updateConversationLastMessage(queryClient, peerId, message, currentUserId, selectedUser);
+  } else {
+    queryClient.invalidateQueries({ queryKey: ['conversations'] });
+  }
+};
+
+const extractThreadReplyEvent = (
+  payload: MessageDoc | ({ message: MessageDoc } & ThreadSummary)
+): { message: MessageDoc; summary: ThreadSummary | null } => {
+  if ('message' in payload) {
+    return {
+      message: payload.message,
+      summary: {
+        thread_root_id: payload.thread_root_id,
+        thread_reply_count: payload.thread_reply_count,
+        last_thread_reply_at: payload.last_thread_reply_at,
+      },
+    };
+  }
+
+  return {
+    message: payload,
+    summary: payload.thread_root_id
+      ? {
+          thread_root_id: payload.thread_root_id,
+          thread_reply_count: payload.thread_reply_count,
+          last_thread_reply_at: payload.last_thread_reply_at,
+        }
+      : null,
+  };
+};
+
 // Hooks
 export const useSocket = () => {
   const { socket, isConnected } = useSocketStore();
@@ -409,7 +507,10 @@ export const useTypingIndicator = (userId?: string) => {
 
 import { sendNotification } from '@/utils/notificationSound';
 
-export const useRealtimeMessages = (selectedUser: string | null) => {
+export const useRealtimeMessages = (
+  selectedUser: string | null,
+  openThreadRootId: string | null = null
+) => {
   const queryClient = useQueryClient();
   const { userId: currentUserId } = useAuthStore();
   const { socket } = useSocketStore();
@@ -422,26 +523,26 @@ export const useRealtimeMessages = (selectedUser: string | null) => {
   }, []);
 
   useEffect(() => {
+    if (!openThreadRootId) return;
+    updateThreadUnreadCount(queryClient, openThreadRootId, () => 0);
+  }, [openThreadRootId, queryClient]);
+
+  useEffect(() => {
     if (!socket) return;
 
     const handleReceiveMessage = (message: MessageDoc) => {
-      if (message.reply_mode === 'thread' && message.thread_root_id) {
+      if (isThreadMessage(message)) {
         if (processedThreadReplyIdsRef.current.has(message.id)) {
           return;
         }
 
         processedThreadReplyIdsRef.current.add(message.id);
-        queryClient.setQueryData(['threadMessages', message.thread_root_id], (old: any) =>
-          prependMessageToMessageCache(old, message)
-        );
-
-        incrementThreadSummaryCache(queryClient, message.thread_root_id, message.created_at);
-
-        updateConversationActivity(
+        routeIncomingThreadMessage(
           queryClient,
-          message.conversation_id,
-          message.created_at,
-          message.sender_id !== currentUserId && selectedUser !== message.sender_id ? 1 : 0
+          message,
+          openThreadRootId,
+          currentUserId,
+          selectedUser
         );
 
         if (message.receiver_id === currentUserId) {
@@ -451,21 +552,7 @@ export const useRealtimeMessages = (selectedUser: string | null) => {
         return;
       }
 
-      const conversationPartnerId = message.sender_id === currentUserId 
-        ? message.receiver_id 
-        : message.sender_id;
-
-      queryClient.setQueryData(
-        ['messages', conversationPartnerId],
-        (old: any) => prependMessageToMessageCache(old, message)
-      );
-
-      const peerId = getPeerIdForConversation(queryClient, message.conversation_id);
-      if (peerId) {
-        updateConversationLastMessage(queryClient, peerId, message, currentUserId, selectedUser);
-      } else {
-        queryClient.invalidateQueries({ queryKey: ['conversations'] });
-      }
+      routeIncomingMainChatMessage(queryClient, message, currentUserId, selectedUser);
 
       if (message.receiver_id === currentUserId) {
         socket.emit(EVENTS.MESSAGE_DELIVERED, { message_id: message.id });
@@ -506,33 +593,27 @@ export const useRealtimeMessages = (selectedUser: string | null) => {
       updateReactionCaches(queryClient, payload);
     };
 
-    const handleThreadReplyCreated = (payload: { message: MessageDoc } & ThreadSummary) => {
-      const alreadyProcessed = processedThreadReplyIdsRef.current.has(payload.message.id);
-      processedThreadReplyIdsRef.current.add(payload.message.id);
+    const handleThreadReplyCreated = (payload: MessageDoc | ({ message: MessageDoc } & ThreadSummary)) => {
+      const { message, summary } = extractThreadReplyEvent(payload);
+      const alreadyProcessed = processedThreadReplyIdsRef.current.has(message.id);
+      processedThreadReplyIdsRef.current.add(message.id);
 
-      if (payload.thread_root_id) {
-        queryClient.setQueryData(['threadMessages', payload.thread_root_id], (old: any) =>
-          prependMessageToMessageCache(old, payload.message)
-        );
-      }
-
-      updateThreadSummaryCaches(queryClient, {
-        thread_root_id: payload.thread_root_id,
-        thread_reply_count: payload.thread_reply_count,
-        last_thread_reply_at: payload.last_thread_reply_at,
-      });
-
-      if (!alreadyProcessed) {
-        updateConversationActivity(
+      if (!alreadyProcessed && isThreadMessage(message)) {
+        routeIncomingThreadMessage(
           queryClient,
-          payload.message.conversation_id,
-          payload.last_thread_reply_at || payload.message.created_at,
-          payload.message.sender_id !== currentUserId && selectedUser !== payload.message.sender_id ? 1 : 0
+          message,
+          openThreadRootId,
+          currentUserId,
+          selectedUser
         );
       }
 
-      if (!alreadyProcessed && payload.message.receiver_id === currentUserId) {
-        socket.emit(EVENTS.MESSAGE_DELIVERED, { message_id: payload.message.id });
+      if (summary) {
+        updateThreadSummaryCaches(queryClient, summary);
+      }
+
+      if (!alreadyProcessed && message.receiver_id === currentUserId) {
+        socket.emit(EVENTS.MESSAGE_DELIVERED, { message_id: message.id });
       }
     };
 
@@ -557,5 +638,5 @@ export const useRealtimeMessages = (selectedUser: string | null) => {
       socket.off(EVENTS.THREAD_REPLY_CREATED, handleThreadReplyCreated);
       socket.off(EVENTS.THREAD_SUMMARY_UPDATED, handleThreadSummaryUpdated);
     };
-  }, [queryClient, currentUserId, socket, selectedUser]);
+  }, [queryClient, currentUserId, socket, selectedUser, openThreadRootId]);
 };

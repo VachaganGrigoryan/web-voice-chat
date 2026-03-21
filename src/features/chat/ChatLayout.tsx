@@ -39,6 +39,31 @@ import { parseMessages } from './utils/messageParser';
 
 import { UserSearch } from './UserSearch';
 
+type ThreadPanelMode = 'minimal' | 'center' | 'full';
+type ActiveMessageSurface = 'main' | 'thread';
+
+const MOBILE_BREAKPOINT = 768;
+const THREAD_PANEL_MODES: ThreadPanelMode[] = ['minimal', 'center', 'full'];
+
+const getThreadPanelWidths = (containerWidth: number): Record<ThreadPanelMode, number> => {
+  const safeWidth = Math.max(containerWidth, 720);
+  const minMainWidth = 360;
+  const maxThreadWidth = Math.max(320, safeWidth - minMainWidth);
+  const preferredWidths: Record<ThreadPanelMode, number> = {
+    minimal: Math.round(safeWidth * 0.32),
+    center: Math.round(safeWidth * 0.4),
+    full: Math.round(safeWidth * 0.48),
+  };
+
+  return THREAD_PANEL_MODES.reduce(
+    (widths, mode) => ({
+      ...widths,
+      [mode]: Math.min(maxThreadWidth, Math.max(320, preferredWidths[mode])),
+    }),
+    {} as Record<ThreadPanelMode, number>
+  );
+};
+
 const createAcceptedPingConversation = (
   conversationId: string,
   peerUser: Conversation['peer_user'],
@@ -52,6 +77,7 @@ const createAcceptedPingConversation = (
 });
 
 export default function ChatLayout() {
+  const [selectedThreadRootId, setSelectedThreadRootId] = useState<string | null>(null);
   const [searchParams, setSearchParams] = useSearchParams();
   const {
     selectedUser,
@@ -68,7 +94,7 @@ export default function ChatLayout() {
     isSending,
     isEditingMessage,
     isDeletingMessage,
-  } = useChat();
+  } = useChat(selectedThreadRootId);
 
   useEffect(() => {
     const userFromUrl = searchParams.get('user');
@@ -102,8 +128,16 @@ export default function ChatLayout() {
   const [highlightedMessageIds, setHighlightedMessageIds] = useState<Set<string>>(new Set());
   const [activeMessage, setActiveMessage] = useState<ChatMessage | null>(null);
   const [activeMessageAnchor, setActiveMessageAnchor] = useState<MessageMenuAnchor | null>(null);
+  const [activeMessageSurface, setActiveMessageSurface] = useState<ActiveMessageSurface>('main');
   const [replyTarget, setReplyTarget] = useState<ComposerReplyTarget | null>(null);
-  const [selectedThreadRootId, setSelectedThreadRootId] = useState<string | null>(null);
+  const [threadReplyTarget, setThreadReplyTarget] = useState<ComposerReplyTarget | null>(null);
+  const [threadPanelMode, setThreadPanelMode] = useState<ThreadPanelMode>('center');
+  const [isResizingThread, setIsResizingThread] = useState(false);
+  const [splitLayoutWidth, setSplitLayoutWidth] = useState(0);
+  const [isMobileViewport, setIsMobileViewport] = useState(
+    () => typeof window !== 'undefined' && window.innerWidth < MOBILE_BREAKPOINT
+  );
+  const splitLayoutRef = useRef<HTMLDivElement | null>(null);
   
   const { isTyping, typingUsers } = useTypingIndicator(selectedUser || undefined);
 
@@ -210,6 +244,10 @@ export default function ChatLayout() {
     () => parseMessages(allThreadMessages, userId),
     [allThreadMessages, userId]
   );
+  const threadPanelWidths = useMemo(
+    () => getThreadPanelWidths(splitLayoutWidth),
+    [splitLayoutWidth]
+  );
   const audioQueue = useMemo(
     () =>
       mainChatMessages
@@ -233,9 +271,57 @@ export default function ChatLayout() {
     setHighlightedMessageIds(new Set());
     setActiveMessage(null);
     setActiveMessageAnchor(null);
+    setActiveMessageSurface('main');
     setReplyTarget(null);
+    setThreadReplyTarget(null);
     setSelectedThreadRootId(null);
+    setIsResizingThread(false);
   }, [selectedUser]);
+
+  useEffect(() => {
+    setThreadReplyTarget(null);
+  }, [selectedThreadRootId]);
+
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobileViewport(window.innerWidth < MOBILE_BREAKPOINT);
+    };
+
+    handleResize();
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  useEffect(() => {
+    if (!selectedThreadRootId) {
+      setIsResizingThread(false);
+      return;
+    }
+
+    if (isMobileViewport) {
+      setThreadPanelMode('full');
+    }
+  }, [isMobileViewport, selectedThreadRootId]);
+
+  useEffect(() => {
+    const node = splitLayoutRef.current;
+    if (!node) return;
+
+    const updateWidth = () => {
+      setSplitLayoutWidth(node.getBoundingClientRect().width);
+    };
+
+    updateWidth();
+
+    if (typeof ResizeObserver === 'undefined') {
+      window.addEventListener('resize', updateWidth);
+      return () => window.removeEventListener('resize', updateWidth);
+    }
+
+    const observer = new ResizeObserver(() => updateWidth());
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [selectedUser, isPingAccepted, selectedThreadRootId]);
 
   useEffect(() => {
     if (!socket || !selectedUser || !allMessages.length) return;
@@ -348,21 +434,37 @@ export default function ChatLayout() {
   const closeMessageMenu = () => {
     setActiveMessage(null);
     setActiveMessageAnchor(null);
+    setActiveMessageSurface('main');
   };
 
-  const openMessageMenu = (message: ChatMessage, anchor: MessageMenuAnchor) => {
+  const openMessageMenu = (
+    message: ChatMessage,
+    anchor: MessageMenuAnchor,
+    surface: ActiveMessageSurface
+  ) => {
     setActiveMessage(message);
     setActiveMessageAnchor(anchor);
+    setActiveMessageSurface(surface);
   };
 
-  const handleSelectReplyMode = (mode: ComposerReplyTarget['mode']) => {
+  const handleSelectReplyMode = () => {
     if (!activeMessage) return;
-    setReplyTarget(createReplyTarget(activeMessage, mode));
+
+    if (activeMessageSurface === 'thread') {
+      setThreadReplyTarget(createReplyTarget(activeMessage, 'thread'));
+      closeMessageMenu();
+      return;
+    }
+
+    setReplyTarget(createReplyTarget(activeMessage, 'quote'));
     closeMessageMenu();
   };
 
   const openThreadForMessage = (message: ChatMessage) => {
     const rootMessageId = message.isThreadRoot ? message.id : message.threadRootId || message.id;
+    if (isMobileViewport) {
+      setThreadPanelMode('full');
+    }
     setSelectedThreadRootId(rootMessageId);
     closeMessageMenu();
   };
@@ -381,8 +483,9 @@ export default function ChatLayout() {
     await sendText({
       ...data,
       reply_mode: 'thread',
-      reply_to_message_id: selectedThreadRootId,
+      reply_to_message_id: threadReplyTarget?.messageId || selectedThreadRootId,
     });
+    setThreadReplyTarget(null);
   };
 
   const handleSendMedia = async (data: {
@@ -411,8 +514,9 @@ export default function ChatLayout() {
     await sendVoice({
       ...data,
       reply_mode: 'thread',
-      reply_to_message_id: selectedThreadRootId,
+      reply_to_message_id: threadReplyTarget?.messageId || selectedThreadRootId,
     });
+    setThreadReplyTarget(null);
   };
 
   const handleEditMessage = async (text: string) => {
@@ -430,6 +534,53 @@ export default function ChatLayout() {
   const handleMediaClick = (type: 'image' | 'video', url: string) => {
     setMediaViewer({ open: true, type, url });
   };
+
+  const updateThreadPanelModeFromPointer = (clientX: number) => {
+    if (isMobileViewport) return;
+
+    const layoutRect = splitLayoutRef.current?.getBoundingClientRect();
+    if (!layoutRect) return;
+
+    const desiredWidth = layoutRect.right - clientX;
+    const nearestMode = THREAD_PANEL_MODES.reduce((closestMode, mode) => {
+      const currentDistance = Math.abs(threadPanelWidths[mode] - desiredWidth);
+      const closestDistance = Math.abs(threadPanelWidths[closestMode] - desiredWidth);
+      return currentDistance < closestDistance ? mode : closestMode;
+    }, 'minimal' as ThreadPanelMode);
+
+    setThreadPanelMode(nearestMode);
+  };
+
+  useEffect(() => {
+    if (!isResizingThread || isMobileViewport || !selectedThreadRootMessage) {
+      return;
+    }
+
+    const handlePointerMove = (event: MouseEvent) => {
+      updateThreadPanelModeFromPointer(event.clientX);
+    };
+
+    const handlePointerUp = () => {
+      setIsResizingThread(false);
+    };
+
+    const previousCursor = document.body.style.cursor;
+    const previousUserSelect = document.body.style.userSelect;
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+
+    window.addEventListener('mousemove', handlePointerMove);
+    window.addEventListener('mouseup', handlePointerUp);
+
+    return () => {
+      document.body.style.cursor = previousCursor;
+      document.body.style.userSelect = previousUserSelect;
+      window.removeEventListener('mousemove', handlePointerMove);
+      window.removeEventListener('mouseup', handlePointerUp);
+    };
+  }, [isMobileViewport, isResizingThread, selectedThreadRootMessage, threadPanelWidths]);
+
+  const threadPanelWidth = isMobileViewport ? '100%' : `${threadPanelWidths[threadPanelMode]}px`;
 
   return (
     <div className="flex h-[100dvh] bg-background overflow-hidden">
@@ -460,7 +611,7 @@ export default function ChatLayout() {
         anchor={activeMessageAnchor}
         message={activeMessage}
         onOpenChange={(open) => !open && closeMessageMenu()}
-        onReply={() => handleSelectReplyMode('quote')}
+        onReply={handleSelectReplyMode}
         onThread={() => activeMessage && openThreadForMessage(activeMessage)}
         onEdit={handleEditMessage}
         onDelete={handleDeleteMessage}
@@ -633,7 +784,7 @@ export default function ChatLayout() {
               <>
                 <GlobalAudioPlayerBar />
 
-                <div className="flex min-h-0 flex-1">
+                <div ref={splitLayoutRef} className="flex min-h-0 flex-1">
                   <div className="flex min-w-0 flex-1 flex-col">
                     <div className="flex-1 overflow-y-auto flex flex-col-reverse p-4 scroll-smooth overscroll-contain">
                    {/* Typing Indicator Bubble */}
@@ -672,7 +823,11 @@ export default function ChatLayout() {
                              onMediaClick={handleMediaClick}
                            />
                          ) : (
-                           <MessageItem isOwn={message.isOwn} onOpenMenu={(anchor) => openMessageMenu(message, anchor)}>
+                           <MessageItem
+                             isOwn={message.isOwn}
+                             onOpenMenu={(anchor) => openMessageMenu(message, anchor, 'main')}
+                             openMenuOnClick={!!activeMessage}
+                           >
                              <MessageRenderer
                                message={message}
                                highlighted={highlightedMessageIds.has(message.id)}
@@ -741,6 +896,27 @@ export default function ChatLayout() {
                     </div>
                   </div>
 
+                  {selectedThreadRootMessage && !isMobileViewport ? (
+                    <button
+                      type="button"
+                      aria-label="Resize thread panel"
+                      className={cn(
+                        'group relative hidden w-4 shrink-0 cursor-col-resize touch-none md:flex',
+                        isResizingThread ? 'bg-muted/40' : 'bg-gradient-to-b from-transparent via-muted/20 to-transparent'
+                      )}
+                      onMouseDown={(event) => {
+                        event.preventDefault();
+                        setIsResizingThread(true);
+                        updateThreadPanelModeFromPointer(event.clientX);
+                      }}
+                    >
+                      <span className="pointer-events-none absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-border/70" />
+                      <span className="pointer-events-none absolute left-1/2 top-1/2 flex h-20 w-2.5 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-border/70 bg-background shadow-sm transition-colors group-hover:bg-muted">
+                        <span className="h-8 w-[3px] rounded-full bg-border/80" />
+                      </span>
+                    </button>
+                  ) : null}
+
                   <ThreadPanel
                     open={!!selectedThreadRootMessage}
                     rootMessage={selectedThreadRootMessage}
@@ -750,8 +926,11 @@ export default function ChatLayout() {
                     hasNextPage={!!hasNextThreadPage}
                     fetchNextPage={fetchNextThreadPage}
                     onClose={() => setSelectedThreadRootId(null)}
-                    onOpenMenu={(message, anchor) => openMessageMenu(message, anchor)}
+                    onOpenMenu={(message, anchor) => openMessageMenu(message, anchor, 'thread')}
                     onMediaClick={handleMediaClick}
+                    isMobile={isMobileViewport}
+                    isMessageMenuOpen={!!activeMessage}
+                    style={{ width: threadPanelWidth }}
                     composer={
                       selectedThreadRootMessage ? (
                         <div className="bg-background">
@@ -761,15 +940,15 @@ export default function ChatLayout() {
                               onSendMedia={handleSendThreadMedia}
                               isUploading={isSending}
                               setIsUploading={() => {}}
-                              replyTarget={createReplyTarget(selectedThreadRootMessage, 'thread')}
+                              replyTarget={threadReplyTarget}
                             />
                           </div>
                           <VoiceRecorder
                             receiverId={selectedUser}
                             onSendVoice={handleSendThreadMedia}
                             onSendText={handleSendThreadText}
-                            replyTarget={createReplyTarget(selectedThreadRootMessage, 'thread')}
-                            onClearReplyTarget={() => setSelectedThreadRootId(null)}
+                            replyTarget={threadReplyTarget}
+                            onClearReplyTarget={() => setThreadReplyTarget(null)}
                           />
                         </div>
                       ) : null

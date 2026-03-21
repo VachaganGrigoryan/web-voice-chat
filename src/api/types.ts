@@ -75,6 +75,7 @@ export interface MessageDoc {
   reply_preview: ReplyPreview | null;
   is_thread_root: boolean;
   thread_reply_count: number;
+  thread_unread_count?: number;
   last_thread_reply_at: string | null;
   reactions: MessageReactionGroup[];
   status: 'sent' | 'delivered' | 'read';

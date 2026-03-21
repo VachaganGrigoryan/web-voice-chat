@@ -34,6 +34,7 @@ export interface BaseMessage {
   replyPreviewIsOwn?: boolean;
   isThreadRoot: boolean;
   threadReplyCount: number;
+  unreadThreadReplyCount: number;
   lastThreadReplyAt?: string;
   reactions: MessageReactionGroup[];
 }

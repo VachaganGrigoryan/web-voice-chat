@@ -2,6 +2,8 @@ import React, { useMemo } from 'react';
 import { Button } from '@/components/ui/Button';
 import { ScrollArea } from '@/components/ui/ScrollArea';
 import { Loader2, MessageSquareText, X } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { formatMessageDay, isSameLocalDay } from '@/utils/dateUtils';
 import { ChatMessage } from '../types/message';
 import { MessageItem, MessageMenuAnchor, MessageMeta } from './MessageShell';
 import { MessageRenderer } from '../MessageRenderer';
@@ -18,6 +20,10 @@ interface ThreadPanelProps {
   onOpenMenu: (message: ChatMessage, anchor: MessageMenuAnchor) => void;
   onMediaClick?: (type: 'image' | 'video', url: string) => void;
   composer?: React.ReactNode;
+  isMobile?: boolean;
+  isMessageMenuOpen?: boolean;
+  className?: string;
+  style?: React.CSSProperties;
 }
 
 export function ThreadPanel({
@@ -32,6 +38,10 @@ export function ThreadPanel({
   onOpenMenu,
   onMediaClick,
   composer,
+  isMobile = false,
+  isMessageMenuOpen = false,
+  className,
+  style,
 }: ThreadPanelProps) {
   const orderedMessages = useMemo(
     () =>
@@ -40,14 +50,38 @@ export function ThreadPanel({
       ),
     [messages]
   );
+  const threadReplyMessages = useMemo(
+    () => orderedMessages.filter((message) => message.id !== rootMessage?.id),
+    [orderedMessages, rootMessage?.id]
+  );
+
+  const shouldGroupMessages = (current: ChatMessage, adjacent?: ChatMessage) => {
+    if (!adjacent) return false;
+    if (current.kind === 'system' || adjacent.kind === 'system') return false;
+    if (current.senderId !== adjacent.senderId) return false;
+    if (!isSameLocalDay(current.createdAt, adjacent.createdAt)) return false;
+
+    const currentTime = new Date(current.createdAt).getTime();
+    const adjacentTime = new Date(adjacent.createdAt).getTime();
+    return Math.abs(currentTime - adjacentTime) <= 60 * 1000;
+  };
 
   if (!open || !rootMessage) {
     return null;
   }
 
   return (
-    <aside className="absolute inset-y-0 right-0 z-30 flex w-full flex-col border-l bg-background shadow-xl md:static md:w-[380px] md:min-w-[380px] md:shadow-none">
-      <div className="flex h-16 items-center justify-between border-b px-4">
+    <aside
+      className={cn(
+        'z-30 flex min-h-0 flex-col bg-background/98 backdrop-blur-xl',
+        isMobile
+          ? 'absolute inset-0 w-full shadow-2xl'
+          : 'relative shrink-0 border-l border-l-border/50 shadow-[inset_1px_0_0_rgba(255,255,255,0.04)] transition-[width] duration-200 ease-out',
+        className
+      )}
+      style={style}
+    >
+      <div className="flex h-16 items-center justify-between border-b border-border/70 bg-background/95 px-4 shadow-sm">
         <div className="min-w-0">
           <div className="text-sm font-semibold">Thread</div>
           <div className="truncate text-xs text-muted-foreground">
@@ -62,34 +96,68 @@ export function ThreadPanel({
       </div>
 
       <ScrollArea className="flex-1">
-        <div className="space-y-4 p-4">
-          <div className="rounded-2xl border border-border/70 bg-muted/20 p-3">
+        <div className="p-4">
+          <div className="rounded-3xl border border-border/70 bg-muted/20 p-3 shadow-sm">
             <div className="mb-2 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
               <MessageSquareText className="h-3.5 w-3.5" />
               Original Message
             </div>
-            <MessageItem isOwn={rootMessage.isOwn} onOpenMenu={(anchor) => onOpenMenu(rootMessage, anchor)}>
+            <MessageItem
+              isOwn={rootMessage.isOwn}
+              onOpenMenu={(anchor) => onOpenMenu(rootMessage, anchor)}
+              openMenuOnClick={isMessageMenuOpen}
+            >
               <MessageRenderer message={rootMessage} onMediaClick={onMediaClick} />
               <MessageMeta message={rootMessage} />
             </MessageItem>
           </div>
 
-          <div className="space-y-3">
+          <div className="mt-5">
             {isLoading ? (
               <div className="flex justify-center py-8">
                 <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
               </div>
-            ) : orderedMessages.length > 0 ? (
-              orderedMessages.map((message) => (
-                <MessageItem
-                  key={message.id}
-                  isOwn={message.isOwn}
-                  onOpenMenu={(anchor) => onOpenMenu(message, anchor)}
-                >
-                  <MessageRenderer message={message} onMediaClick={onMediaClick} />
-                  <MessageMeta message={message} />
-                </MessageItem>
-              ))
+            ) : threadReplyMessages.length > 0 ? (
+              threadReplyMessages.map((message, index) => {
+                const previousMessage = threadReplyMessages[index - 1];
+                const nextMessage = threadReplyMessages[index + 1];
+                const showDateHeader =
+                  !previousMessage || !isSameLocalDay(message.createdAt, previousMessage.createdAt);
+                const groupedWithAbove = shouldGroupMessages(message, previousMessage);
+                const groupedWithBelow = shouldGroupMessages(message, nextMessage);
+
+                return (
+                  <div
+                    key={message.id}
+                    className={cn(
+                      'flex flex-col w-full min-w-0',
+                      groupedWithAbove ? 'mt-px' : index === 0 ? '' : 'mt-6'
+                    )}
+                  >
+                    {showDateHeader ? (
+                      <div className="flex justify-center pb-4">
+                        <div className="rounded-full border border-border/50 bg-muted/50 px-3 py-1 text-[10px] font-medium text-muted-foreground shadow-sm">
+                          {formatMessageDay(message.createdAt)}
+                        </div>
+                      </div>
+                    ) : null}
+
+                    <MessageItem
+                      isOwn={message.isOwn}
+                      onOpenMenu={(anchor) => onOpenMenu(message, anchor)}
+                      openMenuOnClick={isMessageMenuOpen}
+                    >
+                      <MessageRenderer
+                        message={message}
+                        groupedWithAbove={groupedWithAbove}
+                        groupedWithBelow={groupedWithBelow}
+                        onMediaClick={onMediaClick}
+                      />
+                      <MessageMeta message={message} showTimestamp={!groupedWithBelow} />
+                    </MessageItem>
+                  </div>
+                );
+              })
             ) : (
               <div className="rounded-2xl border border-dashed border-border/70 bg-muted/20 px-4 py-6 text-center">
                 <div className="text-sm font-medium text-foreground">No thread replies yet</div>

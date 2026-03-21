@@ -216,6 +216,18 @@ const integrateCreatedMessage = (
   prependMessageToCache(queryClient, selectedUser, message);
 };
 
+const emitOutgoingMessage = (message: MessageDoc, type: string, selectedUser: string) => {
+  const { socket } = useSocketStore.getState();
+  socket?.emit('send_message', {
+    to: selectedUser,
+    message_id: message.id,
+    type,
+    reply_mode: message.reply_mode,
+    reply_to_message_id: message.reply_to_message_id,
+    thread_root_id: message.thread_root_id,
+  });
+};
+
 export const useConversations = () => {
   return useInfiniteQuery({
     queryKey: ['conversations'],
@@ -245,13 +257,13 @@ export const useThreadMessages = (threadRootId: string | null) => {
   });
 };
 
-export const useChat = () => {
+export const useChat = (openThreadRootId: string | null = null) => {
   const [selectedUser, setSelectedUser] = useState<string | null>(null);
   const queryClient = useQueryClient();
   
   // Initialize socket and subscriptions
   useSocket();
-  useRealtimeMessages(selectedUser);
+  useRealtimeMessages(selectedUser, openThreadRootId);
   const { onlineUsers, setOnlineUsers } = usePresence();
 
   // Initial fetch of online users (fallback/initial population)
@@ -290,14 +302,7 @@ export const useChat = () => {
     },
     onSuccess: (newMessage, variables) => {
       if (selectedUser) {
-        // Emit socket event to notify server
-        const { socket } = useSocketStore.getState();
-        socket?.emit('send_message', {
-          to: selectedUser,
-          message_id: newMessage.id,
-          type: variables.type
-        });
-
+        emitOutgoingMessage(newMessage, variables.type, selectedUser);
         integrateCreatedMessage(queryClient, selectedUser, newMessage);
       }
     },
@@ -310,14 +315,7 @@ export const useChat = () => {
     },
     onSuccess: (newMessage) => {
       if (selectedUser) {
-        // Emit socket event to notify server
-        const { socket } = useSocketStore.getState();
-        socket?.emit('send_message', {
-          to: selectedUser,
-          message_id: newMessage.id,
-          type: 'text'
-        });
-
+        emitOutgoingMessage(newMessage, 'text', selectedUser);
         integrateCreatedMessage(queryClient, selectedUser, newMessage);
       }
     },
