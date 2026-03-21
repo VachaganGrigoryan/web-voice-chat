@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react';
 import { useInfiniteQuery, useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
 import { messagesApi, realtimeApi, conversationsApi } from '@/api/endpoints';
 import { useSocket, usePresence, useRealtimeMessages, useSocketStore } from '@/socket/socket';
-import { MessageDoc, ReplyMode } from '@/api/types';
+import { MessageDoc, MessageReactionGroup, MessageReactionsUpdate, ReplyMode } from '@/api/types';
+import { useAuthStore } from '@/store/authStore';
 
 export interface SendMediaInput {
   type: 'voice' | 'image' | 'sticker' | 'video' | 'file';
@@ -170,6 +171,67 @@ const updateConversationActivity = (
   });
 };
 
+const applyReactionUpdate = (
+  queryClient: ReturnType<typeof useQueryClient>,
+  payload: MessageReactionsUpdate
+) => {
+  updateMessageAcrossCacheGroup(queryClient, 'messages', payload.message_id, (message) => ({
+    ...message,
+    reactions: payload.reactions,
+    updated_at: payload.updated_at,
+  }));
+
+  updateMessageAcrossCacheGroup(queryClient, 'threadMessages', payload.message_id, (message) => ({
+    ...message,
+    reactions: payload.reactions,
+    updated_at: payload.updated_at,
+  }));
+};
+
+const toggleLocalReactionGroups = (
+  reactions: MessageReactionGroup[],
+  emoji: string,
+  currentUserId: string,
+  updatedAt: string
+) => {
+  const existingReaction = reactions.find((reaction) => reaction.emoji === emoji);
+  const nextReactions = [...reactions];
+
+  if (!existingReaction) {
+    if (nextReactions.length >= 10) {
+      return nextReactions;
+    }
+
+    return [
+      ...nextReactions,
+      {
+        emoji,
+        user_ids: [currentUserId],
+        count: 1,
+        updated_at: updatedAt,
+      },
+    ];
+  }
+
+  const hasOwnReaction = existingReaction.user_ids.includes(currentUserId);
+  const nextUserIds = hasOwnReaction
+    ? existingReaction.user_ids.filter((userId) => userId !== currentUserId)
+    : [...existingReaction.user_ids, currentUserId];
+
+  return nextReactions
+    .map((reaction) =>
+      reaction.emoji !== emoji
+        ? reaction
+        : {
+            ...reaction,
+            user_ids: nextUserIds,
+            count: nextUserIds.length,
+            updated_at: updatedAt,
+          }
+    )
+    .filter((reaction) => reaction.count > 0);
+};
+
 const updateThreadRootSummaryFromReply = (
   queryClient: ReturnType<typeof useQueryClient>,
   threadRootId: string,
@@ -260,6 +322,7 @@ export const useThreadMessages = (threadRootId: string | null) => {
 export const useChat = (openThreadRootId: string | null = null) => {
   const [selectedUser, setSelectedUser] = useState<string | null>(null);
   const queryClient = useQueryClient();
+  const { userId: currentUserId } = useAuthStore();
   
   // Initialize socket and subscriptions
   useSocket();
@@ -345,6 +408,59 @@ export const useChat = (openThreadRootId: string | null = null) => {
     },
   });
 
+  const toggleReactionMutation = useMutation({
+    mutationFn: async ({ messageId, emoji }: { messageId: string; emoji: string }) => {
+      const response = await messagesApi.toggleReaction(messageId, emoji);
+      return response.data.data;
+    },
+    onMutate: async ({ messageId, emoji }) => {
+      if (!currentUserId) {
+        return;
+      }
+
+      const updatedAt = new Date().toISOString();
+      let localPayload: MessageReactionsUpdate | null = null;
+
+      const queryGroups = queryClient.getQueriesData<any>({ queryKey: ['messages'] });
+      const threadQueryGroups = queryClient.getQueriesData<any>({ queryKey: ['threadMessages'] });
+
+      [...queryGroups, ...threadQueryGroups].some(([, data]) => {
+        const foundMessage = data?.pages
+          ?.flatMap((page: any) => page.data || [])
+          ?.find((message: MessageDoc) => message.id === messageId);
+
+        if (!foundMessage) {
+          return false;
+        }
+
+        localPayload = {
+          message_id: messageId,
+          conversation_id: foundMessage.conversation_id,
+          reactions: toggleLocalReactionGroups(
+            foundMessage.reactions || [],
+            emoji,
+            currentUserId,
+            updatedAt
+          ),
+          updated_at: updatedAt,
+        };
+
+        return true;
+      });
+
+      if (localPayload) {
+        applyReactionUpdate(queryClient, localPayload);
+      }
+    },
+    onError: () => {
+      queryClient.invalidateQueries({ queryKey: ['messages'] });
+      queryClient.invalidateQueries({ queryKey: ['threadMessages'] });
+    },
+    onSuccess: (update) => {
+      applyReactionUpdate(queryClient, update);
+    },
+  });
+
   return {
     selectedUser,
     setSelectedUser,
@@ -357,8 +473,10 @@ export const useChat = (openThreadRootId: string | null = null) => {
     sendText: sendTextMutation.mutateAsync as (data: SendTextInput) => Promise<any>,
     editMessage: editMessageMutation.mutateAsync as (data: { messageId: string; text: string }) => Promise<any>,
     deleteMessage: deleteMessageMutation.mutateAsync as (messageId: string) => Promise<any>,
+    toggleReaction: toggleReactionMutation.mutateAsync as (data: { messageId: string; emoji: string }) => Promise<any>,
     isSending: sendMessageMutation.isPending || sendTextMutation.isPending,
     isEditingMessage: editMessageMutation.isPending,
     isDeletingMessage: deleteMessageMutation.isPending,
+    isTogglingReaction: toggleReactionMutation.isPending,
   };
 };

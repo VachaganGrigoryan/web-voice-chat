@@ -21,6 +21,7 @@ import { PingsModal } from './PingsModal';
 import { GlobalAudioPlayerBar } from './GlobalAudioPlayerBar';
 import { UserProfileModal } from './UserProfileModal';
 import { MessageActionsDialog } from './components/MessageActionsDialog';
+import { MessageReactions } from './components/MessageReactions';
 import { ThreadPanel } from './components/ThreadPanel';
 import { ThreadReplyBadge } from './components/ThreadReplyBadge';
 import { useChatAudioPlayerStore } from './audioPlayerStore';
@@ -102,9 +103,11 @@ export default function ChatLayout() {
     sendText,
     editMessage,
     deleteMessage,
+    toggleReaction,
     isSending,
     isEditingMessage,
     isDeletingMessage,
+    isTogglingReaction,
   } = useChat(selectedThreadRootId);
 
   useEffect(() => {
@@ -695,6 +698,10 @@ export default function ChatLayout() {
     closeMessageMenu();
   };
 
+  const handleToggleReaction = async (messageId: string, emoji: string) => {
+    await toggleReaction({ messageId, emoji });
+  };
+
   const handleMediaClick = (type: 'image' | 'video', url: string) => {
     setMediaViewer({ open: true, type, url });
   };
@@ -1102,6 +1109,12 @@ export default function ChatLayout() {
                                 ) : undefined
                               }
                             />
+                            <MessageReactions
+                              message={message}
+                              currentUserId={userId}
+                              isBusy={isTogglingReaction}
+                              onToggleReaction={(emoji) => handleToggleReaction(message.id, emoji)}
+                            />
                             <MessageMeta message={message} showTimestamp={!groupedWithBelow} />
                           </MessageItem>
                         )}
@@ -1209,6 +1222,8 @@ export default function ChatLayout() {
                     currentUserId={userId}
                     onClose={() => setSelectedThreadRootId(null)}
                     onOpenMenu={(message, anchor) => openMessageMenu(message, anchor, 'thread')}
+                    onToggleReaction={handleToggleReaction}
+                    isTogglingReaction={isTogglingReaction}
                     onVisibleUnreadMessages={(messageIds) => {
                       if (!socket || !selectedThreadRootId || !messageIds.length) return;
 

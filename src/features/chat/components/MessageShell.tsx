@@ -58,7 +58,7 @@ export const MessageItem: React.FC<MessageItemProps> = ({
   return (
     <div
       className={cn(
-        "flex flex-col max-w-[85%] md:max-w-[70%] mb-1 min-w-0",
+        "group flex flex-col max-w-[85%] md:max-w-[70%] mb-1 min-w-0",
         isOwn ? "self-end items-end" : "self-start items-start"
       )}
       onClickCapture={

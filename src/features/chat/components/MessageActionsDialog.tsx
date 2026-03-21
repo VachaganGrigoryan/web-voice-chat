@@ -316,16 +316,16 @@ export function MessageActionsDialog({
 
   const renderActions = () => (
     <div className="space-y-1 p-2">
-      {actions.map((action) => (
-        <ActionButton
-          key={action.key}
-          icon={action.icon}
-          label={action.label}
-          destructive={action.destructive}
-          disabled={action.disabled}
-          onClick={() => void action.onSelect()}
-        />
-      ))}
+        {actions.map((action) => (
+          <ActionButton
+            key={action.key}
+            icon={action.icon}
+            label={action.label}
+            destructive={action.destructive}
+            disabled={action.disabled}
+            onClick={() => void action.onSelect()}
+          />
+        ))}
     </div>
   );
 

@@ -5,6 +5,7 @@ import { cn } from '@/lib/utils';
 import { formatMessageDay, isSameLocalDay } from '@/utils/dateUtils';
 import { ChatMessage } from '../types/message';
 import { MessageItem, MessageMenuAnchor, MessageMeta } from './MessageShell';
+import { MessageReactions } from './MessageReactions';
 import { MessageRenderer } from '../MessageRenderer';
 
 interface ThreadPanelProps {
@@ -18,6 +19,8 @@ interface ThreadPanelProps {
   currentUserId?: string | null;
   onClose: () => void;
   onOpenMenu: (message: ChatMessage, anchor: MessageMenuAnchor) => void;
+  onToggleReaction: (messageId: string, emoji: string) => Promise<void>;
+  isTogglingReaction?: boolean;
   onVisibleUnreadMessages?: (messageIds: string[]) => void;
   onMediaClick?: (type: 'image' | 'video', url: string) => void;
   composer?: React.ReactNode;
@@ -38,6 +41,8 @@ export function ThreadPanel({
   currentUserId,
   onClose,
   onOpenMenu,
+  onToggleReaction,
+  isTogglingReaction = false,
   onVisibleUnreadMessages,
   onMediaClick,
   composer,
@@ -261,6 +266,12 @@ export function ThreadPanel({
               openMenuOnClick={isMessageMenuOpen}
             >
               <MessageRenderer message={rootMessage} onMediaClick={onMediaClick} />
+              <MessageReactions
+                message={rootMessage}
+                currentUserId={currentUserId}
+                isBusy={isTogglingReaction}
+                onToggleReaction={(emoji) => onToggleReaction(rootMessage.id, emoji)}
+              />
               <MessageMeta message={rootMessage} />
             </MessageItem>
           </div>
@@ -312,6 +323,12 @@ export function ThreadPanel({
                         groupedWithAbove={groupedWithAbove}
                         groupedWithBelow={groupedWithBelow}
                         onMediaClick={onMediaClick}
+                      />
+                      <MessageReactions
+                        message={message}
+                        currentUserId={currentUserId}
+                        isBusy={isTogglingReaction}
+                        onToggleReaction={(emoji) => onToggleReaction(message.id, emoji)}
                       />
                       <MessageMeta message={message} showTimestamp={!groupedWithBelow} />
                     </MessageItem>
