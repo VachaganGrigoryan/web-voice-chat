@@ -5,8 +5,6 @@ import { User, UserSummary } from '@/api/types';
 import { APP_ROUTES } from '@/app/routes';
 import { PanelPageLayout, PanelSection } from '@/components/panel/PanelPageLayout';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/Avatar';
-import { Input } from '@/components/ui/Input';
-import { Label } from '@/components/ui/Label';
 import { Loader2, Lock, User as UserIcon } from 'lucide-react';
 
 function getDisplayName(
@@ -21,6 +19,23 @@ function getDisplayName(
 function isUnavailableError(error: any) {
   const status = error?.response?.status;
   return status === 403 || status === 404;
+}
+
+interface ProfileInfoItemProps {
+  label: string;
+  value: string;
+  mono?: boolean;
+}
+
+function ProfileInfoItem({ label, value, mono = false }: ProfileInfoItemProps) {
+  return (
+    <div className="rounded-2xl border border-border/70 bg-muted/30 p-4">
+      <dt className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">{label}</dt>
+      <dd className={`mt-2 break-words text-sm font-medium text-foreground ${mono ? 'font-mono text-[13px]' : ''}`}>
+        {value}
+      </dd>
+    </div>
+  );
 }
 
 export default function ProfilePage() {
@@ -51,6 +66,8 @@ export default function ProfilePage() {
   const username = profile?.username || null;
   const avatarUrl = profile?.avatar?.url || null;
   const bio = profile?.bio || null;
+  const infoUsername = username ? `@${username}` : 'Not provided';
+  const infoDisplayName = profile?.display_name || 'Not provided';
   const profileError = error as any;
   const showUnavailableMessage = isUnavailableError(profileError);
   const showGenericError = !!profileError && !showUnavailableMessage;
@@ -68,7 +85,7 @@ export default function ProfilePage() {
         navigate(APP_ROUTES.chat);
       }}
       onClose={() => navigate(APP_ROUTES.chat)}
-      contentClassName="space-y-4"
+      contentClassName="scrollbar-hidden space-y-4"
     >
       <PanelSection title="Overview" description="Core public details visible from chat and direct links.">
         <div className="flex flex-col items-center gap-6 sm:flex-row sm:items-start">
@@ -79,11 +96,14 @@ export default function ProfilePage() {
             </AvatarFallback>
           </Avatar>
 
-          <div className="space-y-1 pt-2 text-center sm:text-left">
+          <div className="space-y-3 pt-2 text-center sm:text-left">
+            <div className="inline-flex rounded-full border border-border/70 bg-muted/40 px-3 py-1 text-xs font-medium text-muted-foreground">
+              Public profile
+            </div>
             <h2 className="text-xl font-semibold">{displayName}</h2>
             <p className="text-sm text-muted-foreground">{username ? `@${username}` : userId}</p>
             <p className="max-w-sm pt-2 text-sm text-muted-foreground">
-              Read-only user profile information shared through the messaging system.
+              Shared profile information for this conversation partner.
             </p>
           </div>
         </div>
@@ -110,54 +130,36 @@ export default function ProfilePage() {
           </div>
         </PanelSection>
       ) : (
-        <PanelSection title="Details" description="Structured fields for quick scanning and copy-safe viewing.">
-          <div className="max-w-xl space-y-5">
-            <div className="space-y-2">
-              <Label htmlFor="profile-username">Username</Label>
-              <Input
-                id="profile-username"
-                value={username ? `@${username}` : ''}
-                readOnly
-                placeholder="No username"
-                className="max-w-md"
-              />
-            </div>
+        <>
+          <PanelSection
+            title="Identity"
+            description="Structured public identity details from this user profile."
+            action={
+              isFetching ? (
+                <div className="flex items-center text-xs text-muted-foreground">
+                  <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                  Updating…
+                </div>
+              ) : null
+            }
+          >
+            <dl className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+              <ProfileInfoItem label="Username" value={infoUsername} />
+              <ProfileInfoItem label="Display Name" value={infoDisplayName} />
+              <ProfileInfoItem label="User ID" value={userId} mono />
+            </dl>
+          </PanelSection>
 
-            <div className="space-y-2">
-              <Label htmlFor="profile-display-name">Display Name</Label>
-              <Input
-                id="profile-display-name"
-                value={profile?.display_name || ''}
-                readOnly
-                placeholder="No display name"
-                className="max-w-md"
-              />
+          <PanelSection title="About" description="Short personal details shared through the messaging system.">
+            <div className="rounded-2xl border border-border/70 bg-muted/20 p-4 sm:p-5">
+              {bio ? (
+                <p className="whitespace-pre-wrap text-sm leading-6 text-foreground">{bio}</p>
+              ) : (
+                <p className="text-sm text-muted-foreground">No bio provided.</p>
+              )}
             </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="profile-id">User ID</Label>
-              <Input id="profile-id" value={userId} readOnly className="max-w-md" />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="profile-bio">Bio</Label>
-              <textarea
-                id="profile-bio"
-                value={bio || ''}
-                readOnly
-                placeholder="No bio provided"
-                className="flex min-h-[100px] w-full max-w-md resize-none rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-              />
-            </div>
-
-            {isFetching ? (
-              <div className="flex items-center text-xs text-muted-foreground">
-                <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
-                Updating profile…
-              </div>
-            ) : null}
-          </div>
-        </PanelSection>
+          </PanelSection>
+        </>
       )}
     </PanelPageLayout>
   );

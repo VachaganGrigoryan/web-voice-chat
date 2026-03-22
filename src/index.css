@@ -1,6 +1,7 @@
 @import "tailwindcss";
 
 @theme {
+  --spacing: var(--app-spacing);
   --color-background: var(--background);
   --color-foreground: var(--foreground);
 
@@ -36,6 +37,9 @@
 
 @layer base {
   :root {
+    --app-font-scale: 1;
+    --app-line-height: 1.5;
+    --app-spacing: 4px;
     --background: #ffffff;
     --foreground: #09090b;
     --card: #ffffff;
@@ -56,6 +60,36 @@
     --input: #e4e4e7;
     --ring: #18181b;
     --radius: 0.5rem;
+  }
+
+  :root[data-ui-font-size='small'] {
+    --app-font-scale: 0.9375;
+    --app-line-height: 1.45;
+  }
+
+  :root[data-ui-font-size='medium'] {
+    --app-font-scale: 1;
+    --app-line-height: 1.5;
+  }
+
+  :root[data-ui-font-size='large'] {
+    --app-font-scale: 1.125;
+    --app-line-height: 1.6;
+  }
+
+  :root[data-ui-density='wide'] {
+    --app-spacing: 4.75px;
+    --radius: 0.625rem;
+  }
+
+  :root[data-ui-density='compact'] {
+    --app-spacing: 4px;
+    --radius: 0.5rem;
+  }
+
+  :root[data-ui-density='very-compact'] {
+    --app-spacing: 3.25px;
+    --radius: 0.4375rem;
   }
 
   .dark {
@@ -127,11 +161,17 @@
 }
 
 @layer base {
+  html {
+    font-size: calc(16px * var(--app-font-scale));
+  }
+
   * {
     @apply border-border;
   }
+
   body {
     @apply bg-background text-foreground;
+    line-height: var(--app-line-height);
   }
 }
 

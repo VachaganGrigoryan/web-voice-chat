@@ -18,6 +18,60 @@ import {
   X,
 } from 'lucide-react';
 
+type PingMetaLabel = {
+  desktop: string;
+  mobile: string;
+};
+
+function formatCompactRelative(date: Date) {
+  const diffMs = Math.max(Date.now() - date.getTime(), 0);
+  const minutes = Math.floor(diffMs / 60000);
+
+  if (minutes < 1) {
+    return 'now';
+  }
+
+  if (minutes < 60) {
+    return `${minutes}m`;
+  }
+
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) {
+    return `${hours}h`;
+  }
+
+  const days = Math.floor(hours / 24);
+  if (days < 7) {
+    return `${days}d`;
+  }
+
+  const weeks = Math.floor(days / 7);
+  if (weeks < 5) {
+    return `${weeks}w`;
+  }
+
+  const months = Math.floor(days / 30);
+  if (months < 12) {
+    return `${months}mo`;
+  }
+
+  const years = Math.floor(days / 365);
+  return `${years}y`;
+}
+
+function buildPingMetaLabel(
+  desktopPrefix: string,
+  mobilePrefix: string,
+  value: string
+): PingMetaLabel {
+  const date = new Date(value);
+
+  return {
+    desktop: `${desktopPrefix} ${formatDistanceToNow(date, { addSuffix: true })}`,
+    mobile: `${mobilePrefix} ${formatCompactRelative(date)}`,
+  };
+}
+
 function PingStatusBadge({ status }: { status: PingItem['ping']['status'] }) {
   const badgeClassName =
     status === 'accepted'
@@ -53,29 +107,37 @@ function PingPersonCard({
   actions,
 }: {
   item: PingItem;
-  metaLabel: string;
+  metaLabel: PingMetaLabel;
   actions?: ReactNode;
 }) {
   return (
-    <div className="flex flex-col gap-4 rounded-2xl border border-border/60 bg-background/80 p-4 sm:flex-row sm:items-center sm:justify-between">
-      <div className="flex min-w-0 items-center gap-3">
+    <div className="rounded-2xl border border-border/60 bg-background/80 p-4">
+      <div className="flex min-w-0 items-start gap-3">
         <Avatar className="h-11 w-11 shrink-0 border">
           {item.peer.avatar ? <AvatarImage src={item.peer.avatar.url} className="object-cover" /> : null}
           <AvatarFallback>{(item.peer.display_name || item.peer.username || '?')[0].toUpperCase()}</AvatarFallback>
         </Avatar>
-        <div className="min-w-0 space-y-1">
-          <div className="truncate text-sm font-semibold">
-            {item.peer.display_name || item.peer.username || 'Unknown User'}
+        <div className="min-w-0 flex-1 space-y-2">
+          <div className="flex min-w-0 items-start justify-between gap-2">
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-sm font-semibold">
+                {item.peer.display_name || item.peer.username || 'Unknown User'}
+              </div>
+              {item.peer.username ? <div className="truncate text-xs text-muted-foreground">@{item.peer.username}</div> : null}
+            </div>
+            <div className="shrink-0">
+              <PingStatusBadge status={item.ping.status} />
+            </div>
           </div>
-          {item.peer.username ? <div className="truncate text-xs text-muted-foreground">@{item.peer.username}</div> : null}
-          <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-            <span>{metaLabel}</span>
-            <span className="text-muted-foreground/50">•</span>
-            <PingStatusBadge status={item.ping.status} />
+
+          <div className="min-w-0 text-[11px] text-muted-foreground sm:text-xs">
+            <span className="block truncate sm:hidden">{metaLabel.mobile}</span>
+            <span className="hidden truncate sm:block">{metaLabel.desktop}</span>
           </div>
         </div>
       </div>
-      {actions ? <div className="flex flex-wrap items-center gap-2 sm:justify-end">{actions}</div> : null}
+
+      {actions ? <div className="mt-3 grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center sm:justify-end">{actions}</div> : null}
     </div>
   );
 }
@@ -205,13 +267,13 @@ export default function PingsPage() {
                   <PingPersonCard
                     key={item.ping.id}
                     item={item}
-                    metaLabel={`Received ${formatDistanceToNow(new Date(item.ping.created_at), { addSuffix: true })}`}
+                    metaLabel={buildPingMetaLabel('Received', 'Recv', item.ping.created_at)}
                     actions={
                       <>
                         <Button
                           type="button"
                           size="sm"
-                          className="rounded-full"
+                          className="w-full rounded-full sm:w-auto"
                           onClick={() => acceptPing(item.ping.id).then(() => openChat(item.peer.id))}
                           disabled={isAccepting}
                         >
@@ -222,7 +284,7 @@ export default function PingsPage() {
                           type="button"
                           size="sm"
                           variant="outline"
-                          className="rounded-full"
+                          className="w-full rounded-full sm:w-auto"
                           onClick={() => declinePing(item.ping.id)}
                           disabled={isDeclining}
                         >
@@ -233,7 +295,7 @@ export default function PingsPage() {
                           type="button"
                           size="sm"
                           variant="destructive"
-                          className="rounded-full"
+                          className="col-span-2 w-full rounded-full sm:col-span-1 sm:w-auto"
                           onClick={() => blockUser(item.peer.id)}
                           disabled={isBlocking}
                         >
@@ -258,10 +320,16 @@ export default function PingsPage() {
                   <PingPersonCard
                     key={item.ping.id}
                     item={item}
-                    metaLabel={`Updated ${formatDistanceToNow(new Date(item.ping.updated_at), { addSuffix: true })}`}
+                    metaLabel={buildPingMetaLabel('Updated', 'Upd', item.ping.updated_at)}
                     actions={
                       item.ping.status === 'accepted' ? (
-                        <Button type="button" size="sm" variant="outline" className="rounded-full" onClick={() => openChat(item.peer.id)}>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="col-span-2 w-full rounded-full sm:col-span-1 sm:w-auto"
+                          onClick={() => openChat(item.peer.id)}
+                        >
                           <MessageSquare className="mr-1.5 h-4 w-4" />
                           Open Chat
                         </Button>
@@ -293,13 +361,13 @@ export default function PingsPage() {
                   <PingPersonCard
                     key={item.ping.id}
                     item={item}
-                    metaLabel={`Sent ${formatDistanceToNow(new Date(item.ping.created_at), { addSuffix: true })}`}
+                    metaLabel={buildPingMetaLabel('Sent', 'Sent', item.ping.created_at)}
                     actions={
                       <Button
                         type="button"
                         size="sm"
                         variant="outline"
-                        className="rounded-full"
+                        className="col-span-2 w-full rounded-full sm:col-span-1 sm:w-auto"
                         onClick={() => cancelPing(item.ping.id)}
                         disabled={isCancelling}
                       >
@@ -323,10 +391,16 @@ export default function PingsPage() {
                   <PingPersonCard
                     key={item.ping.id}
                     item={item}
-                    metaLabel={`Updated ${formatDistanceToNow(new Date(item.ping.updated_at), { addSuffix: true })}`}
+                    metaLabel={buildPingMetaLabel('Updated', 'Upd', item.ping.updated_at)}
                     actions={
                       item.ping.status === 'accepted' ? (
-                        <Button type="button" size="sm" variant="outline" className="rounded-full" onClick={() => openChat(item.peer.id)}>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="col-span-2 w-full rounded-full sm:col-span-1 sm:w-auto"
+                          onClick={() => openChat(item.peer.id)}
+                        >
                           <MessageSquare className="mr-1.5 h-4 w-4" />
                           Open Chat
                         </Button>
