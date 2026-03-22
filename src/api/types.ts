@@ -96,6 +96,16 @@ export interface MessageReactionsUpdate {
   updated_at: string;
 }
 
+export interface MessageDeletedEvent {
+  message_id: string;
+  conversation_id: string;
+  actor_user_id: string;
+  deleted_for_everyone: boolean;
+  hidden_for_me: boolean;
+  deleted_media: boolean;
+  updated_at?: string | null;
+}
+
 export interface ConversationReadUpdate {
   updated_count: number;
 }

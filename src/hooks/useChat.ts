@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { useInfiniteQuery, useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
 import { messagesApi, realtimeApi, conversationsApi } from '@/api/endpoints';
-import { useSocket, usePresence, useRealtimeMessages, useSocketStore } from '@/socket/socket';
+import { applyMessageDeletedEventToCaches, useSocket, usePresence, useRealtimeMessages, useSocketStore } from '@/socket/socket';
 import { MessageDoc, MessageReactionGroup, MessageReactionsUpdate, ReplyMode } from '@/api/types';
 import { useAuthStore } from '@/store/authStore';
 
@@ -422,9 +422,19 @@ export const useChat = (selectedUser: string | null = null, openThreadRootId: st
       return response.data;
     },
     onSuccess: (updatedMessage) => {
-      updateMessageAcrossCacheGroup(queryClient, 'messages', updatedMessage.id, () => updatedMessage);
-      updateMessageAcrossCacheGroup(queryClient, 'threadMessages', updatedMessage.id, () => updatedMessage);
-      updateConversationPreview(queryClient, updatedMessage);
+      applyMessageDeletedEventToCaches(
+        queryClient,
+        {
+          message_id: updatedMessage.id,
+          conversation_id: updatedMessage.conversation_id,
+          actor_user_id: currentUserId || updatedMessage.sender_id,
+          deleted_for_everyone: !!updatedMessage.is_deleted,
+          hidden_for_me: updatedMessage.sender_id === currentUserId,
+          deleted_media: !!updatedMessage.media,
+          updated_at: updatedMessage.updated_at,
+        },
+        currentUserId
+      );
     },
   });
 
