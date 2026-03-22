@@ -6,8 +6,7 @@ import { usePings } from '@/hooks/usePings';
 import { APP_ROUTES } from '@/app/routes';
 import { useAuthStore } from '@/store/authStore';
 import { authApi } from '@/api/endpoints';
-import MediaComposer from './media/upload/MediaComposer';
-import VoiceRecorder from './media/recorders/VoiceRecorder';
+import ChatComposer from './ChatComposer';
 import { useChatAudioPlayerStore } from './media/players/audioPlayerStore';
 import { MediaViewer } from './media/MediaViewer';
 import { MessageActionsDialog } from './components/MessageActionsDialog';
@@ -320,15 +319,11 @@ export default function ChatLayout() {
               isTyping={isTyping}
               isOnline={onlineUsers?.includes(selectedUser) || false}
               isPingAccepted={isPingAccepted}
-              isUploading={isSending}
-              replyTarget={replyTarget}
               pingStatus={pingStatus}
               isSendingPing={isSendingPing}
               canPing={!selectedUserSummary || selectedUserSummary.can_ping}
               onCloseConversation={closeActiveConversation}
               onOpenProfile={() => navigate(APP_ROUTES.profile(selectedUser))}
-              onSendMedia={handleSendMedia}
-              onClearReplyTarget={() => setReplyTarget(null)}
               onSendPing={() => sendPing(selectedUser)}
             />
 
@@ -352,11 +347,18 @@ export default function ChatLayout() {
                 audioQueue={mainAudioQueue}
                 isMessageMenuOpen={!!activeMessage}
                 onOpenThread={openThreadForMessage}
-                onSendVoice={handleSendMedia}
-                onSendText={handleSendText}
-                replyTarget={replyTarget}
-                onClearReplyTarget={() => setReplyTarget(null)}
                 splitLayoutRef={splitLayoutRef}
+                composer={
+                  <ChatComposer
+                    receiverId={selectedUser}
+                    onSendText={handleSendText}
+                    onSendMedia={handleSendMedia}
+                    replyTarget={replyTarget}
+                    onClearReplyTarget={() => setReplyTarget(null)}
+                    isUploading={isSending}
+                    contextLabel="main chat"
+                  />
+                }
                 resizeHandle={
                   selectedThreadRootMessage && !isMobileViewport ? (
                     <button
@@ -404,22 +406,15 @@ export default function ChatLayout() {
                     style={{ width: threadPanelWidth }}
                     composer={
                       selectedThreadRootMessage ? (
-                        <div className="bg-background">
-                          <div className="flex justify-end px-3 pt-3">
-                            <MediaComposer
-                              receiverId={selectedUser}
-                              onSendMedia={handleSendThreadMedia}
-                              isUploading={isSending}
-                              replyTarget={threadReplyTarget}
-                              onClearReplyTarget={() => setThreadReplyTarget(null)}
-                            />
-                          </div>
-                          <VoiceRecorder
+                        <div className="bg-background px-3">
+                          <ChatComposer
                             receiverId={selectedUser}
-                            onSendVoice={handleSendThreadMedia}
                             onSendText={handleSendThreadText}
+                            onSendMedia={handleSendThreadMedia}
                             replyTarget={threadReplyTarget}
                             onClearReplyTarget={() => setThreadReplyTarget(null)}
+                            isUploading={isSending}
+                            contextLabel="thread"
                           />
                         </div>
                       ) : null

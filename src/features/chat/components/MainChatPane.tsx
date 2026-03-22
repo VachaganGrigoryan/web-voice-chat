@@ -1,9 +1,8 @@
 import React from 'react';
 import { ArrowDown, Loader2, MessageSquare } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
-import VoiceRecorder from '../media/recorders/VoiceRecorder';
 import { GlobalAudioPlayerBar } from '../media/players/GlobalAudioPlayerBar';
-import { ComposerReplyTarget, ChatMessage } from '../types/message';
+import { ChatMessage } from '../types/message';
 import { ChatRenderItem } from '../utils/mediaGroupUtils';
 import { MessageMenuAnchor } from './MessageShell';
 import { ChatTimelineItems } from './ChatTimelineItems';
@@ -41,22 +40,8 @@ interface MainChatPaneProps {
   }>;
   isMessageMenuOpen: boolean;
   onOpenThread: (message: ChatMessage) => void;
-  onSendVoice: (data: {
-    type: 'voice' | 'image' | 'sticker' | 'video' | 'file';
-    receiver_id: string;
-    file: File;
-    text?: string;
-    duration_ms?: number;
-    reply_mode?: ComposerReplyTarget['mode'] | null;
-    reply_to_message_id?: string;
-    client_batch_id?: string;
-    signal?: AbortSignal;
-    onUploadProgress?: (progress: number) => void;
-  }) => Promise<unknown>;
-  onSendText: (data: { receiver_id: string; text: string }) => Promise<void>;
-  replyTarget: ComposerReplyTarget | null;
-  onClearReplyTarget: () => void;
   splitLayoutRef: React.RefObject<HTMLDivElement | null>;
+  composer?: React.ReactNode;
   resizeHandle?: React.ReactNode;
   threadPanel?: React.ReactNode;
 }
@@ -80,11 +65,8 @@ export function MainChatPane({
   audioQueue,
   isMessageMenuOpen,
   onOpenThread,
-  onSendVoice,
-  onSendText,
-  replyTarget,
-  onClearReplyTarget,
   splitLayoutRef,
+  composer,
   resizeHandle,
   threadPanel,
 }: MainChatPaneProps) {
@@ -200,15 +182,9 @@ export function MainChatPane({
             </div>
           ) : null}
 
-          <div className="shrink-0 z-20 bg-background flex items-center gap-2 p-4">
-            <VoiceRecorder
-              receiverId={selectedUser}
-              onSendVoice={onSendVoice}
-              onSendText={onSendText}
-              replyTarget={replyTarget}
-              onClearReplyTarget={onClearReplyTarget}
-            />
-          </div>
+          {composer ? (
+            <div className="shrink-0 z-20 bg-background px-4">{composer}</div>
+          ) : null}
         </div>
 
         {resizeHandle}

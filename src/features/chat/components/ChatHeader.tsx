@@ -7,9 +7,7 @@ import {
   UserPlus,
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
-import MediaComposer from '../media/upload/MediaComposer';
 import { ProfileTriggerButton } from './ProfileTriggerButton';
-import { ComposerReplyTarget } from '../types/message';
 
 interface ChatHeaderProps {
   selectedUser: string;
@@ -18,26 +16,11 @@ interface ChatHeaderProps {
   isTyping: boolean;
   isOnline: boolean;
   isPingAccepted: boolean;
-  isUploading: boolean;
-  replyTarget: ComposerReplyTarget | null;
   pingStatus: string;
   isSendingPing: boolean;
   canPing: boolean;
   onCloseConversation: () => void;
   onOpenProfile: () => void;
-  onSendMedia: (data: {
-    type: 'voice' | 'image' | 'sticker' | 'video' | 'file';
-    receiver_id: string;
-    file: File;
-    text?: string;
-    duration_ms?: number;
-    reply_mode?: ComposerReplyTarget['mode'] | null;
-    reply_to_message_id?: string;
-    client_batch_id?: string;
-    signal?: AbortSignal;
-    onUploadProgress?: (progress: number) => void;
-  }) => Promise<unknown>;
-  onClearReplyTarget: () => void;
   onSendPing: () => void;
 }
 
@@ -48,15 +31,11 @@ export function ChatHeader({
   isTyping,
   isOnline,
   isPingAccepted,
-  isUploading,
-  replyTarget,
   pingStatus,
   isSendingPing,
   canPing,
   onCloseConversation,
   onOpenProfile,
-  onSendMedia,
-  onClearReplyTarget,
   onSendPing,
 }: ChatHeaderProps) {
   return (
@@ -92,15 +71,7 @@ export function ChatHeader({
       </div>
 
       <div className="flex items-center">
-        {isPingAccepted ? (
-          <MediaComposer
-            receiverId={selectedUser}
-            onSendMedia={onSendMedia}
-            isUploading={isUploading}
-            replyTarget={replyTarget}
-            onClearReplyTarget={onClearReplyTarget}
-          />
-        ) : (
+        {!isPingAccepted ? (
           <Button
             onClick={onSendPing}
             disabled={
@@ -132,7 +103,7 @@ export function ChatHeader({
               </>
             )}
           </Button>
-        )}
+        ) : null}
       </div>
     </div>
   );
