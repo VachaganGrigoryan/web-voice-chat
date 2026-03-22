@@ -9,12 +9,12 @@ import { useAuthStore } from '@/store/authStore';
 import { Conversation, MessageDoc } from '@/api/types';
 import { Button } from '@/components/ui/Button';
 import { authApi, messagesApi } from '@/api/endpoints';
-import MediaComposer from './MediaComposer';
+import MediaComposer from './media/upload/MediaComposer';
 import VoiceRecorder from './media/recorders/VoiceRecorder';
 import { GlobalAudioPlayerBar } from './media/players/GlobalAudioPlayerBar';
 import { useChatAudioPlayerStore } from './media/players/audioPlayerStore';
 import { MessageRenderer } from './MessageRenderer';
-import { MediaViewer } from './MediaViewer';
+import { MediaViewer } from './media/MediaViewer';
 import { MessageActionsDialog } from './components/MessageActionsDialog';
 import { MessageReactions } from './components/MessageReactions';
 import { ThreadPanel } from './components/ThreadPanel';
@@ -41,7 +41,7 @@ import {
   isSameLocalDay,
 } from '@/utils/dateUtils';
 import { parseMessages } from './utils/messageParser';
-import { MediaViewerImageItem } from './MediaViewer';
+import { MediaViewerImageItem } from './media/MediaViewer';
 import { MediaCollageGroupRenderer } from './renderers/MediaCollageGroupRenderer';
 import { buildChatRenderItems, shouldGroupMessages } from './utils/mediaGroupUtils';
 import { getThreadPanelWidths, MOBILE_BREAKPOINT, THREAD_PANEL_MODES, type ThreadPanelMode } from './utils/chatLayoutUtils';

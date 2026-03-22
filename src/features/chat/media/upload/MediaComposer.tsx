@@ -17,7 +17,7 @@ import {
   getAttachmentMessageType,
   validateAttachmentFile,
 } from '@/utils/fileUtils';
-import { ComposerReplyTarget } from './types/message';
+import { ComposerReplyTarget } from '../../types/message';
 
 type AttachmentUploadType = 'image' | 'video' | 'file';
 type PendingMediaStatus = 'pending' | 'uploading' | 'failed';
