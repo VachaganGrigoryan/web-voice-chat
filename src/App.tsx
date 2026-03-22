@@ -3,8 +3,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from 'sonner';
 import AuthPage from '@/features/auth/AuthPage';
 import ChatLayout from '@/features/chat/ChatLayout';
+import InvitePage from '@/features/invite/InvitePage';
 import SettingsPage from '@/features/settings/SettingsPage';
-import InvitePage from '@/features/chat/InvitePage';
 import PingsPage from '@/features/pings/PingsPage';
 import ProfilePage from '@/features/profile/ProfilePage';
 import ProtectedRoute from '@/components/ProtectedRoute';
@@ -48,7 +48,7 @@ export default function App() {
               <Route path="/profile/:userId" element={<ProfilePage />} />
             </Route>
 
-            <Route path="/invite/:token" element={<InvitePage />} />
+            <Route path={APP_ROUTES.invite(':token')} element={<InvitePage />} />
             <Route path={APP_ROUTES.root} element={<RootRedirect />} />
             <Route path="*" element={<Navigate to={APP_ROUTES.root} replace />} />
           </Routes>

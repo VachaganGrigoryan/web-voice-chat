@@ -7,7 +7,7 @@ interface PanelPageLayoutProps {
   title: string;
   description?: string;
   onBack: () => void;
-  onClose: () => void;
+  onClose?: () => void;
   headerActions?: ReactNode;
   nav?: ReactNode;
   children: ReactNode;
@@ -44,41 +44,49 @@ export function PanelPageLayout({
             className
           )}
         >
-          <div className="border-b border-border/70 px-4 py-4 sm:px-6 sm:py-5">
-            <div className="flex items-start justify-between gap-3 sm:gap-4">
-              <div className="flex min-w-0 items-start gap-3 sm:gap-4">
+          <div className="overflow-hidden border-b border-border/70 px-3 py-3 sm:px-6 sm:py-5">
+            <div className="flex min-w-0 items-center justify-between gap-2 sm:items-start sm:gap-4">
+              <div className="flex min-w-0 flex-1 items-center gap-3 sm:items-start sm:gap-4">
                 <Button
                   type="button"
                   variant="ghost"
                   size="icon"
-                  className="mt-0.5 h-10 w-10 shrink-0 rounded-full"
+                  className="h-9 w-9 shrink-0 rounded-full sm:mt-0.5 sm:h-10 sm:w-10"
                   onClick={onBack}
                 >
                   <ArrowLeft className="h-4 w-4" />
                 </Button>
-                <div className="min-w-0 space-y-1">
-                  <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">{title}</h1>
+                <div className="min-w-0 flex-1 space-y-1 overflow-hidden">
+                  <h1 className="truncate text-lg font-semibold tracking-tight sm:text-2xl sm:whitespace-normal">
+                    {title}
+                  </h1>
                   {description ? (
-                    <p className="max-w-2xl text-sm text-muted-foreground">{description}</p>
+                    <p className="hidden max-w-2xl text-sm text-muted-foreground sm:block">{description}</p>
                   ) : null}
                 </div>
               </div>
 
-              <div className="flex shrink-0 items-center gap-2">
+              <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
                 {headerActions}
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className="h-10 w-10 rounded-full"
-                  onClick={onClose}
-                >
-                  <X className="h-4 w-4" />
-                </Button>
+                {onClose ? (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-9 w-9 rounded-full sm:h-10 sm:w-10"
+                    onClick={onClose}
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                ) : null}
               </div>
             </div>
 
-            {nav ? <div className="mt-4 border-t border-border/60 pt-4">{nav}</div> : null}
+            {nav ? (
+              <div className="scrollbar-hidden mt-3 overflow-x-auto border-t border-border/60 pt-3 sm:mt-4 sm:pt-4">
+                {nav}
+              </div>
+            ) : null}
           </div>
 
           <div className={cn('min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6 sm:py-6 lg:px-8', contentClassName)}>

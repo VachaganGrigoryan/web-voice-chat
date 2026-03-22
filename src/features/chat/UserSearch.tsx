@@ -99,7 +99,7 @@ export function UserSearch({ onSelectUser }: UserSearchProps) {
       </div>
 
       {isOpen && input.trim() !== '' && (
-        <div className="absolute top-full left-0 right-0 mt-1 bg-background border rounded-md shadow-lg z-50 max-h-[300px] overflow-y-auto">
+        <div className="scrollbar-hidden absolute top-full left-0 right-0 z-50 mt-1 max-h-[300px] overflow-y-auto rounded-md border bg-background shadow-lg">
           {error ? (
             <div className="p-3 text-sm text-destructive text-center">{error}</div>
           ) : isSearching && results.length === 0 ? (
