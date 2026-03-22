@@ -51,6 +51,16 @@ export const MEDIA_ATTACH_ACCEPT = 'image/*,video/*';
 
 export type AttachmentMode = 'media' | 'file';
 
+const normalizeMimeType = (mimeType: string) => mimeType.split(';')[0]?.trim().toLowerCase() || '';
+
+export const isSupportedVideoMime = (mimeType: string) =>
+  SUPPORTED_VIDEO_MIMES.includes(normalizeMimeType(mimeType));
+
+export const getSupportedVideoMime = (mimeType: string) => {
+  const normalizedMimeType = normalizeMimeType(mimeType);
+  return isSupportedVideoMime(normalizedMimeType) ? normalizedMimeType : null;
+};
+
 const hasSupportedDocumentExtension = (fileName: string) => {
   const lowerName = fileName.toLowerCase();
   return SUPPORTED_DOCUMENT_EXTENSIONS.some((extension) => lowerName.endsWith(extension));
@@ -63,7 +73,7 @@ const isSupportedFileAttachment = (file: File) =>
 export const getMessageType = (file: File): 'voice' | 'image' | 'sticker' | 'video' | null => {
   if (SUPPORTED_AUDIO_MIMES.includes(file.type)) return 'voice';
   if (SUPPORTED_IMAGE_MIMES.includes(file.type)) return 'image';
-  if (SUPPORTED_VIDEO_MIMES.includes(file.type)) return 'video';
+  if (isSupportedVideoMime(file.type)) return 'video';
   return null;
 };
 
@@ -91,7 +101,7 @@ export const validateFile = (file: File, isSticker: boolean = false): string | n
   if (
     !SUPPORTED_AUDIO_MIMES.includes(file.type) &&
     !SUPPORTED_IMAGE_MIMES.includes(file.type) &&
-    !SUPPORTED_VIDEO_MIMES.includes(file.type)
+    !isSupportedVideoMime(file.type)
   ) {
     return 'Unsupported file type';
   }
