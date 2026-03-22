@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import EmojiPicker, { Theme } from 'emoji-picker-react';
 import { Plus, Smile } from 'lucide-react';
+import { AppEmojiPicker } from '@/components/ui/emoji-picker';
 import { cn } from '@/lib/utils';
 import { ChatMessage } from '../types/message';
 
@@ -240,24 +240,15 @@ export function MessageReactions({
                 Back
               </button>
             </div>
-            <div className="overflow-hidden rounded-2xl border border-border/60">
-              <EmojiPicker
-                onEmojiClick={(emojiObject: any) => {
-                  void handleReactionSelect(emojiObject.emoji);
-                }}
-                theme={Theme.AUTO}
-                width={
-                  typeof window !== 'undefined'
-                    ? Math.min(window.innerWidth - 24, PICKER_PANEL_WIDTH - 24)
-                    : PICKER_PANEL_WIDTH - 24
-                }
-                height={360}
-                lazyLoadEmojis
-                searchDisabled={false}
-                skinTonesDisabled
-                previewConfig={{ showPreview: false }}
-              />
-            </div>
+            <AppEmojiPicker
+              onSelectEmoji={(emoji) => {
+                void handleReactionSelect(emoji);
+              }}
+              height={360}
+              showPreview={false}
+              showSkinToneSelector={false}
+              className="w-full rounded-2xl border border-border/60 shadow-none"
+            />
           </div>
         )}
       </div>,

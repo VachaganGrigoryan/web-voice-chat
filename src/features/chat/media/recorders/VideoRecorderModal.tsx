@@ -11,7 +11,7 @@ import {
 import { Button } from '@/components/ui/Button';
 import { cn } from '@/lib/utils';
 import { getSupportedVideoMime } from '@/utils/fileUtils';
-import { ComposerReplyTarget } from './types/message';
+import { ComposerReplyTarget } from '../../types/message';
 
 const HARD_MAX_VIDEO_SIZE_BYTES = 10 * 1024 * 1024;
 const SAFE_MAX_VIDEO_SIZE_BYTES = Math.floor(HARD_MAX_VIDEO_SIZE_BYTES * 0.9);

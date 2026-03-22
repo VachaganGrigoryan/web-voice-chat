@@ -2,7 +2,7 @@ import React from 'react';
 import { cn } from '@/lib/utils';
 import { MessageBubble, MessageContent } from '../components/MessageShell';
 import { MessageMarkdown } from '../components/MessageMarkdown';
-import { VideoThumbnail } from '../components/VideoPlayer';
+import { VideoThumbnail } from '../media/players/VideoPlayer';
 import { MediaClickPayload } from '../types/message';
 import { MediaCollageMessage } from '../utils/mediaGroupUtils';
 
