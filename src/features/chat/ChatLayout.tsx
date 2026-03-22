@@ -32,6 +32,7 @@ import {
 } from '@/socket/socket';
 import { EVENTS } from '@/socket/events';
 import { useProfile } from '@/hooks/useProfile';
+import { UserSearch } from '@/features/discovery/UserSearch';
 import { AudioMessage, ChatMessage, ComposerReplyTarget, ImageMessage, MediaClickPayload } from './types/message';
 import {
   formatMessageDay,
@@ -41,8 +42,6 @@ import { parseMessages } from './utils/messageParser';
 import { MediaViewerImageItem } from './MediaViewer';
 import { MediaCollageGroupRenderer } from './renderers/MediaCollageGroupRenderer';
 import { buildChatRenderItems, shouldGroupMessages } from './utils/mediaGroupUtils';
-
-import { UserSearch } from './UserSearch';
 
 type ThreadPanelMode = 'minimal' | 'center' | 'full';
 type ActiveMessageSurface = 'main' | 'thread';
