@@ -117,6 +117,7 @@ export default function ChatComposer({
     isUploading ||
     textInput.isSendingText ||
     attachmentComposer.isBatchUploading;
+  const isEmojiPanel = activePanel === 'emoji';
 
   const renderDesktopPanel = () => {
     if (!activePanel || isMobileViewport) {
@@ -199,26 +200,39 @@ export default function ChatComposer({
         {isMobileViewport ? (
           <DialogContent
             className={cn(
-              'z-[60] [&>button]:hidden fixed inset-x-0 bottom-0 top-auto flex w-full translate-x-0 translate-y-0 flex-col overflow-hidden rounded-t-[28px] border-x-0 border-b-0 border-t border-border/70 bg-background/98 p-4 shadow-2xl',
-              activePanel === 'emoji' ? 'h-[75dvh] max-h-[75dvh]' : 'max-h-[75dvh]'
+              'z-[60] [&>button]:hidden fixed inset-x-0 bottom-0 top-auto flex w-full translate-x-0 translate-y-0 flex-col overflow-hidden rounded-t-[28px] border-x-0 border-b-0 border-t border-border/70 bg-background/98 shadow-2xl',
+              isEmojiPanel
+                ? 'h-[75dvh] max-h-[75dvh] gap-0 px-3 pb-0 pt-3'
+                : 'max-h-[75dvh] p-4'
             )}
           >
-            <div className="mx-auto mb-3 h-1.5 w-12 rounded-full bg-border/80" />
-            <DialogTitle className="text-sm font-semibold">
-              {activePanel === 'emoji' ? 'Emoji Panel' : 'Attachments'}
-            </DialogTitle>
-            <DialogDescription className="mb-3 text-xs text-muted-foreground">
-              {activePanel === 'emoji'
-                ? `Emoji is fully working now. GIF and sticker tabs for ${contextLabel} ship as structured placeholders.`
-                : `Choose how to attach media or files in ${contextLabel}.`}
-            </DialogDescription>
+            <div className={cn('mx-auto h-1.5 w-12 rounded-full bg-border/80', isEmojiPanel ? 'mb-2' : 'mb-3')} />
+            {isEmojiPanel ? (
+              <>
+                <DialogTitle className="sr-only">Emoji Panel</DialogTitle>
+                <DialogDescription className="sr-only">
+                  Choose emojis, GIFs, or stickers in the {contextLabel} composer.
+                </DialogDescription>
+              </>
+            ) : (
+              <>
+                <DialogTitle className="text-sm font-semibold">
+                  Attachments
+                </DialogTitle>
+                <DialogDescription className="mb-3 text-xs text-muted-foreground">
+                  {`Choose how to attach media or files in ${contextLabel}.`}
+                </DialogDescription>
+              </>
+            )}
             <div
               className={cn(
-                'min-h-0 flex-1 pb-[env(safe-area-inset-bottom)]',
-                activePanel === 'emoji' ? 'overflow-hidden' : 'overflow-y-auto'
+                'min-h-0 flex-1',
+                isEmojiPanel
+                  ? 'overflow-hidden pb-[env(safe-area-inset-bottom)]'
+                  : 'overflow-y-auto pb-[env(safe-area-inset-bottom)]'
               )}
             >
-              {activePanel === 'emoji' ? (
+              {isEmojiPanel ? (
                 <ComposerEmojiPanel
                   isMobileViewport={isMobileViewport}
                   contextLabel={contextLabel}
