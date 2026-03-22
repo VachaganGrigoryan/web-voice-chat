@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { AlertCircle, Camera, CameraOff, FlipHorizontal2, Loader2, RotateCcw, Send, Square, Video, X } from 'lucide-react';
+import { AlertCircle, Camera, CameraOff, FlipHorizontal2, Loader2, Pause, Play, RotateCcw, Send, Square, Video, X } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -11,7 +11,6 @@ import {
 import { Button } from '@/components/ui/Button';
 import { cn } from '@/lib/utils';
 import { getSupportedVideoMime } from '@/utils/fileUtils';
-import { CustomVideoPlayer } from './components/VideoPlayer';
 import { ComposerReplyTarget } from './types/message';
 
 const HARD_MAX_VIDEO_SIZE_BYTES = 10 * 1024 * 1024;
@@ -204,6 +203,7 @@ export default function VideoRecorderModal({
   onClearReplyTarget,
 }: VideoRecorderModalProps) {
   const liveVideoRef = useRef<HTMLVideoElement | null>(null);
+  const previewVideoRef = useRef<HTMLVideoElement | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const chunksRef = useRef<Blob[]>([]);
@@ -228,6 +228,8 @@ export default function VideoRecorderModal({
   const [recordedMimeType, setRecordedMimeType] = useState('video/webm');
   const [captureError, setCaptureError] = useState<string | null>(null);
   const [recordingProfile, setRecordingProfile] = useState<RecordingProfile | null>(null);
+  const [isPreviewPlaying, setIsPreviewPlaying] = useState(false);
+  const [previewProgress, setPreviewProgress] = useState(0);
 
   const activeCameraLabel = useMemo(() => {
     const matchedCamera = availableCameras.find((device) => device.deviceId === selectedCameraId);
@@ -286,10 +288,17 @@ export default function VideoRecorderModal({
       URL.revokeObjectURL(recordedUrl);
     }
 
+    if (previewVideoRef.current) {
+      previewVideoRef.current.pause();
+      previewVideoRef.current.currentTime = 0;
+    }
+
     setRecordedBlob(null);
     setRecordedUrl(null);
     setRecordedSizeBytes(0);
     setRecordedMimeType('video/webm');
+    setIsPreviewPlaying(false);
+    setPreviewProgress(0);
   };
 
   const resetCaptureState = () => {
@@ -700,6 +709,17 @@ export default function VideoRecorderModal({
     };
   }, []);
 
+  useEffect(() => {
+    if (!isReviewMode || !previewVideoRef.current) {
+      return;
+    }
+
+    previewVideoRef.current.pause();
+    previewVideoRef.current.currentTime = 0;
+    setIsPreviewPlaying(false);
+    setPreviewProgress(0);
+  }, [recordedUrl]);
+
   const isRecordingActive = capturePhase === 'recording';
   const isReviewMode = hasRecordedVideo;
   const statusLabel = isRecordingActive ? 'Recording' : isReviewMode ? 'Review' : 'Camera';
@@ -749,51 +769,87 @@ export default function VideoRecorderModal({
           </DialogDescription>
 
           <div className="relative h-full w-full overflow-hidden bg-black text-white">
-            {isPreparingCamera ? (
-              <div className="flex h-full items-center justify-center">
-                <div className="flex flex-col items-center gap-4 text-center">
-                  <div className="flex h-16 w-16 items-center justify-center rounded-full bg-white/10 backdrop-blur">
-                    <Loader2 className="h-7 w-7 animate-spin" />
-                  </div>
-                  <div>
-                    <div className="text-base font-semibold sm:text-lg">Preparing camera</div>
-                    <div className="mt-1 text-sm text-white/70">Checking camera and microphone access…</div>
-                  </div>
-                </div>
-              </div>
-            ) : isReviewMode ? (
-              <CustomVideoPlayer
-                src={recordedUrl || ''}
-                autoPlay={false}
-                className="h-full w-full bg-black"
-              />
-            ) : streamRef.current ? (
-              <video
-                ref={setLiveVideoElement}
-                className="h-full w-full object-cover"
-                autoPlay
-                muted
-                playsInline
-              />
-            ) : (
-              <div className="flex h-full items-center justify-center px-6 text-center">
-                <div className="flex max-w-sm flex-col items-center gap-4">
-                  <div className="flex h-20 w-20 items-center justify-center rounded-full bg-white/10 backdrop-blur">
-                    {captureError ? <CameraOff className="h-9 w-9 text-white/80" /> : <Camera className="h-9 w-9 text-white/80" />}
-                  </div>
-                  <div>
-                    <div className="text-lg font-semibold">Camera preview unavailable</div>
-                    <div className="mt-2 text-sm text-white/70">
-                      {captureError || 'Allow camera and microphone access to record a video message.'}
+            <div className="absolute inset-0">
+              {isPreparingCamera ? (
+                <div className="flex h-full items-center justify-center">
+                  <div className="flex flex-col items-center gap-4 text-center">
+                    <div className="flex h-16 w-16 items-center justify-center rounded-full bg-white/10 backdrop-blur">
+                      <Loader2 className="h-7 w-7 animate-spin" />
+                    </div>
+                    <div>
+                      <div className="text-base font-semibold sm:text-lg">Preparing camera</div>
+                      <div className="mt-1 text-sm text-white/70">Checking camera and microphone access…</div>
                     </div>
                   </div>
                 </div>
-              </div>
-            )}
+              ) : isReviewMode ? (
+                <div className="relative h-full w-full">
+                  <video
+                    ref={previewVideoRef}
+                    src={recordedUrl || ''}
+                    className="h-full w-full object-contain bg-black"
+                    playsInline
+                    preload="metadata"
+                    onClick={() => {
+                      if (!previewVideoRef.current) return;
+                      if (previewVideoRef.current.paused || previewVideoRef.current.ended) {
+                        void previewVideoRef.current.play();
+                      } else {
+                        previewVideoRef.current.pause();
+                      }
+                    }}
+                    onPlaying={() => setIsPreviewPlaying(true)}
+                    onPause={() => setIsPreviewPlaying(false)}
+                    onTimeUpdate={(event) => {
+                      const duration = event.currentTarget.duration || 0;
+                      if (!duration) {
+                        setPreviewProgress(0);
+                        return;
+                      }
+                      setPreviewProgress((event.currentTarget.currentTime / duration) * 100);
+                    }}
+                    onEnded={() => {
+                      setIsPreviewPlaying(false);
+                      setPreviewProgress(100);
+                    }}
+                  />
+                  <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/12 via-transparent to-black/22" />
+                  {!isPreviewPlaying ? (
+                    <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                      <div className="flex h-[4.5rem] w-[4.5rem] items-center justify-center rounded-full border border-white/20 bg-black/45 text-white shadow-xl backdrop-blur-md">
+                        <Play className="ml-1 h-8 w-8 fill-current" />
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              ) : streamRef.current ? (
+                <video
+                  ref={setLiveVideoElement}
+                  className="h-full w-full object-cover"
+                  autoPlay
+                  muted
+                  playsInline
+                />
+              ) : (
+                <div className="flex h-full items-center justify-center px-6 text-center">
+                  <div className="flex max-w-sm flex-col items-center gap-4">
+                    <div className="flex h-20 w-20 items-center justify-center rounded-full bg-white/10 backdrop-blur">
+                      {captureError ? <CameraOff className="h-9 w-9 text-white/80" /> : <Camera className="h-9 w-9 text-white/80" />}
+                    </div>
+                    <div>
+                      <div className="text-lg font-semibold">Camera preview unavailable</div>
+                      <div className="mt-2 text-sm text-white/70">
+                        {captureError || 'Allow camera and microphone access to record a video message.'}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
 
-            <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/70 via-transparent to-black/85" />
+            <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/72 via-transparent via-40% to-black/85" />
 
-            <div className="absolute inset-x-0 top-0 z-10 p-3 sm:p-5 md:p-6">
+            <div className="pointer-events-none absolute inset-x-0 top-0 z-10 p-3 pt-[calc(0.75rem+env(safe-area-inset-top))] sm:p-5 sm:pt-[calc(1.25rem+env(safe-area-inset-top))] md:p-6 md:pt-6">
               <div className="flex items-start justify-between gap-3">
                 <button
                   type="button"
@@ -859,7 +915,7 @@ export default function VideoRecorderModal({
               ) : null}
             </div>
 
-            <div className="absolute inset-x-0 bottom-0 z-10 p-3 sm:p-5 md:p-6">
+            <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] sm:p-5 sm:pb-[calc(1.25rem+env(safe-area-inset-bottom))] md:p-6 md:pb-6">
               <div className="mx-auto flex w-full max-w-5xl flex-col gap-3">
                 {replyTarget ? (
                   <div className="max-w-md rounded-2xl border border-white/12 bg-black/40 px-4 py-3 text-white backdrop-blur-md">
@@ -878,24 +934,54 @@ export default function VideoRecorderModal({
                       style={{ width: `${recordingProgressPercent}%` }}
                     />
                   </div>
+                ) : isReviewMode ? (
+                  <div className="overflow-hidden rounded-full bg-white/15 backdrop-blur-sm">
+                    <div
+                      className="h-1.5 rounded-full bg-primary transition-[width] duration-150"
+                      style={{ width: `${previewProgress}%` }}
+                    />
+                  </div>
                 ) : null}
 
-                <div className="flex flex-col gap-3 rounded-[28px] border border-white/10 bg-black/35 px-4 py-4 backdrop-blur-md sm:px-5 sm:py-5">
+                <div className="flex flex-col gap-3 rounded-[28px] border border-white/10 bg-black/38 px-4 py-4 backdrop-blur-md sm:px-5 sm:py-5">
                   <div className="flex items-center justify-between gap-3">
                     <div className="min-w-0">
-                    <div className="text-sm font-semibold text-white sm:text-base">
-                      {isReviewMode ? 'Review video' : isRecordingActive ? 'Recording now' : 'Camera mode'}
+                      <div className="text-sm font-semibold text-white sm:text-base">
+                        {isReviewMode ? 'Review video' : isRecordingActive ? 'Recording now' : 'Camera mode'}
+                      </div>
+                      <div className="text-xs text-white/65 sm:text-sm">{footerHint}</div>
                     </div>
-                    <div className="text-xs text-white/65 sm:text-sm">{footerHint}</div>
-                  </div>
-                  <div className="rounded-full border border-white/12 bg-white/5 px-3 py-1.5 text-xs text-white/80">
+                    <div className="rounded-full border border-white/12 bg-white/5 px-3 py-1.5 text-xs text-white/80">
                       {isReviewMode ? formatFileSize(recordedSizeBytes) : `${estimatedSizeLabel} / ${safeSizeLabel}`}
+                    </div>
                   </div>
-                </div>
 
-                  <div className="flex items-center justify-between gap-3">
+                  <div className="pointer-events-auto flex flex-wrap items-center justify-between gap-3">
                     {isReviewMode ? (
                       <>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="h-12 rounded-full border-white/20 bg-white/5 px-5 text-white hover:bg-white/10 hover:text-white"
+                          onClick={() => {
+                            const previewVideo = previewVideoRef.current;
+                            if (!previewVideo) return;
+
+                            if (previewVideo.paused || previewVideo.ended) {
+                              if (previewVideo.ended) {
+                                previewVideo.currentTime = 0;
+                                setPreviewProgress(0);
+                              }
+                              void previewVideo.play();
+                            } else {
+                              previewVideo.pause();
+                            }
+                          }}
+                          disabled={isSending}
+                        >
+                          {isPreviewPlaying ? <Pause className="mr-2 h-4 w-4" /> : <Play className="mr-2 h-4 w-4 fill-current" />}
+                          {isPreviewPlaying ? 'Pause' : 'Play'}
+                        </Button>
                         <Button
                           type="button"
                           variant="outline"
