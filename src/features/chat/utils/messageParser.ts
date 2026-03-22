@@ -2,6 +2,7 @@ import { MessageDoc } from '@/api/types';
 import {
   AudioMessage,
   ChatMessage,
+  FileMessage,
   ImageMessage,
   MessageStatus,
   StickerMessage,
@@ -77,6 +78,17 @@ export function parseMessage(doc: MessageDoc, currentUserId?: string | null): Ch
         media: doc.media || undefined,
         durationSec: doc.media?.duration_ms ? doc.media.duration_ms / 1000 : undefined,
       } satisfies AudioMessage;
+    case 'file':
+      return {
+        ...base,
+        kind: 'file',
+        fileUrl: doc.media?.url || '',
+        media: doc.media || undefined,
+        fileName: doc.media?.key?.split('/').pop(),
+        fileSizeBytes: doc.media?.size_bytes,
+        mimeType: doc.media?.mime,
+        caption: doc.text || undefined,
+      } satisfies FileMessage;
     case 'emoji':
       return {
         ...base,

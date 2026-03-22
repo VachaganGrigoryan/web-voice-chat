@@ -2,13 +2,14 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { VoiceRecorder as CapacitorVoiceRecorder } from 'capacitor-voice-recorder';
 import { Button } from '@/components/ui/Button';
-import { Mic, Square, Loader2, Trash2, Send, StopCircle, Smile, Pause, Play, X } from 'lucide-react';
+import { Loader2, Mic, Pause, Play, Send, Smile, Square, Trash2, Video, X } from 'lucide-react';
 import { getSocket } from '@/socket/socket';
 import { EVENTS } from '@/socket/events';
 import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
 import EmojiPicker, { Theme } from 'emoji-picker-react';
 import { ComposerReplyTarget } from './types/message';
+import VideoRecorderModal from './VideoRecorderModal';
 
 interface VoiceRecorderProps {
   receiverId: string;
@@ -33,9 +34,11 @@ export default function VoiceRecorder({
   replyTarget,
   onClearReplyTarget,
 }: VoiceRecorderProps) {
+  const [recorderMode, setRecorderMode] = useState<'audio' | 'video'>('audio');
   const [isRecording, setIsRecording] = useState(false);
   const [isRecordingPaused, setIsRecordingPaused] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [isVideoRecorderOpen, setIsVideoRecorderOpen] = useState(false);
   const [duration, setDuration] = useState(0);
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
@@ -88,6 +91,11 @@ export default function VoiceRecorder({
   };
 
   const isNativeAndroid = Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android';
+  const CurrentRecorderIcon = recorderMode === 'audio' ? Mic : Video;
+  const NextRecorderIcon = recorderMode === 'audio' ? Video : Mic;
+  const currentRecorderLabel = recorderMode === 'audio' ? 'Audio' : 'Video';
+  const nextRecorderLabel = recorderMode === 'audio' ? 'Video' : 'Audio';
+  const canSwitchRecorderModes = !isUploading && !isRecording && !audioBlob && !isVideoRecorderOpen;
 
   const getFileExtension = (mimeType: string) => {
     if (mimeType.includes('aac') || mimeType.includes('mp4')) return 'm4a';
@@ -356,8 +364,27 @@ export default function VoiceRecorder({
     }, 2000);
   };
 
+  const handleRecorderTrigger = () => {
+    if (recorderMode === 'video') {
+      setShowEmojiPicker(false);
+      setIsVideoRecorderOpen(true);
+      return;
+    }
+
+    void startRecording();
+  };
+
   return (
     <div className="w-full bg-background/80 backdrop-blur-md border-t p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] transition-all duration-300">
+      <VideoRecorderModal
+        open={isVideoRecorderOpen}
+        onOpenChange={setIsVideoRecorderOpen}
+        receiverId={receiverId}
+        onSendVideo={onSendVoice}
+        replyTarget={replyTarget}
+        onClearReplyTarget={onClearReplyTarget}
+      />
+
       {replyTarget ? (
         <div className="max-w-3xl mx-auto mb-3 flex items-start justify-between gap-3 rounded-2xl border border-primary/20 bg-primary/5 px-4 py-3">
           <div className="min-w-0">
@@ -387,16 +414,39 @@ export default function VoiceRecorder({
             >
               <div className="flex items-end gap-2 w-full">
                 {(!isFocused && text.trim().length === 0) && (
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-10 w-10 rounded-full shrink-0 text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
-                    onClick={startRecording}
-                    disabled={isUploading}
-                    title="Record voice message"
-                  >
-                    <Mic className="h-5 w-5" />
-                  </Button>
+                  <div className="relative shrink-0">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="relative h-10 w-10 rounded-full shrink-0 border border-border/60 bg-background/90 text-muted-foreground shadow-sm transition-colors hover:bg-primary/10 hover:text-primary"
+                      onClick={handleRecorderTrigger}
+                      disabled={isUploading}
+                      title={recorderMode === 'audio' ? 'Record voice message' : 'Record video message'}
+                    >
+                      <CurrentRecorderIcon className="h-4.5 w-4.5" />
+                      {replyTarget ? <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-primary" /> : null}
+                    </Button>
+                    <button
+                      type="button"
+                      className={cn(
+                        'absolute -bottom-1 -right-1 flex h-5.5 min-w-[1.4rem] items-center justify-center rounded-full border border-background bg-primary px-1 text-primary-foreground shadow-sm transition-transform',
+                        canSwitchRecorderModes ? 'hover:scale-105 active:scale-95' : 'cursor-default opacity-70'
+                      )}
+                      onClick={() => {
+                        if (canSwitchRecorderModes) {
+                          setRecorderMode((current) => (current === 'audio' ? 'video' : 'audio'));
+                        }
+                      }}
+                      disabled={!canSwitchRecorderModes}
+                      aria-label={`Switch recorder mode to ${nextRecorderLabel}`}
+                      title={`Switch to ${nextRecorderLabel}`}
+                    >
+                      <NextRecorderIcon className="h-3 w-3" />
+                    </button>
+                    <div className="pointer-events-none absolute -top-1 left-1/2 -translate-x-1/2 rounded-full bg-background/95 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-muted-foreground shadow-sm">
+                      {currentRecorderLabel}
+                    </div>
+                  </div>
                 )}
                 
                 <div className="flex-1 bg-muted/50 rounded-2xl border border-border/50 focus-within:border-primary/50 focus-within:bg-background transition-colors flex items-end min-h-[40px] relative">

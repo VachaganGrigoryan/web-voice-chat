@@ -89,10 +89,36 @@ export function usePings() {
     mutationFn: (pingId: string) => pingsApi.declinePing(pingId).then(res => res.data.data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['pings', 'incoming'] });
+      queryClient.invalidateQueries({ queryKey: ['pings', 'outgoing'] });
       toast.success('Ping declined');
     },
     onError: (error: any) => {
       toast.error(getErrorMessage(error, 'Failed to decline ping'));
+    }
+  });
+
+  const cancelPingMutation = useMutation({
+    mutationFn: (pingId: string) => pingsApi.cancelPing(pingId).then(res => res.data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['pings', 'incoming'] });
+      queryClient.invalidateQueries({ queryKey: ['pings', 'outgoing'] });
+      toast.success('Ping cancelled');
+    },
+    onError: (error: any) => {
+      toast.error(getErrorMessage(error, 'Failed to cancel ping'));
+    }
+  });
+
+  const blockUserMutation = useMutation({
+    mutationFn: (peerUserId: string) => pingsApi.blockUser(peerUserId).then(res => res.data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['pings', 'incoming'] });
+      queryClient.invalidateQueries({ queryKey: ['pings', 'outgoing'] });
+      queryClient.invalidateQueries({ queryKey: ['conversations'] });
+      toast.success('User blocked');
+    },
+    onError: (error: any) => {
+      toast.error(getErrorMessage(error, 'Failed to block user'));
     }
   });
 
@@ -103,8 +129,12 @@ export function usePings() {
     sendPing: sendPingMutation.mutateAsync,
     acceptPing: acceptPingMutation.mutateAsync,
     declinePing: declinePingMutation.mutateAsync,
+    cancelPing: cancelPingMutation.mutateAsync,
+    blockUser: blockUserMutation.mutateAsync,
     isSending: sendPingMutation.isPending,
     isAccepting: acceptPingMutation.isPending,
     isDeclining: declinePingMutation.isPending,
+    isCancelling: cancelPingMutation.isPending,
+    isBlocking: blockUserMutation.isPending,
   };
 }

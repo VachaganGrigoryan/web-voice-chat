@@ -4,6 +4,7 @@ export type MessageKind =
   | 'text'
   | 'image'
   | 'video'
+  | 'file'
   | 'audio'
   | 'system'
   | 'emoji'
@@ -72,6 +73,16 @@ export interface AudioMessage extends BaseMessage {
   waveform?: number[];
 }
 
+export interface FileMessage extends BaseMessage {
+  kind: 'file';
+  fileUrl: string;
+  media?: MediaMeta;
+  fileName?: string;
+  fileSizeBytes?: number;
+  mimeType?: string;
+  caption?: string;
+}
+
 export interface SystemMessage extends BaseMessage {
   kind: 'system';
   text: string;
@@ -100,6 +111,7 @@ export type ChatMessage =
   | TextMessage
   | ImageMessage
   | VideoMessage
+  | FileMessage
   | AudioMessage
   | SystemMessage
   | EmojiMessage

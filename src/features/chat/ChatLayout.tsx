@@ -1,25 +1,21 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
+import { LogOut, MessageSquare, Loader2, ArrowDown, ArrowLeft, Bell, Clock, UserPlus, Check, X } from 'lucide-react';
 import { useChat, useConversations, useThreadMessages } from '@/hooks/useChat';
 import { usePings } from '@/hooks/usePings';
-import { useQueryClient } from '@tanstack/react-query';
+import { APP_ROUTES } from '@/app/routes';
 import { useAuthStore } from '@/store/authStore';
 import { Conversation, MessageDoc } from '@/api/types';
 import { Button } from '@/components/ui/Button';
-import { Input } from '@/components/ui/Input';
 import { ScrollArea } from '@/components/ui/ScrollArea';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/Avatar';
-import { Separator } from '@/components/ui/Separator';
-import { LogOut, User, MessageSquare, Plus, Loader2, Mic, ArrowDown, ArrowLeft, Check, CheckCheck, Bell, Clock, UserPlus, X } from 'lucide-react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
 import { authApi, messagesApi } from '@/api/endpoints';
 import VoiceRecorder from './VoiceRecorder';
 import MediaComposer from './MediaComposer';
 import { MessageRenderer } from './MessageRenderer';
 import { MediaViewer } from './MediaViewer';
-import UserSettings from './UserSettings';
-import { PingsModal } from './PingsModal';
 import { GlobalAudioPlayerBar } from './GlobalAudioPlayerBar';
-import { UserProfileModal } from './UserProfileModal';
 import { MessageActionsDialog } from './components/MessageActionsDialog';
 import { MessageReactions } from './components/MessageReactions';
 import { ThreadPanel } from './components/ThreadPanel';
@@ -96,11 +92,10 @@ const createAcceptedPingConversation = (
 
 export default function ChatLayout() {
   const MAIN_CHAT_BOTTOM_THRESHOLD = 80;
-  const [selectedThreadRootId, setSelectedThreadRootId] = useState<string | null>(null);
-  const [searchParams, setSearchParams] = useSearchParams();
+  const { peerUserId, rootMessageId } = useParams<{ peerUserId?: string; rootMessageId?: string }>();
+  const selectedUser = peerUserId || null;
+  const selectedThreadRootId = rootMessageId || null;
   const {
-    selectedUser,
-    setSelectedUser,
     onlineUsers,
     messages,
     fetchNextPage,
@@ -115,16 +110,7 @@ export default function ChatLayout() {
     isEditingMessage,
     isDeletingMessage,
     isTogglingReaction,
-  } = useChat(selectedThreadRootId);
-
-  useEffect(() => {
-    const userFromUrl = searchParams.get('user');
-    if (userFromUrl && userFromUrl !== selectedUser) {
-      setSelectedUser(userFromUrl);
-      // Clean up URL
-      setSearchParams({});
-    }
-  }, [searchParams, selectedUser, setSelectedUser, setSearchParams]);
+  } = useChat(selectedUser, selectedThreadRootId);
 
   const { data: conversationsData } = useConversations();
   const conversations = useMemo(() => 
@@ -135,10 +121,6 @@ export default function ChatLayout() {
 
   const { userEmail, userId, logout, refreshToken } = useAuthStore();
   const navigate = useNavigate();
-  const [newUserId, setNewUserId] = useState('');
-  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [isPingsOpen, setIsPingsOpen] = useState(false);
-  const [isUserProfileOpen, setIsUserProfileOpen] = useState(false);
   const [mediaViewer, setMediaViewer] = useState<MediaViewerState>({
     open: false,
     type: 'image',
@@ -243,8 +225,29 @@ export default function ChatLayout() {
       }
     } finally {
       logout();
-      navigate('/auth');
+      navigate(APP_ROUTES.login);
     }
+  };
+
+  const navigateToConversation = (peerId: string, threadRootId?: string | null) => {
+    navigate(
+      threadRootId
+        ? APP_ROUTES.chatThread(peerId, threadRootId)
+        : APP_ROUTES.chatPeer(peerId)
+    );
+  };
+
+  const closeActiveConversation = () => {
+    navigate(APP_ROUTES.chat);
+  };
+
+  const closeThreadRoute = () => {
+    if (!selectedUser) {
+      navigate(APP_ROUTES.chat);
+      return;
+    }
+
+    navigate(APP_ROUTES.chatPeer(selectedUser));
   };
 
   const allMessages = useMemo(() => 
@@ -358,7 +361,6 @@ export default function ChatLayout() {
     setActiveMessageSurface('main');
     setReplyTarget(null);
     setThreadReplyTarget(null);
-    setSelectedThreadRootId(null);
     setIsResizingThread(false);
     latestMainMessageIdRef.current = null;
     isMainNearBottomRef.current = true;
@@ -629,14 +631,12 @@ export default function ChatLayout() {
 
   const selectedConversationUser = contacts.find(c => c.peer_user.id === selectedUser)?.peer_user;
   const displaySelectedUser = selectedConversationUser?.display_name || selectedConversationUser?.username || selectedUser;
-  const canAccessSelectedUserProfile = !!selectedConversationUser && (
-    selectedConversationUser.chat_allowed || selectedConversationUser.ping_status === 'accepted'
-  );
 
   const getMessagePreviewText = (message: ChatMessage) => {
     if (message.isDeleted) return 'Message deleted';
     if (message.kind === 'text' || message.kind === 'emoji') return message.text;
     if (message.kind === 'image' || message.kind === 'video') return message.caption || `${message.kind} message`;
+    if (message.kind === 'file') return message.caption || message.fileName || 'File';
     if (message.kind === 'audio') return 'Voice message';
     if (message.kind === 'sticker') return 'Sticker';
     if (message.kind === 'system') return message.text;
@@ -680,11 +680,15 @@ export default function ChatLayout() {
   };
 
   const openThreadForMessage = (message: ChatMessage) => {
+    if (!selectedUser) {
+      return;
+    }
+
     const rootMessageId = message.isThreadRoot ? message.id : message.threadRootId || message.id;
     if (isMobileViewport) {
       setThreadPanelMode('full');
     }
-    setSelectedThreadRootId(rootMessageId);
+    navigateToConversation(selectedUser, rootMessageId);
     closeMessageMenu();
   };
 
@@ -915,22 +919,6 @@ export default function ChatLayout() {
           })
         }
       />
-      <PingsModal 
-        isOpen={isPingsOpen} 
-        onClose={() => setIsPingsOpen(false)} 
-        onSelectUser={(id) => {
-          setSelectedUser(id);
-          setIsPingsOpen(false);
-        }}
-      />
-      <UserProfileModal
-        isOpen={isUserProfileOpen}
-        onClose={() => setIsUserProfileOpen(false)}
-        userId={selectedUser}
-        initialData={selectedConversationUser}
-        canAccessProfile={canAccessSelectedUserProfile}
-      />
-      <UserSettings isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />
       <MessageActionsDialog
         open={!!activeMessage}
         anchor={activeMessageAnchor}
@@ -974,11 +962,16 @@ export default function ChatLayout() {
             subtitle={profile?.username ? `@${profile.username}` : undefined}
             avatarUrl={profile?.avatar?.url}
             fallback={(profile?.display_name || profile?.username || userEmail || '?')[0].toUpperCase()}
-            onClick={() => setIsSettingsOpen(true)}
+            onClick={() => navigate(APP_ROUTES.settingsTab('profile'))}
             className="max-w-[60%]"
           />
           <div className="flex items-center gap-1">
-            <Button variant="ghost" size="icon" onClick={() => setIsPingsOpen(true)} className="relative">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => navigate(APP_ROUTES.pingsTab('incoming'))}
+              className="relative"
+            >
               <Bell className="h-4 w-4" />
               {pendingIncomingCount > 0 && (
                 <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-destructive" />
@@ -991,7 +984,7 @@ export default function ChatLayout() {
         </div>
 
         <div className="p-4 flex-1 flex flex-col min-h-0">
-          <UserSearch onSelectUser={(id) => setSelectedUser(id)} />
+          <UserSearch onSelectUser={(id) => navigateToConversation(id)} />
           
           <div className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wider shrink-0">
             Chats
@@ -1008,7 +1001,7 @@ export default function ChatLayout() {
                     conv.peer_user.id === userId && "opacity-50 pointer-events-none"
                   )}
                   onClick={() => {
-                    setSelectedUser(conv.peer_user.id);
+                    navigateToConversation(conv.peer_user.id);
                     resetConversationUnreadCount(conv.peer_user.id);
                   }}
                   onContextMenu={(event) => {
@@ -1049,7 +1042,11 @@ export default function ChatLayout() {
                        {typingUsers[conv.peer_user.id] ? (
                          <span className="text-primary font-medium animate-pulse">Typing...</span>
                        ) : (
-                         conv.last_message?.type === 'voice' ? '🎤 Voice message' : conv.last_message?.text || 'Click to chat'
+                         conv.last_message?.type === 'voice'
+                           ? '🎤 Voice message'
+                           : conv.last_message?.type === 'file'
+                             ? '📎 File'
+                             : conv.last_message?.text || 'Click to chat'
                        )}
                      </span>
                   </div>
@@ -1080,7 +1077,7 @@ export default function ChatLayout() {
                   variant="ghost" 
                   size="icon" 
                   className="md:hidden -ml-2 h-10 w-10 rounded-full" 
-                  onClick={() => setSelectedUser(null)}
+                  onClick={closeActiveConversation}
                 >
                   <ArrowLeft className="h-5 w-5" />
                 </Button>
@@ -1097,7 +1094,7 @@ export default function ChatLayout() {
                   }
                   avatarUrl={selectedConversationUser?.avatar?.url}
                   fallback={(displaySelectedUser || '?')[0].toUpperCase()}
-                  onClick={() => setIsUserProfileOpen(true)}
+                  onClick={() => selectedUser && navigate(APP_ROUTES.profile(selectedUser))}
                   disabled={!selectedUser}
                   online={!!selectedUser && onlineUsers?.includes(selectedUser)}
                   avatarClassName="h-9 w-9 border"
@@ -1347,7 +1344,7 @@ export default function ChatLayout() {
                     hasNextPage={!!hasNextThreadPage}
                     fetchNextPage={fetchNextThreadPage}
                     currentUserId={userId}
-                    onClose={() => setSelectedThreadRootId(null)}
+                    onClose={closeThreadRoute}
                     onOpenMenu={(message, anchor) => openMessageMenu(message, anchor, 'thread')}
                     onToggleReaction={handleToggleReaction}
                     isTogglingReaction={isTogglingReaction}

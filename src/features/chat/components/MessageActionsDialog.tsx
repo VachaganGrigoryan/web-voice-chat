@@ -48,7 +48,7 @@ const EDIT_WINDOW_MS = 15 * 60 * 1000;
 const getCopyText = (message: ChatMessage) => {
   if (message.isDeleted) return '';
   if (message.kind === 'text' || message.kind === 'emoji' || message.kind === 'system') return message.text.trim();
-  if (message.kind === 'image' || message.kind === 'video') return (message.caption || '').trim();
+  if (message.kind === 'image' || message.kind === 'video' || message.kind === 'file') return (message.caption || '').trim();
   return '';
 };
 

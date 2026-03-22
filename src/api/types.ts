@@ -37,7 +37,7 @@ export interface MediaMeta {
   duration_ms?: number | null;
 }
 
-export type MessageType = 'voice' | 'text' | 'image' | 'emoji' | 'sticker' | 'video';
+export type MessageType = 'voice' | 'text' | 'image' | 'emoji' | 'sticker' | 'video' | 'file';
 export type ReplyMode = 'quote' | 'thread';
 
 export interface ReplyPreview {
@@ -94,6 +94,16 @@ export interface MessageReactionsUpdate {
   conversation_id: string;
   reactions: MessageReactionGroup[];
   updated_at: string;
+}
+
+export interface MessageDeletedEvent {
+  message_id: string;
+  conversation_id: string;
+  actor_user_id: string;
+  deleted_for_everyone: boolean;
+  hidden_for_me: boolean;
+  deleted_media: boolean;
+  updated_at?: string | null;
 }
 
 export interface ConversationReadUpdate {

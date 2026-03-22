@@ -3,7 +3,7 @@ import { create } from 'zustand';
 import { EVENTS } from './events';
 import { useEffect, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { MessageDoc, MessageReactionsUpdate, ThreadSummary } from '@/api/types';
+import { MessageDeletedEvent, MessageDoc, MessageReactionsUpdate, ThreadSummary } from '@/api/types';
 import { socketClient } from './socketClient';
 import { useAuthStore } from '@/store/authStore';
 
@@ -161,6 +161,61 @@ const updateMessageAcrossCacheGroup = (
   });
 };
 
+const removeMessageAcrossCacheGroup = (
+  queryClient: ReturnType<typeof useQueryClient>,
+  queryKey: string,
+  matcher: (message: MessageDoc) => boolean
+) => {
+  queryClient.setQueriesData({ queryKey: [queryKey] }, (old: any) => {
+    if (!old?.pages) return old;
+
+    let changed = false;
+    const pages = old.pages.map((page: any) => {
+      const existingData = page.data || [];
+      const data = existingData.filter((message: MessageDoc) => {
+        const shouldRemove = matcher(message);
+        if (shouldRemove) {
+          changed = true;
+        }
+        return !shouldRemove;
+      });
+
+      return changed ? { ...page, data } : page;
+    });
+
+    return changed ? { ...old, pages } : old;
+  });
+};
+
+const findCachedMessage = (
+  queryClient: ReturnType<typeof useQueryClient>,
+  messageId: string,
+  conversationId?: string
+) => {
+  const queryGroups = [
+    ...queryClient.getQueriesData<any>({ queryKey: ['messages'] }),
+    ...queryClient.getQueriesData<any>({ queryKey: ['threadMessages'] }),
+  ];
+
+  for (const [, data] of queryGroups) {
+    const matchedMessage = data?.pages
+      ?.flatMap((page: any) => page.data || [])
+      ?.find((message: MessageDoc) => {
+        if (message.id !== messageId) {
+          return false;
+        }
+
+        return conversationId ? message.conversation_id === conversationId : true;
+      });
+
+    if (matchedMessage) {
+      return matchedMessage as MessageDoc;
+    }
+  }
+
+  return null;
+};
+
 const getPeerIdForConversation = (
   queryClient: ReturnType<typeof useQueryClient>,
   conversationId: string
@@ -302,6 +357,54 @@ const updateConversationPreview = (
         }),
       })),
     };
+  });
+};
+
+const rebuildConversationPreview = (
+  queryClient: ReturnType<typeof useQueryClient>,
+  conversationId: string
+) => {
+  queryClient.setQueryData(['conversations'], (old: any) => {
+    if (!old?.pages) return old;
+
+    let changed = false;
+    const pages = old.pages.map((page: any) => ({
+      ...page,
+      data: (page.data || []).map((conversation: any) => {
+        if (conversation.conversation_id !== conversationId) {
+          return conversation;
+        }
+
+        changed = true;
+        const peerUserId = conversation.peer_user?.id;
+        const messageHistory = peerUserId
+          ? queryClient.getQueryData<any>(['messages', peerUserId])
+          : null;
+        const latestVisibleMessage =
+          messageHistory?.pages
+            ?.flatMap((historyPage: any) => historyPage.data || [])
+            ?.find((message: MessageDoc) => message.conversation_id === conversationId) || null;
+
+        return {
+          ...conversation,
+          last_message: latestVisibleMessage
+            ? {
+                id: latestVisibleMessage.id,
+                type: latestVisibleMessage.type,
+                text: latestVisibleMessage.is_deleted ? 'Message deleted' : latestVisibleMessage.text,
+                media: latestVisibleMessage.is_deleted ? null : latestVisibleMessage.media,
+                status: latestVisibleMessage.status,
+                created_at: latestVisibleMessage.created_at,
+              }
+            : null,
+          last_message_at: latestVisibleMessage
+            ? latestVisibleMessage.updated_at || latestVisibleMessage.created_at
+            : null,
+        };
+      }),
+    }));
+
+    return changed ? { ...old, pages } : old;
   });
 };
 
@@ -505,6 +608,71 @@ const updateMessageDocumentCaches = (
   updateConversationPreview(queryClient, message);
 };
 
+export const applyMessageDeletedEventToCaches = (
+  queryClient: ReturnType<typeof useQueryClient>,
+  payload: MessageDeletedEvent,
+  currentUserId?: string | null
+) => {
+  const cachedMessage = findCachedMessage(queryClient, payload.message_id, payload.conversation_id);
+  const matcher = (message: MessageDoc) =>
+    message.id === payload.message_id &&
+    (!payload.conversation_id || message.conversation_id === payload.conversation_id);
+  const isActorCurrentUser = !!currentUserId && payload.actor_user_id === currentUserId;
+  const isCurrentUsersMessage = !!currentUserId && cachedMessage?.sender_id === currentUserId;
+
+  if (payload.hidden_for_me || isActorCurrentUser) {
+    removeMessageAcrossCacheGroup(queryClient, 'messages', matcher);
+    removeMessageAcrossCacheGroup(queryClient, 'threadMessages', matcher);
+    rebuildConversationPreview(queryClient, payload.conversation_id);
+    return true;
+  }
+
+  const updatedAt = payload.updated_at || new Date().toISOString();
+  const preserveContentForOwnerSoftDelete = isCurrentUsersMessage && !isActorCurrentUser;
+  const shouldMarkDeleted = payload.deleted_for_everyone || preserveContentForOwnerSoftDelete;
+  const applyDeleteMutation = (message: MessageDoc) => ({
+    ...message,
+    text:
+      preserveContentForOwnerSoftDelete
+        ? message.text
+        : payload.deleted_for_everyone
+          ? null
+          : message.text,
+    media:
+      preserveContentForOwnerSoftDelete
+        ? message.media
+        : payload.deleted_media
+          ? null
+          : message.media,
+    is_deleted: shouldMarkDeleted ? true : message.is_deleted,
+    deleted_at: shouldMarkDeleted ? updatedAt : message.deleted_at,
+    edited_at: shouldMarkDeleted && !preserveContentForOwnerSoftDelete ? null : message.edited_at,
+    updated_at: updatedAt,
+  });
+
+  updateMessageAcrossCacheGroup(
+    queryClient,
+    'messages',
+    matcher,
+    applyDeleteMutation
+  );
+
+  updateMessageAcrossCacheGroup(
+    queryClient,
+    'threadMessages',
+    matcher,
+    applyDeleteMutation
+  );
+
+  if (cachedMessage) {
+    updateConversationPreview(queryClient, applyDeleteMutation(cachedMessage));
+  } else {
+    rebuildConversationPreview(queryClient, payload.conversation_id);
+  }
+
+  return true;
+};
+
 const isThreadMessage = (message: MessageDoc) =>
   message.reply_mode === 'thread' && !!message.thread_root_id;
 
@@ -699,8 +867,18 @@ export const useRealtimeMessages = (
       updateMessageDocumentCaches(queryClient, message);
     };
 
-    const handleMessageDeleted = (message: MessageDoc) => {
-      updateMessageDocumentCaches(queryClient, message);
+    const handleMessageDeleted = (payload: MessageDoc | MessageDeletedEvent) => {
+      if ('id' in payload) {
+        updateMessageDocumentCaches(queryClient, payload);
+        return;
+      }
+
+      const handled = applyMessageDeletedEventToCaches(queryClient, payload, currentUserId);
+      if (!handled) {
+        queryClient.invalidateQueries({ queryKey: ['messages'] });
+        queryClient.invalidateQueries({ queryKey: ['threadMessages'] });
+        queryClient.invalidateQueries({ queryKey: ['conversations'] });
+      }
     };
 
     const handleMessageReacted = (payload: MessageReactionsUpdate) => {

@@ -2,6 +2,7 @@ import React from 'react';
 import { ChatMessage, MediaClickPayload } from './types/message';
 import { AudioMessageRenderer } from './renderers/AudioMessageRenderer';
 import { EmojiMessageRenderer } from './renderers/EmojiMessageRenderer';
+import { FileMessageRenderer } from './renderers/FileMessageRenderer';
 import { ImageMessageRenderer } from './renderers/ImageMessageRenderer';
 import { StickerMessageRenderer } from './renderers/StickerMessageRenderer';
 import { SystemMessageRenderer } from './renderers/SystemMessageRenderer';
@@ -60,6 +61,8 @@ export const MessageRenderer: React.FC<MessageRendererProps> = ({
       return <ImageMessageRenderer message={message} highlighted={highlighted} groupedWithAbove={groupedWithAbove} groupedWithBelow={groupedWithBelow} onMediaClick={onMediaClick} bubbleFooter={bubbleFooter} />;
     case 'video':
       return <VideoMessageRenderer message={message} highlighted={highlighted} groupedWithAbove={groupedWithAbove} groupedWithBelow={groupedWithBelow} onMediaClick={onMediaClick} bubbleFooter={bubbleFooter} />;
+    case 'file':
+      return <FileMessageRenderer message={message} highlighted={highlighted} groupedWithAbove={groupedWithAbove} groupedWithBelow={groupedWithBelow} bubbleFooter={bubbleFooter} />;
     case 'audio':
       return <AudioMessageRenderer message={message} highlighted={highlighted} groupedWithAbove={groupedWithAbove} groupedWithBelow={groupedWithBelow} bubbleFooter={bubbleFooter} audioQueueKey={audioQueueKey} audioQueue={audioQueue} />;
     case 'system':
