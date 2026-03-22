@@ -1,7 +1,7 @@
-import { useState, useRef, useEffect, useMemo } from 'react';
+import { useState, useRef, useEffect, useMemo, type MouseEvent as ReactMouseEvent } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import { LogOut, MessageSquare, Loader2, ArrowDown, ArrowLeft, Bell, Clock, UserPlus, Check, X } from 'lucide-react';
+import { LogOut, MessageSquare, Loader2, ArrowDown, ArrowLeft, Bell, Clock, UserPlus, Check, X, MoreVertical } from 'lucide-react';
 import { useChat, useConversations, useThreadMessages } from '@/hooks/useChat';
 import { usePings } from '@/hooks/usePings';
 import { APP_ROUTES } from '@/app/routes';
@@ -21,6 +21,7 @@ import { MessageReactions } from './components/MessageReactions';
 import { ThreadPanel } from './components/ThreadPanel';
 import { ThreadReplyBadge } from './components/ThreadReplyBadge';
 import { useChatAudioPlayerStore } from './audioPlayerStore';
+import { ConversationActionsMenu, ConversationMenuState } from './components/ConversationActionsMenu';
 import { DaySeparator, MessageBubbleFooter, MessageItem, MessageMenuAnchor, MessageMeta } from './components/MessageShell';
 import { ProfileTriggerButton } from './components/ProfileTriggerButton';
 import { cn } from '@/lib/utils';
@@ -36,6 +37,7 @@ import { UserSearch } from '@/features/discovery/UserSearch';
 import { AudioMessage, ChatMessage, ComposerReplyTarget, ImageMessage, MediaClickPayload } from './types/message';
 import {
   formatMessageDay,
+  formatMessageTime,
   isSameLocalDay,
 } from '@/utils/dateUtils';
 import { parseMessages } from './utils/messageParser';
@@ -45,11 +47,6 @@ import { buildChatRenderItems, shouldGroupMessages } from './utils/mediaGroupUti
 
 type ThreadPanelMode = 'minimal' | 'center' | 'full';
 type ActiveMessageSurface = 'main' | 'thread';
-type ConversationMenuState = {
-  peerUserId: string;
-  x: number;
-  y: number;
-} | null;
 type MediaViewerState =
   | { open: false; type: 'image' | 'video'; url: ''; items: MediaViewerImageItem[]; initialItemId: null; downloadName?: string }
   | { open: true; type: 'image'; url: ''; items: MediaViewerImageItem[]; initialItemId: string; downloadName?: string }
@@ -150,9 +147,8 @@ export default function ChatLayout() {
   const latestMainMessageIdRef = useRef<string | null>(null);
   const isMainNearBottomRef = useRef(true);
   const [pendingMainNewMessageCount, setPendingMainNewMessageCount] = useState(0);
-  const [conversationMenu, setConversationMenu] = useState<ConversationMenuState>(null);
+  const [conversationMenu, setConversationMenu] = useState<ConversationMenuState | null>(null);
   const mainMessageElementRefs = useRef<Map<string, HTMLDivElement>>(new Map());
-  const conversationMenuRef = useRef<HTMLDivElement | null>(null);
   
   const { isTyping, typingUsers } = useTypingIndicator(selectedUser || undefined);
 
@@ -371,32 +367,6 @@ export default function ChatLayout() {
     setThreadReplyTarget(null);
     threadReadEmittedMessagesRef.current.clear();
   }, [selectedThreadRootId]);
-
-  useEffect(() => {
-    if (!conversationMenu) return;
-
-    const handlePointerDown = (event: PointerEvent) => {
-      const target = event.target as Node | null;
-      if (target && conversationMenuRef.current?.contains(target)) {
-        return;
-      }
-
-      setConversationMenu(null);
-    };
-
-    const handleEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        setConversationMenu(null);
-      }
-    };
-
-    document.addEventListener('pointerdown', handlePointerDown, true);
-    window.addEventListener('keydown', handleEscape);
-    return () => {
-      document.removeEventListener('pointerdown', handlePointerDown, true);
-      window.removeEventListener('keydown', handleEscape);
-    };
-  }, [conversationMenu]);
 
   useEffect(() => {
     const handleResize = () => {
@@ -630,6 +600,49 @@ export default function ChatLayout() {
 
   const selectedConversationUser = contacts.find(c => c.peer_user.id === selectedUser)?.peer_user;
   const displaySelectedUser = selectedConversationUser?.display_name || selectedConversationUser?.username || selectedUser;
+
+  const formatConversationTimestamp = (value: string | null) => {
+    if (!value) {
+      return '';
+    }
+
+    return isSameLocalDay(value, new Date()) ? formatMessageTime(value) : formatMessageDay(value);
+  };
+
+  const openConversationMenu = (
+    event: ReactMouseEvent<HTMLElement>,
+    peerUserId: string,
+    unreadCount: number
+  ) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    setConversationMenu({
+      peerUserId,
+      unreadCount,
+      rect: {
+        top: rect.top,
+        right: rect.right,
+        bottom: rect.bottom,
+        left: rect.left,
+      },
+    });
+  };
+
+  const openConversationMenuAtPoint = (
+    event: ReactMouseEvent<HTMLElement>,
+    peerUserId: string,
+    unreadCount: number
+  ) => {
+    setConversationMenu({
+      peerUserId,
+      unreadCount,
+      rect: {
+        top: event.clientY,
+        right: event.clientX,
+        bottom: event.clientY,
+        left: event.clientX,
+      },
+    });
+  };
 
   const getMessagePreviewText = (message: ChatMessage) => {
     if (message.isDeleted) return 'Message deleted';
@@ -930,26 +943,17 @@ export default function ChatLayout() {
         isEditing={isEditingMessage}
         isDeleting={isDeletingMessage}
       />
-      {conversationMenu ? (
-        <div className="fixed inset-0 z-50 pointer-events-none">
-          <div
-            ref={conversationMenuRef}
-            className="pointer-events-auto absolute w-48 overflow-hidden rounded-2xl border border-border/70 bg-background/98 p-2 shadow-2xl backdrop-blur"
-            style={{
-              left: Math.min(conversationMenu.x, window.innerWidth - 204),
-              top: Math.min(conversationMenu.y, window.innerHeight - 80),
-            }}
-          >
-            <button
-              type="button"
-              className="flex w-full items-center rounded-xl px-3 py-2 text-left text-sm font-medium text-foreground transition-colors hover:bg-muted/80"
-              onClick={() => void handleMarkConversationAsRead(conversationMenu.peerUserId)}
-            >
-              Mark All As Read
-            </button>
-          </div>
-        </div>
-      ) : null}
+      <ConversationActionsMenu
+        menu={conversationMenu}
+        isMobile={isMobileViewport}
+        isMarkingRead={false}
+        onOpenChange={(open) => {
+          if (!open) {
+            setConversationMenu(null);
+          }
+        }}
+        onMarkAsRead={handleMarkConversationAsRead}
+      />
       {/* Sidebar */}
       <div className={cn(
         "w-full md:w-80 border-r flex flex-col bg-muted/10 h-full",
@@ -990,66 +994,98 @@ export default function ChatLayout() {
           </div>
           
           <ScrollArea className="flex-1 -mx-4 px-4">
-            <div className="space-y-1 pb-4">
+            <div className="space-y-2 pb-4">
               {contacts.map((conv) => (
-                <Button
+                <div
                   key={conv.conversation_id}
-                  variant={selectedUser === conv.peer_user.id ? "secondary" : "ghost"}
                   className={cn(
-                    "w-full justify-start text-sm font-normal py-3 h-auto",
+                    'group flex items-start gap-2 rounded-2xl border p-1.5 transition-all',
+                    selectedUser === conv.peer_user.id
+                      ? 'border-primary/20 bg-background/95 shadow-sm ring-1 ring-primary/10'
+                      : 'border-border/60 bg-background/75 shadow-[0_1px_2px_rgba(15,23,42,0.04)] hover:border-border/80 hover:bg-background/95 hover:shadow-sm',
                     conv.peer_user.id === userId && "opacity-50 pointer-events-none"
                   )}
-                  onClick={() => {
-                    navigateToConversation(conv.peer_user.id);
-                    resetConversationUnreadCount(conv.peer_user.id);
-                  }}
                   onContextMenu={(event) => {
                     event.preventDefault();
-                    setConversationMenu({
-                      peerUserId: conv.peer_user.id,
-                      x: event.clientX,
-                      y: event.clientY,
-                    });
+                    openConversationMenuAtPoint(event, conv.peer_user.id, conv.unread_count ?? 0);
                   }}
                 >
-                  <div className="relative mr-3">
-                    <Avatar className="h-8 w-8">
-                      {conv.peer_user.avatar ? (
-                        <AvatarImage src={conv.peer_user.avatar.url} />
-                      ) : null}
-                      <AvatarFallback>{(conv.peer_user.display_name || conv.peer_user.username || conv.peer_user.id)[0].toUpperCase()}</AvatarFallback>
-                    </Avatar>
-                    {conv.peer_user.is_online && (
-                      <span className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full bg-green-500 ring-2 ring-background" />
+                  <button
+                    type="button"
+                    className="flex min-w-0 flex-1 items-center gap-3 rounded-[18px] px-2.5 py-2 text-left transition-colors"
+                    onClick={() => {
+                      navigateToConversation(conv.peer_user.id);
+                      resetConversationUnreadCount(conv.peer_user.id);
+                    }}
+                  >
+                    <div className="relative shrink-0">
+                      <Avatar className="h-10 w-10 border border-border/60 bg-background">
+                        {conv.peer_user.avatar ? (
+                          <AvatarImage src={conv.peer_user.avatar.url} />
+                        ) : null}
+                        <AvatarFallback>{(conv.peer_user.display_name || conv.peer_user.username || conv.peer_user.id)[0].toUpperCase()}</AvatarFallback>
+                      </Avatar>
+                      {conv.peer_user.is_online && (
+                        <span className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full bg-green-500 ring-2 ring-background" />
+                      )}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex min-w-0 items-start justify-between gap-2">
+                        <span
+                          className={cn(
+                            'truncate pr-1 text-sm text-left',
+                            conv.unread_count > 0 ? 'font-semibold text-foreground' : 'font-medium text-foreground/90'
+                          )}
+                        >
+                          {conv.peer_user.display_name || conv.peer_user.username || conv.peer_user.id}
+                        </span>
+                        <span className="shrink-0 text-[11px] text-muted-foreground">
+                          {formatConversationTimestamp(conv.last_message_at)}
+                        </span>
+                      </div>
+                      <div className="mt-1 flex min-w-0 items-center gap-2">
+                        <span
+                          className={cn(
+                            'min-w-0 flex-1 truncate text-xs text-left',
+                            conv.unread_count > 0 ? 'font-medium text-foreground' : 'text-muted-foreground'
+                          )}
+                        >
+                          {typingUsers[conv.peer_user.id] ? (
+                            <span className="text-primary font-medium animate-pulse">Typing...</span>
+                          ) : (
+                            conv.last_message?.type === 'voice'
+                              ? '🎤 Voice message'
+                              : conv.last_message?.type === 'file'
+                                ? '📎 File'
+                                : conv.last_message?.text || 'Click to chat'
+                          )}
+                        </span>
+                        {conv.unread_count > 0 ? (
+                          <span className="inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-primary px-1.5 text-[10px] font-bold text-primary-foreground shadow-sm">
+                            {conv.unread_count > 99 ? '99+' : conv.unread_count}
+                          </span>
+                        ) : null}
+                      </div>
+                    </div>
+                  </button>
+
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className={cn(
+                      'mt-1 h-8 w-8 shrink-0 rounded-full text-muted-foreground transition-opacity hover:bg-muted hover:text-foreground',
+                      'opacity-100 md:opacity-0 md:group-hover:opacity-100',
+                      conversationMenu?.peerUserId === conv.peer_user.id && 'bg-muted text-foreground opacity-100'
                     )}
-                  </div>
-                  <div className="flex flex-col items-start overflow-hidden flex-1">
-                     <div className="flex justify-between items-center w-full">
-                       <span className={cn("truncate text-left", conv.unread_count > 0 ? "font-bold text-foreground" : "font-medium text-muted-foreground")}>
-                         {conv.peer_user.display_name || conv.peer_user.username || conv.peer_user.id}
-                       </span>
-                       {conv.unread_count > 0 && (
-                         <div className="flex items-center gap-1.5 ml-2 shrink-0">
-                           <span className="h-2 w-2 rounded-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.4)]" />
-                           <span className="text-[10px] font-bold text-blue-600 dark:text-blue-400">
-                             {conv.unread_count > 99 ? '99+' : conv.unread_count}
-                           </span>
-                         </div>
-                       )}
-                     </div>
-                     <span className={cn("text-xs truncate w-full text-left", conv.unread_count > 0 ? "text-foreground font-semibold" : "text-muted-foreground")}>
-                       {typingUsers[conv.peer_user.id] ? (
-                         <span className="text-primary font-medium animate-pulse">Typing...</span>
-                       ) : (
-                         conv.last_message?.type === 'voice'
-                           ? '🎤 Voice message'
-                           : conv.last_message?.type === 'file'
-                             ? '📎 File'
-                             : conv.last_message?.text || 'Click to chat'
-                       )}
-                     </span>
-                  </div>
-                </Button>
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      openConversationMenu(event, conv.peer_user.id, conv.unread_count ?? 0);
+                    }}
+                  >
+                    <MoreVertical className="h-4 w-4" />
+                  </Button>
+                </div>
               ))}
               
               {contacts.length === 0 && (
