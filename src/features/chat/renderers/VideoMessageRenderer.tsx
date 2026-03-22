@@ -4,7 +4,7 @@ import { MessageBubble, MessageContent } from '../components/MessageShell';
 import { MessageMarkdown } from '../components/MessageMarkdown';
 import { MediaClickPayload, VideoMessage } from '../types/message';
 import { MessageReplyPreview } from '../components/MessageReplyPreview';
-import { VideoThumbnail } from '../components/VideoPlayer';
+import { VideoThumbnail } from '../media/players/VideoPlayer';
 
 interface VideoMessageRendererProps {
   message: VideoMessage;

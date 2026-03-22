@@ -7,7 +7,7 @@ import { ChatMessage, MediaClickPayload } from '../types/message';
 import { DaySeparator, MessageItem, MessageMenuAnchor, MessageMeta } from './MessageShell';
 import { MessageReactions } from './MessageReactions';
 import { MessageRenderer } from '../MessageRenderer';
-import { ChatAudioQueueItem } from '../audioPlayerStore';
+import { ChatAudioQueueItem } from '../media/players/audioPlayerStore';
 import { MediaCollageGroupRenderer } from '../renderers/MediaCollageGroupRenderer';
 import { buildChatRenderItems, shouldGroupMessages } from '../utils/mediaGroupUtils';
 

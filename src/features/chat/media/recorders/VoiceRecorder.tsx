@@ -8,7 +8,7 @@ import { EVENTS } from '@/socket/events';
 import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
 import EmojiPicker, { Theme } from 'emoji-picker-react';
-import { ComposerReplyTarget } from './types/message';
+import { ComposerReplyTarget } from '../../types/message';
 import VideoRecorderModal from './VideoRecorderModal';
 
 interface VoiceRecorderProps {

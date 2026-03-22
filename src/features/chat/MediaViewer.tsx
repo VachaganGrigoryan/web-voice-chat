@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { ChevronLeft, ChevronRight, Download, X } from 'lucide-react';
 import { downloadFile } from '@/utils/download';
-import { CustomVideoPlayer } from './components/VideoPlayer';
+import { CustomVideoPlayer } from './media/players/VideoPlayer';
 
 export interface MediaViewerImageItem {
   id: string;
