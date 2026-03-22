@@ -9,7 +9,7 @@ import { SystemMessageRenderer } from './renderers/SystemMessageRenderer';
 import { TextMessageRenderer } from './renderers/TextMessageRenderer';
 import { VideoMessageRenderer } from './renderers/VideoMessageRenderer';
 import { MessageBubble, MessageContent } from './components/MessageShell';
-import { ChatAudioQueueItem } from './audioPlayerStore';
+import { ChatAudioQueueItem } from './media/players/audioPlayerStore';
 
 interface MessageRendererProps {
   message: ChatMessage;
