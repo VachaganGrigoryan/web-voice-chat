@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Navigate, useNavigate, useParams } from 'react-router-dom';
 import { APP_ROUTES, isSettingsTab, SettingsTab } from '@/app/routes';
 import { useProfile } from '@/hooks/useProfile';
-import { useTheme } from '@/components/ThemeProvider';
+import { FontSizePreference, LayoutDensity, useTheme } from '@/components/ThemeProvider';
 import { unlockAudioExplicit } from '@/utils/notificationSound';
 import { PanelPageLayout, PanelSection } from '@/components/panel/PanelPageLayout';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/Avatar';
@@ -42,6 +42,26 @@ const SETTINGS_NAV_ITEMS: Array<{
   { id: 'discovery', label: 'Discovery', icon: User, description: 'Codes and invite links' },
 ];
 
+const FONT_SIZE_OPTIONS: Array<{
+  value: FontSizePreference;
+  label: string;
+  description: string;
+}> = [
+  { value: 'small', label: 'Small', description: 'Tighter text sizing for dense screens and smaller laptops.' },
+  { value: 'medium', label: 'Medium', description: 'Balanced readability and information density for everyday use.' },
+  { value: 'large', label: 'Large', description: 'Larger text and looser rhythm for easier reading.' },
+];
+
+const DENSITY_OPTIONS: Array<{
+  value: LayoutDensity;
+  label: string;
+  description: string;
+}> = [
+  { value: 'wide', label: 'Wide', description: 'More breathing room in panels, lists, headers, and controls.' },
+  { value: 'compact', label: 'Compact', description: 'Default density with balanced spacing across the app.' },
+  { value: 'very-compact', label: 'Very Compact', description: 'Fits more content on screen for heavy chat workflows.' },
+];
+
 export default function SettingsPage() {
   const navigate = useNavigate();
   const { tab } = useParams<{ tab?: string }>();
@@ -59,7 +79,7 @@ export default function SettingsPage() {
     isUploadingAvatar,
     isDeletingAvatar,
   } = useProfile();
-  const { mode, setMode, theme, setTheme } = useTheme();
+  const { mode, setMode, theme, setTheme, fontSize, setFontSize, density, setDensity } = useTheme();
   const [username, setUsername] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [bio, setBio] = useState('');
@@ -346,6 +366,58 @@ export default function SettingsPage() {
                 <div className="mr-3 h-4 w-4 rounded-full bg-slate-900 dark:bg-slate-100" />
                 Slate
               </Button>
+            </div>
+          </PanelSection>
+
+          <PanelSection
+            title="Font Size"
+            description="Stored in this browser and applied immediately across chat, panels, menus, and overlays."
+          >
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              {FONT_SIZE_OPTIONS.map((option) => {
+                const isActive = fontSize === option.value;
+
+                return (
+                  <Button
+                    key={option.value}
+                    type="button"
+                    variant={isActive ? 'default' : 'outline'}
+                    className="h-auto min-h-20 items-start justify-start gap-1 whitespace-normal px-4 py-3 text-left"
+                    onClick={() => setFontSize(option.value)}
+                  >
+                    <span className="text-sm font-semibold">{option.label}</span>
+                    <span className={cn('text-xs', isActive ? 'text-primary-foreground/80' : 'text-muted-foreground')}>
+                      {option.description}
+                    </span>
+                  </Button>
+                );
+              })}
+            </div>
+          </PanelSection>
+
+          <PanelSection
+            title="Layout Density"
+            description="Adjust spacing, paddings, gaps, bubble sizing, and panel rhythm for this browser."
+          >
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              {DENSITY_OPTIONS.map((option) => {
+                const isActive = density === option.value;
+
+                return (
+                  <Button
+                    key={option.value}
+                    type="button"
+                    variant={isActive ? 'default' : 'outline'}
+                    className="h-auto min-h-20 items-start justify-start gap-1 whitespace-normal px-4 py-3 text-left"
+                    onClick={() => setDensity(option.value)}
+                  >
+                    <span className="text-sm font-semibold">{option.label}</span>
+                    <span className={cn('text-xs', isActive ? 'text-primary-foreground/80' : 'text-muted-foreground')}>
+                      {option.description}
+                    </span>
+                  </Button>
+                );
+              })}
             </div>
           </PanelSection>
         </>
