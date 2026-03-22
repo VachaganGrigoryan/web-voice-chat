@@ -1,4 +1,3 @@
-import React from 'react';
 import { Mic, Pause, Square } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { cn } from '@/lib/utils';
@@ -9,19 +8,19 @@ function formatDuration(seconds: number) {
   return `${mins}:${secs.toString().padStart(2, '0')}`;
 }
 
-interface ComposerRecordingStateProps {
+interface RecorderRecordingStateProps {
   isRecordingPaused: boolean;
   durationSec: number;
   onPauseOrResume: () => void;
   onStop: () => void;
 }
 
-export function ComposerRecordingState({
+export function RecorderRecordingState({
   isRecordingPaused,
   durationSec,
   onPauseOrResume,
   onStop,
-}: ComposerRecordingStateProps) {
+}: RecorderRecordingStateProps) {
   return (
     <div className="flex items-center gap-2 rounded-[28px] border border-red-500/20 bg-red-500/10 p-2 shadow-sm">
       <div className="flex min-w-0 flex-1 items-center gap-3 px-2">
@@ -59,7 +58,11 @@ export function ComposerRecordingState({
         className="h-11 w-11 rounded-full text-red-500 hover:bg-red-500/15 hover:text-red-600"
         onClick={onPauseOrResume}
       >
-        {isRecordingPaused ? <Mic className="h-5 w-5" /> : <Pause className="h-5 w-5" />}
+        {isRecordingPaused ? (
+          <Mic className="h-5 w-5" />
+        ) : (
+          <Pause className="h-5 w-5" />
+        )}
       </Button>
 
       <Button

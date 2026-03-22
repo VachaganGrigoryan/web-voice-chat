@@ -1,4 +1,3 @@
-import React from 'react';
 import { Loader2, Pause, Play, Send, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 
@@ -8,7 +7,7 @@ function formatDuration(seconds: number) {
   return `${mins}:${secs.toString().padStart(2, '0')}`;
 }
 
-interface ComposerAudioPreviewProps {
+interface RecorderAudioPreviewProps {
   audioUrl: string;
   audioRef: React.RefObject<HTMLAudioElement | null>;
   isPlayingPreview: boolean;
@@ -23,7 +22,7 @@ interface ComposerAudioPreviewProps {
   onSetPlaying: (value: boolean) => void;
 }
 
-export function ComposerAudioPreview({
+export function RecorderAudioPreview({
   audioUrl,
   audioRef,
   isPlayingPreview,
@@ -36,7 +35,7 @@ export function ComposerAudioPreview({
   onSend,
   onSetProgress,
   onSetPlaying,
-}: ComposerAudioPreviewProps) {
+}: RecorderAudioPreviewProps) {
   return (
     <div className="flex items-center gap-2 rounded-[28px] border border-border/70 bg-background p-2 shadow-sm">
       <Button

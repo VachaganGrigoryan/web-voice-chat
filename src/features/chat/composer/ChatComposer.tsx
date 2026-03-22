@@ -8,17 +8,14 @@ import {
 } from '@/components/ui/Dialog';
 import { cn } from '@/lib/utils';
 import { MOBILE_BREAKPOINT } from '../utils/chatLayoutUtils';
-import VideoRecorderModal from '../media/recorders/VideoRecorderModal';
 import { useComposerTextInput } from './hooks/useComposerTextInput';
-import { useAudioRecorderController } from './hooks/useAudioRecorderController';
 import { useAttachmentComposerController } from './hooks/useAttachmentComposerController';
 import { ComposerAttachmentBatchDialog } from './components/ComposerAttachmentBatchDialog';
-import { ComposerAudioPreview } from './components/ComposerAudioPreview';
 import { ComposerAttachmentPanel } from './components/ComposerAttachmentPanel';
 import { ComposerEmojiPanel } from './components/ComposerEmojiPanel';
 import { ComposerInputRow } from './components/ComposerInputRow';
-import { ComposerRecordingState } from './components/ComposerRecordingState';
 import { ComposerReplyBar } from './components/ComposerReplyBar';
+import { ComposerRecorder } from './components/ComposerRecorder';
 import { ChatComposerProps, ComposerPanel } from './types';
 
 export default function ChatComposer({
@@ -36,19 +33,10 @@ export default function ChatComposer({
   );
   const desktopPanelRef = useRef<HTMLDivElement | null>(null);
   const composerShellRef = useRef<HTMLDivElement | null>(null);
-  const recorderLongPressTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const recorderActionTriggeredRef = useRef(false);
 
   const textInput = useComposerTextInput({
     receiverId,
     onSendText,
-    onClearReplyTarget,
-  });
-
-  const audioRecorder = useAudioRecorderController({
-    receiverId,
-    onSendMedia,
-    replyTarget,
     onClearReplyTarget,
   });
 
@@ -70,18 +58,10 @@ export default function ChatComposer({
   }, []);
 
   useEffect(() => {
-    if (
-      attachmentComposer.isBatchDialogOpen ||
-      audioRecorder.isRecording ||
-      audioRecorder.audioUrl
-    ) {
+    if (attachmentComposer.isBatchDialogOpen) {
       setActivePanel(null);
     }
-  }, [
-    attachmentComposer.isBatchDialogOpen,
-    audioRecorder.isRecording,
-    audioRecorder.audioUrl,
-  ]);
+  }, [attachmentComposer.isBatchDialogOpen]);
 
   useEffect(() => {
     if (!activePanel || isMobileViewport) {
@@ -133,60 +113,10 @@ export default function ChatComposer({
     }
   };
 
-  const clearRecorderPressTimeout = () => {
-    if (recorderLongPressTimeoutRef.current) {
-      clearTimeout(recorderLongPressTimeoutRef.current);
-      recorderLongPressTimeoutRef.current = null;
-    }
-  };
-
-  const handleRecorderPressStart = () => {
-    if (textInput.hasText) {
-      return;
-    }
-
-    recorderActionTriggeredRef.current = false;
-    clearRecorderPressTimeout();
-    recorderLongPressTimeoutRef.current = setTimeout(() => {
-      recorderActionTriggeredRef.current = true;
-      closePanels();
-      audioRecorder.handleRecorderAction();
-    }, 280);
-  };
-
-  const handleRecorderPressEnd = () => {
-    clearRecorderPressTimeout();
-  };
-
-  const handleRecorderClick = () => {
-    if (textInput.hasText) {
-      void handleSendText();
-      return;
-    }
-
-    if (recorderActionTriggeredRef.current) {
-      recorderActionTriggeredRef.current = false;
-      return;
-    }
-
-    closePanels();
-    audioRecorder.handleRecorderAction();
-  };
-
-  const currentRecorderLabel =
-    audioRecorder.recorderMode === 'audio' ? 'Audio' : 'Video';
-
   const isBusy =
     isUploading ||
     textInput.isSendingText ||
-    audioRecorder.isSendingAudio ||
     attachmentComposer.isBatchUploading;
-
-  const canSwitchRecorderModes =
-    !isBusy &&
-    !audioRecorder.isRecording &&
-    !audioRecorder.audioUrl &&
-    !audioRecorder.isVideoRecorderOpen;
 
   const renderDesktopPanel = () => {
     if (!activePanel || isMobileViewport) {
@@ -223,15 +153,6 @@ export default function ChatComposer({
 
   return (
     <>
-      <VideoRecorderModal
-        open={audioRecorder.isVideoRecorderOpen}
-        onOpenChange={audioRecorder.setIsVideoRecorderOpen}
-        receiverId={receiverId}
-        onSendVideo={onSendMedia}
-        replyTarget={replyTarget}
-        onClearReplyTarget={onClearReplyTarget}
-      />
-
       <input
         type="file"
         ref={attachmentComposer.mediaInputRef}
@@ -314,63 +235,35 @@ export default function ChatComposer({
 
         <div ref={composerShellRef} className="relative">
           {renderDesktopPanel()}
-
-          {audioRecorder.isRecording ? (
-            <ComposerRecordingState
-              isRecordingPaused={audioRecorder.isRecordingPaused}
-              durationSec={audioRecorder.durationSec}
-              onPauseOrResume={
-                audioRecorder.isRecordingPaused
-                  ? () => void audioRecorder.resumeAudioRecording()
-                  : () => void audioRecorder.pauseAudioRecording()
-              }
-              onStop={() => void audioRecorder.stopAudioRecording()}
-            />
-          ) : audioRecorder.audioUrl ? (
-            <ComposerAudioPreview
-              audioUrl={audioRecorder.audioUrl}
-              audioRef={audioRecorder.audioRef}
-              isPlayingPreview={audioRecorder.isPlayingPreview}
-              previewProgress={audioRecorder.previewProgress}
-              durationSec={audioRecorder.durationSec}
-              isBusy={isBusy}
-              isSendingAudio={audioRecorder.isSendingAudio || isUploading}
-              onCancel={() => void audioRecorder.cancelAudioRecording()}
-              onTogglePlayback={audioRecorder.togglePreviewPlayback}
-              onSend={() => void audioRecorder.sendRecordedAudio()}
-              onSetProgress={audioRecorder.setPreviewProgress}
-              onSetPlaying={audioRecorder.setIsPlayingPreview}
-            />
-          ) : (
-            <ComposerInputRow
-              activePanel={activePanel}
-              isBusy={isBusy}
-              hasText={textInput.hasText}
-              text={textInput.text}
-              textareaRef={textInput.textareaRef}
-              recorderMode={audioRecorder.recorderMode}
-              canSwitchRecorderModes={canSwitchRecorderModes}
-              currentRecorderLabel={currentRecorderLabel}
-              onTogglePanel={handleTogglePanel}
-              onTextChange={textInput.handleTextChange}
-              onTextareaFocus={() => textInput.setIsFocused(true)}
-              onTextareaBlur={() => {
-                window.setTimeout(() => textInput.setIsFocused(false), 120);
-              }}
-              onTextareaEnter={() => {
-                void handleSendText();
-              }}
-              onRecorderPressStart={handleRecorderPressStart}
-              onRecorderPressEnd={handleRecorderPressEnd}
-              onRecorderClick={handleRecorderClick}
-              onToggleRecorderMode={() => {
-                if (!canSwitchRecorderModes) return;
-                audioRecorder.setRecorderMode((current) =>
-                  current === 'audio' ? 'video' : 'audio'
-                );
-              }}
-            />
-          )}
+          <ComposerRecorder
+            audio
+            video
+            receiverId={receiverId}
+            onSendMedia={onSendMedia}
+            replyTarget={replyTarget}
+            onClearReplyTarget={onClearReplyTarget}
+            disabled={isBusy}
+            onEngage={closePanels}
+            renderIdleRow={(recorderTrigger) => (
+              <ComposerInputRow
+                activePanel={activePanel}
+                isBusy={isBusy}
+                hasText={textInput.hasText}
+                text={textInput.text}
+                textareaRef={textInput.textareaRef}
+                recorderTrigger={recorderTrigger}
+                onTogglePanel={handleTogglePanel}
+                onTextChange={textInput.handleTextChange}
+                onTextareaFocus={() => textInput.setIsFocused(true)}
+                onTextareaBlur={() => {
+                  window.setTimeout(() => textInput.setIsFocused(false), 120);
+                }}
+                onSend={() => {
+                  void handleSendText();
+                }}
+              />
+            )}
+          />
         </div>
       </div>
     </>

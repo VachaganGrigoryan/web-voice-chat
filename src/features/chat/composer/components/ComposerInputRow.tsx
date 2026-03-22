@@ -2,6 +2,7 @@ import React from 'react';
 import { ImagePlus, Loader2, Mic, Send, Smile, Video } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { cn } from '@/lib/utils';
+import type { ComposerRecorderTriggerProps } from './ComposerRecorder';
 
 interface ComposerInputRowProps {
   activePanel: 'emoji' | 'attachments' | null;
@@ -9,18 +10,12 @@ interface ComposerInputRowProps {
   hasText: boolean;
   text: string;
   textareaRef: React.RefObject<HTMLTextAreaElement | null>;
-  recorderMode: 'audio' | 'video';
-  canSwitchRecorderModes: boolean;
-  currentRecorderLabel: string;
+  recorderTrigger: ComposerRecorderTriggerProps;
   onTogglePanel: (panel: 'emoji' | 'attachments') => void;
   onTextChange: (value: string) => void;
   onTextareaFocus: () => void;
   onTextareaBlur: () => void;
-  onTextareaEnter: () => void;
-  onRecorderPressStart: () => void;
-  onRecorderPressEnd: () => void;
-  onRecorderClick: () => void;
-  onToggleRecorderMode: () => void;
+  onSend: () => void;
 }
 
 export function ComposerInputRow({
@@ -29,21 +24,17 @@ export function ComposerInputRow({
   hasText,
   text,
   textareaRef,
-  recorderMode,
-  canSwitchRecorderModes,
-  currentRecorderLabel,
+  recorderTrigger,
   onTogglePanel,
   onTextChange,
   onTextareaFocus,
   onTextareaBlur,
-  onTextareaEnter,
-  onRecorderPressStart,
-  onRecorderPressEnd,
-  onRecorderClick,
-  onToggleRecorderMode,
+  onSend,
 }: ComposerInputRowProps) {
-  const CurrentRecorderIcon = recorderMode === 'audio' ? Mic : Video;
-  const NextRecorderIcon = recorderMode === 'audio' ? Video : Mic;
+  const CurrentRecorderIcon =
+    recorderTrigger.mode === 'audio' ? Mic : Video;
+  const NextRecorderIcon =
+    recorderTrigger.nextMode === 'audio' ? Mic : Video;
 
   return (
     <div className="flex items-end gap-2 rounded-[28px] border border-border/70 bg-background p-2 shadow-sm">
@@ -76,7 +67,7 @@ export function ComposerInputRow({
           onKeyDown={(event) => {
             if (event.key === 'Enter' && !event.shiftKey) {
               event.preventDefault();
-              onTextareaEnter();
+              onSend();
             }
           }}
         />
@@ -107,16 +98,16 @@ export function ComposerInputRow({
             'h-11 w-11 rounded-full shadow-sm transition-colors',
             hasText ? 'bg-primary hover:bg-primary/90' : ''
           )}
-          onPointerDown={onRecorderPressStart}
-          onPointerUp={onRecorderPressEnd}
-          onPointerCancel={onRecorderPressEnd}
-          onPointerLeave={onRecorderPressEnd}
-          onClick={onRecorderClick}
-          disabled={isBusy}
+          onPointerDown={hasText ? undefined : recorderTrigger.onPressStart}
+          onPointerUp={hasText ? undefined : recorderTrigger.onPressEnd}
+          onPointerCancel={hasText ? undefined : recorderTrigger.onPressEnd}
+          onPointerLeave={hasText ? undefined : recorderTrigger.onPressEnd}
+          onClick={hasText ? onSend : recorderTrigger.onClick}
+          disabled={hasText ? isBusy : recorderTrigger.disabled}
           title={
             hasText
               ? 'Send message'
-              : recorderMode === 'audio'
+              : recorderTrigger.mode === 'audio'
               ? 'Record voice message'
               : 'Record video message'
           }
@@ -136,19 +127,27 @@ export function ComposerInputRow({
               type="button"
               className={cn(
                 'absolute -bottom-1 -right-1 flex h-5.5 min-w-[1.4rem] items-center justify-center rounded-full border border-background bg-primary px-1 text-primary-foreground shadow-sm transition-transform',
-                canSwitchRecorderModes
+                recorderTrigger.canSwitchMode
                   ? 'hover:scale-105 active:scale-95'
                   : 'cursor-default opacity-70'
               )}
-              onClick={onToggleRecorderMode}
-              aria-label={`Switch recorder mode from ${currentRecorderLabel}`}
-              title={`Switch recorder mode from ${currentRecorderLabel}`}
-              disabled={!canSwitchRecorderModes}
+              onClick={recorderTrigger.onToggleMode}
+              aria-label={
+                recorderTrigger.nextLabel
+                  ? `Switch recorder mode to ${recorderTrigger.nextLabel}`
+                  : 'Recorder mode switch unavailable'
+              }
+              title={
+                recorderTrigger.nextLabel
+                  ? `Switch to ${recorderTrigger.nextLabel}`
+                  : 'Recorder mode switch unavailable'
+              }
+              disabled={!recorderTrigger.canSwitchMode}
             >
               <NextRecorderIcon className="h-3 w-3" />
             </button>
             <div className="pointer-events-none absolute -top-1 left-1/2 -translate-x-1/2 rounded-full bg-background/95 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-muted-foreground shadow-sm">
-              {currentRecorderLabel}
+              {recorderTrigger.currentLabel}
             </div>
           </>
         ) : null}

@@ -4,7 +4,7 @@ import { VoiceRecorder as CapacitorVoiceRecorder } from 'capacitor-voice-recorde
 import type { SendMediaInput } from '@/hooks/useChat';
 import { getSocket } from '@/socket/socket';
 import { EVENTS } from '@/socket/events';
-import { ComposerReplyTarget } from '../../types/message';
+import type { ComposerReplyTarget } from '../../types/message';
 
 interface UseAudioRecorderControllerParams {
   receiverId: string;
@@ -19,11 +19,9 @@ export function useAudioRecorderController({
   replyTarget,
   onClearReplyTarget,
 }: UseAudioRecorderControllerParams) {
-  const [recorderMode, setRecorderMode] = useState<'audio' | 'video'>('audio');
   const [isRecording, setIsRecording] = useState(false);
   const [isRecordingPaused, setIsRecordingPaused] = useState(false);
   const [isSendingAudio, setIsSendingAudio] = useState(false);
-  const [isVideoRecorderOpen, setIsVideoRecorderOpen] = useState(false);
   const [durationSec, setDurationSec] = useState(0);
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
@@ -280,36 +278,23 @@ export function useAudioRecorderController({
     }
   };
 
-  const handleRecorderAction = () => {
-    if (recorderMode === 'video') {
-      setIsVideoRecorderOpen(true);
-      return;
-    }
-
-    void startAudioRecording();
-  };
-
   return {
-    recorderMode,
     isRecording,
     isRecordingPaused,
     isSendingAudio,
-    isVideoRecorderOpen,
     durationSec,
     audioUrl,
     isPlayingPreview,
     previewProgress,
     audioRef,
-    setRecorderMode,
-    setIsVideoRecorderOpen,
     setPreviewProgress,
     setIsPlayingPreview,
+    startAudioRecording,
     pauseAudioRecording,
     resumeAudioRecording,
     stopAudioRecording,
     cancelAudioRecording,
     togglePreviewPlayback,
     sendRecordedAudio,
-    handleRecorderAction,
   };
 }
