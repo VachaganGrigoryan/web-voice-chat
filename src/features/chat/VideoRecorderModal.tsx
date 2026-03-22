@@ -13,11 +13,25 @@ import { cn } from '@/lib/utils';
 import { getSupportedVideoMime } from '@/utils/fileUtils';
 import { ComposerReplyTarget } from './types/message';
 
-const MAX_VIDEO_DURATION_MS = 10_000;
-const MAX_VIDEO_SIZE_BYTES = 10 * 1024 * 1024;
+const HARD_MAX_VIDEO_SIZE_BYTES = 10 * 1024 * 1024;
+const SAFE_MAX_VIDEO_SIZE_BYTES = Math.floor(HARD_MAX_VIDEO_SIZE_BYTES * 0.9);
+const FALLBACK_MAX_VIDEO_DURATION_MS = 10_000;
+const MAX_ESTIMATED_VIDEO_DURATION_MS = 90_000;
+const DEFAULT_AUDIO_BITRATE = 64_000;
 
 type CapturePhase = 'live' | 'recording' | 'recorded';
 type StopReason = 'manual' | 'time_limit' | 'size_limit' | 'dismissed' | null;
+
+interface RecordingProfile {
+  mimeType: string;
+  width: number;
+  height: number;
+  videoBitsPerSecond: number;
+  audioBitsPerSecond: number;
+  totalBitsPerSecond: number;
+  safeMaxBytes: number;
+  safeMaxDurationMs: number;
+}
 
 interface VideoRecorderModalProps {
   open: boolean;
@@ -92,6 +106,94 @@ const sortVideoDevices = (devices: MediaDeviceInfo[]) =>
     return left.label.localeCompare(right.label);
   });
 
+const isFrontFacingCamera = (label?: string | null) => (label ? scoreCameraLabel(label) === 0 : true);
+
+const estimateVideoBitsPerSecond = ({
+  width,
+  height,
+  mimeType,
+  isFrontCamera,
+  isMobile,
+}: {
+  width: number;
+  height: number;
+  mimeType: string;
+  isFrontCamera: boolean;
+  isMobile: boolean;
+}) => {
+  const pixelCount = Math.max(1, width * height);
+
+  let videoBitsPerSecond: number;
+  if (pixelCount <= 640 * 480) {
+    videoBitsPerSecond = 900_000;
+  } else if (pixelCount <= 960 * 540) {
+    videoBitsPerSecond = 1_250_000;
+  } else if (pixelCount <= 1280 * 720) {
+    videoBitsPerSecond = 2_100_000;
+  } else if (pixelCount <= 1920 * 1080) {
+    videoBitsPerSecond = 3_400_000;
+  } else {
+    videoBitsPerSecond = 4_500_000;
+  }
+
+  if (isFrontCamera) {
+    videoBitsPerSecond *= 0.86;
+  }
+
+  if (isMobile) {
+    videoBitsPerSecond *= 0.88;
+  }
+
+  if (mimeType.includes('vp9')) {
+    videoBitsPerSecond *= 0.82;
+  } else if (mimeType.includes('mp4') || mimeType.includes('quicktime') || mimeType.includes('h264')) {
+    videoBitsPerSecond *= 1.08;
+  }
+
+  return Math.round(videoBitsPerSecond);
+};
+
+const buildRecordingProfile = ({
+  mimeType,
+  width,
+  height,
+  isFrontCamera,
+  isMobile,
+  videoBitsPerSecond,
+  audioBitsPerSecond = DEFAULT_AUDIO_BITRATE,
+}: {
+  mimeType: string;
+  width: number;
+  height: number;
+  isFrontCamera: boolean;
+  isMobile: boolean;
+  videoBitsPerSecond?: number;
+  audioBitsPerSecond?: number;
+}): RecordingProfile => {
+  const resolvedVideoBitsPerSecond =
+    videoBitsPerSecond || estimateVideoBitsPerSecond({ width, height, mimeType, isFrontCamera, isMobile });
+  const resolvedAudioBitsPerSecond = Math.max(32_000, Math.round(audioBitsPerSecond));
+  const totalBitsPerSecond = resolvedVideoBitsPerSecond + resolvedAudioBitsPerSecond;
+  const safeMaxDurationMs = Math.max(
+    FALLBACK_MAX_VIDEO_DURATION_MS,
+    Math.min(
+      MAX_ESTIMATED_VIDEO_DURATION_MS,
+      Math.floor((SAFE_MAX_VIDEO_SIZE_BYTES * 8 * 1000) / totalBitsPerSecond)
+    )
+  );
+
+  return {
+    mimeType,
+    width,
+    height,
+    videoBitsPerSecond: resolvedVideoBitsPerSecond,
+    audioBitsPerSecond: resolvedAudioBitsPerSecond,
+    totalBitsPerSecond,
+    safeMaxBytes: SAFE_MAX_VIDEO_SIZE_BYTES,
+    safeMaxDurationMs,
+  };
+};
+
 export default function VideoRecorderModal({
   open,
   onOpenChange,
@@ -124,6 +226,7 @@ export default function VideoRecorderModal({
   const [recordedUrl, setRecordedUrl] = useState<string | null>(null);
   const [recordedMimeType, setRecordedMimeType] = useState('video/webm');
   const [captureError, setCaptureError] = useState<string | null>(null);
+  const [recordingProfile, setRecordingProfile] = useState<RecordingProfile | null>(null);
 
   const activeCameraLabel = useMemo(() => {
     const matchedCamera = availableCameras.find((device) => device.deviceId === selectedCameraId);
@@ -136,8 +239,23 @@ export default function VideoRecorderModal({
 
   const hasRecordedVideo = !!recordedBlob && !!recordedUrl;
   const canSwitchCamera = !isPreparingCamera && capturePhase !== 'recording' && availableCameras.length > 1;
-  const recordingRemainingMs = Math.max(0, MAX_VIDEO_DURATION_MS - recordingElapsedMs);
-  const recordingProgressPercent = Math.min(100, (recordingElapsedMs / MAX_VIDEO_DURATION_MS) * 100);
+  const safeMaxBytes = recordingProfile?.safeMaxBytes ?? SAFE_MAX_VIDEO_SIZE_BYTES;
+  const safeMaxDurationMs = recordingProfile?.safeMaxDurationMs ?? FALLBACK_MAX_VIDEO_DURATION_MS;
+  const estimatedProfileBytesPerMs =
+    ((recordingProfile?.totalBitsPerSecond ?? ((safeMaxBytes * 8 * 1000) / safeMaxDurationMs)) / 8) / 1000;
+  const observedBytesPerMs =
+    recordingElapsedMs > 1000 ? (recordedSizeBytes / Math.max(1, recordingElapsedMs)) * 1.08 : 0;
+  const effectiveBytesPerMs = Math.max(estimatedProfileBytesPerMs, observedBytesPerMs);
+  const estimatedRecordingSizeBytes = hasRecordedVideo
+    ? recordedSizeBytes
+    : isPreparingCamera
+      ? 0
+      : Math.max(recordedSizeBytes, Math.ceil(recordingElapsedMs * effectiveBytesPerMs));
+  const recordingRemainingMs =
+    effectiveBytesPerMs > 0
+      ? Math.max(0, Math.floor((safeMaxBytes - estimatedRecordingSizeBytes) / effectiveBytesPerMs))
+      : Math.max(0, safeMaxDurationMs - recordingElapsedMs);
+  const recordingProgressPercent = Math.min(100, (estimatedRecordingSizeBytes / safeMaxBytes) * 100);
 
   const clearTimers = () => {
     if (durationIntervalRef.current) {
@@ -202,16 +320,44 @@ export default function VideoRecorderModal({
     setIsSending(false);
     setAvailableCameras([]);
     setSelectedCameraId(null);
+    setRecordingProfile(null);
     resetCaptureState();
   };
 
-  const attachLivePreview = (stream: MediaStream) => {
-    if (!liveVideoRef.current) {
+  const attachLivePreview = async (stream: MediaStream, target: HTMLVideoElement | null = liveVideoRef.current) => {
+    if (!target) {
       return;
     }
 
-    liveVideoRef.current.srcObject = stream;
-    void liveVideoRef.current.play().catch(() => undefined);
+    const videoTrack = stream.getVideoTracks()[0];
+    if (!videoTrack || videoTrack.readyState !== 'live') {
+      return;
+    }
+
+    if (target.srcObject !== stream) {
+      target.srcObject = stream;
+    }
+
+    if (target.readyState < HTMLMediaElement.HAVE_METADATA) {
+      await new Promise<void>((resolve) => {
+        const handleLoadedMetadata = () => resolve();
+        target.addEventListener('loadedmetadata', handleLoadedMetadata, { once: true });
+      });
+    }
+
+    if (target.paused) {
+      void target.play().catch((error) => {
+        console.error('Error starting live camera preview:', error);
+      });
+    }
+  };
+
+  const setLiveVideoElement = (node: HTMLVideoElement | null) => {
+    liveVideoRef.current = node;
+
+    if (node && streamRef.current) {
+      void attachLivePreview(streamRef.current, node);
+    }
   };
 
   const prepareCamera = async (cameraId?: string | null) => {
@@ -225,19 +371,31 @@ export default function VideoRecorderModal({
     stopStream();
 
     try {
+      const isMobileViewport = typeof window !== 'undefined' && window.innerWidth < 768;
+      const selectedCamera = cameraId
+        ? availableCameras.find((device) => device.deviceId === cameraId) || null
+        : null;
+      const prefersFrontCamera = isFrontFacingCamera(selectedCamera?.label);
+      const preferredMimeType = getPreferredRecorderMimeType() || 'video/webm';
+      const idealWidth = isMobileViewport ? (prefersFrontCamera ? 960 : 1280) : 1280;
+      const idealHeight = isMobileViewport ? (prefersFrontCamera ? 540 : 720) : 720;
       const initialStream = await navigator.mediaDevices.getUserMedia({
         audio: true,
         video: cameraId
-          ? { deviceId: { exact: cameraId } }
+          ? {
+              deviceId: { exact: cameraId },
+              width: { ideal: idealWidth },
+              height: { ideal: idealHeight },
+            }
           : {
               facingMode: 'user',
-              width: { ideal: 1280 },
-              height: { ideal: 720 },
+              width: { ideal: idealWidth },
+              height: { ideal: idealHeight },
             },
       });
 
       streamRef.current = initialStream;
-      attachLivePreview(initialStream);
+      void attachLivePreview(initialStream);
 
       const devices = sortVideoDevices(
         (await navigator.mediaDevices.enumerateDevices()).filter((device) => device.kind === 'videoinput')
@@ -246,7 +404,22 @@ export default function VideoRecorderModal({
       setAvailableCameras(devices);
 
       const activeTrack = initialStream.getVideoTracks()[0];
+      const activeSettings = activeTrack?.getSettings();
       const activeDeviceId = activeTrack?.getSettings().deviceId || cameraId || devices[0]?.deviceId || null;
+      const activeCameraLabel =
+        devices.find((device) => device.deviceId === activeDeviceId)?.label || activeTrack?.label || selectedCamera?.label || null;
+      const resolvedWidth = Math.max(640, Math.round(activeSettings?.width || idealWidth));
+      const resolvedHeight = Math.max(360, Math.round(activeSettings?.height || idealHeight));
+
+      setRecordingProfile(
+        buildRecordingProfile({
+          mimeType: preferredMimeType,
+          width: resolvedWidth,
+          height: resolvedHeight,
+          isFrontCamera: isFrontFacingCamera(activeCameraLabel),
+          isMobile: isMobileViewport,
+        })
+      );
       setSelectedCameraId(activeDeviceId);
       setCapturePhase('live');
     } catch (error) {
@@ -302,12 +475,41 @@ export default function VideoRecorderModal({
     discardOnStopRef.current = false;
 
     try {
-      const preferredMimeType = getPreferredRecorderMimeType();
-      const recorder = preferredMimeType
-        ? new MediaRecorder(streamRef.current, { mimeType: preferredMimeType })
-        : new MediaRecorder(streamRef.current);
+      const streamTrackSettings = streamRef.current.getVideoTracks()[0]?.getSettings();
+      const fallbackMimeType = getPreferredRecorderMimeType() || 'video/webm';
+      const baseProfile =
+        recordingProfile ||
+        buildRecordingProfile({
+          mimeType: fallbackMimeType,
+          width: Math.max(640, Math.round(streamTrackSettings?.width || 960)),
+          height: Math.max(360, Math.round(streamTrackSettings?.height || 540)),
+          isFrontCamera: isFrontFacingCamera(activeCameraLabel),
+          isMobile: typeof window !== 'undefined' && window.innerWidth < 768,
+        });
+      const preferredMimeType = baseProfile.mimeType;
+      const recorderOptions: MediaRecorderOptions = preferredMimeType
+        ? {
+            mimeType: preferredMimeType,
+            audioBitsPerSecond: baseProfile.audioBitsPerSecond,
+            videoBitsPerSecond: baseProfile.videoBitsPerSecond,
+          }
+        : {
+            audioBitsPerSecond: baseProfile.audioBitsPerSecond,
+            videoBitsPerSecond: baseProfile.videoBitsPerSecond,
+          };
+      const recorder = new MediaRecorder(streamRef.current, recorderOptions);
 
       recorderRef.current = recorder;
+      const activeProfile = buildRecordingProfile({
+        mimeType: preferredMimeType,
+        width: baseProfile.width,
+        height: baseProfile.height,
+        isFrontCamera: isFrontFacingCamera(activeCameraLabel),
+        isMobile: typeof window !== 'undefined' && window.innerWidth < 768,
+        videoBitsPerSecond: recorder.videoBitsPerSecond || baseProfile.videoBitsPerSecond,
+        audioBitsPerSecond: recorder.audioBitsPerSecond || baseProfile.audioBitsPerSecond,
+      });
+      setRecordingProfile(activeProfile);
 
       recorder.ondataavailable = (event) => {
         if (!event.data || event.data.size === 0) {
@@ -318,7 +520,7 @@ export default function VideoRecorderModal({
         bytesRef.current += event.data.size;
         setRecordedSizeBytes(bytesRef.current);
 
-        if (bytesRef.current > MAX_VIDEO_SIZE_BYTES && recorder.state !== 'inactive') {
+        if (bytesRef.current >= activeProfile.safeMaxBytes && recorder.state !== 'inactive') {
           stopReasonRef.current = 'size_limit';
           recorder.stop();
         }
@@ -327,7 +529,6 @@ export default function VideoRecorderModal({
       recorder.onstop = () => {
         clearTimers();
 
-        const stopReason = stopReasonRef.current;
         const shouldDiscard = discardOnStopRef.current;
         const finalDurationMs = Math.max(
           recordedDurationMsRef.current,
@@ -350,7 +551,7 @@ export default function VideoRecorderModal({
           return;
         }
 
-        if (stopReason === 'size_limit' || finalBlob.size > MAX_VIDEO_SIZE_BYTES) {
+        if (finalBlob.size > HARD_MAX_VIDEO_SIZE_BYTES) {
           chunksRef.current = [];
           bytesRef.current = 0;
           setCaptureError('Recording exceeded the 10 MB limit and was discarded.');
@@ -382,12 +583,23 @@ export default function VideoRecorderModal({
       durationIntervalRef.current = setInterval(() => {
         const elapsedMs = Date.now() - startedAt;
         recordedDurationMsRef.current = elapsedMs;
-        setRecordingElapsedMs(Math.min(MAX_VIDEO_DURATION_MS, elapsedMs));
-        setRecordingDurationSec(Math.min(10, Math.max(1, Math.ceil(elapsedMs / 1000))));
+        const boundedElapsedMs = Math.min(activeProfile.safeMaxDurationMs, elapsedMs);
+        const estimatedBytes = Math.max(
+          bytesRef.current,
+          Math.ceil((activeProfile.totalBitsPerSecond / 8 / 1000) * boundedElapsedMs)
+        );
+
+        setRecordingElapsedMs(boundedElapsedMs);
+        setRecordingDurationSec(Math.max(1, Math.ceil(boundedElapsedMs / 1000)));
+
+        if (estimatedBytes >= activeProfile.safeMaxBytes && recorder.state !== 'inactive') {
+          stopReasonRef.current = 'size_limit';
+          recorder.stop();
+        }
       }, 200);
       autoStopTimeoutRef.current = setTimeout(() => {
         stopRecordingInternal('time_limit');
-      }, MAX_VIDEO_DURATION_MS);
+      }, activeProfile.safeMaxDurationMs);
     } catch (error) {
       console.error('Error starting video recording:', error);
       setCaptureError('Could not start video recording on this device.');
@@ -423,7 +635,7 @@ export default function VideoRecorderModal({
       return;
     }
 
-    if (recordedBlob.size > MAX_VIDEO_SIZE_BYTES) {
+    if (recordedBlob.size > HARD_MAX_VIDEO_SIZE_BYTES) {
       setCaptureError('Recording exceeded the 10 MB limit and cannot be sent.');
       return;
     }
@@ -469,6 +681,19 @@ export default function VideoRecorderModal({
   }, [open]);
 
   useEffect(() => {
+    if (!open || isPreparingCamera || hasRecordedVideo) {
+      return;
+    }
+
+    const stream = streamRef.current;
+    if (!stream || !liveVideoRef.current) {
+      return;
+    }
+
+    void attachLivePreview(stream, liveVideoRef.current);
+  }, [open, isPreparingCamera, hasRecordedVideo, capturePhase, selectedCameraId]);
+
+  useEffect(() => {
     return () => {
       teardownModalState();
     };
@@ -479,12 +704,15 @@ export default function VideoRecorderModal({
   const statusLabel = isRecordingActive ? 'Recording' : isReviewMode ? 'Review' : 'Camera';
   const timerLabel = formatDuration(recordingDurationSec);
   const remainingLabel = formatDuration(Math.ceil(recordingRemainingMs / 1000));
+  const maxDurationLabel = formatDuration(Math.ceil(safeMaxDurationMs / 1000));
+  const estimatedSizeLabel = formatFileSize(estimatedRecordingSizeBytes);
+  const safeSizeLabel = formatFileSize(safeMaxBytes);
   const footerHint = isReviewMode
     ? 'Review this clip, then send it or retake it.'
     : isRecordingActive
-      ? 'Video auto-stops at 10 seconds.'
+      ? 'Recording stops automatically before the safe upload size is reached.'
       : streamRef.current
-        ? 'Tap record to capture a quick video message.'
+        ? 'Tap record to capture a video sized to stay under the upload limit.'
         : 'Allow camera access to start recording.';
 
   return (
@@ -516,7 +744,7 @@ export default function VideoRecorderModal({
         >
           <DialogTitle className="sr-only">Record video</DialogTitle>
           <DialogDescription className="sr-only">
-            Full-screen camera mode for recording and reviewing a short video message.
+            Full-screen camera mode for recording and reviewing a size-aware video message.
           </DialogDescription>
 
           <div className="relative h-full w-full overflow-hidden bg-black text-white">
@@ -542,7 +770,7 @@ export default function VideoRecorderModal({
               />
             ) : streamRef.current ? (
               <video
-                ref={liveVideoRef}
+                ref={setLiveVideoElement}
                 className="h-full w-full object-cover"
                 autoPlay
                 muted
@@ -610,10 +838,10 @@ export default function VideoRecorderModal({
                   {isRecordingActive ? `${remainingLabel} left` : activeCameraLabel}
                 </div>
                 <div className="rounded-full border border-white/12 bg-black/35 px-3 py-1.5 text-xs text-white/85 backdrop-blur-md">
-                  {isReviewMode ? recordedMimeType : `${timerLabel} / 0:10`}
+                  {isReviewMode ? recordedMimeType : `${maxDurationLabel} max`}
                 </div>
                 <div className="rounded-full border border-white/12 bg-black/35 px-3 py-1.5 text-xs text-white/85 backdrop-blur-md">
-                  {formatFileSize(recordedSizeBytes)}
+                  {isReviewMode ? formatFileSize(recordedSizeBytes) : `${estimatedSizeLabel} / ${safeSizeLabel}`}
                 </div>
               </div>
 
@@ -656,15 +884,15 @@ export default function VideoRecorderModal({
                 <div className="flex flex-col gap-3 rounded-[28px] border border-white/10 bg-black/35 px-4 py-4 backdrop-blur-md sm:px-5 sm:py-5">
                   <div className="flex items-center justify-between gap-3">
                     <div className="min-w-0">
-                      <div className="text-sm font-semibold text-white sm:text-base">
-                        {isReviewMode ? 'Review video' : isRecordingActive ? 'Recording now' : 'Camera mode'}
-                      </div>
-                      <div className="text-xs text-white/65 sm:text-sm">{footerHint}</div>
+                    <div className="text-sm font-semibold text-white sm:text-base">
+                      {isReviewMode ? 'Review video' : isRecordingActive ? 'Recording now' : 'Camera mode'}
                     </div>
-                    <div className="rounded-full border border-white/12 bg-white/5 px-3 py-1.5 text-xs text-white/80">
-                      {isReviewMode ? formatFileSize(recordedSizeBytes) : `${timerLabel} / 0:10`}
-                    </div>
+                    <div className="text-xs text-white/65 sm:text-sm">{footerHint}</div>
                   </div>
+                  <div className="rounded-full border border-white/12 bg-white/5 px-3 py-1.5 text-xs text-white/80">
+                      {isReviewMode ? formatFileSize(recordedSizeBytes) : `${estimatedSizeLabel} / ${safeSizeLabel}`}
+                  </div>
+                </div>
 
                   <div className="flex items-center justify-between gap-3">
                     {isReviewMode ? (
@@ -733,7 +961,7 @@ export default function VideoRecorderModal({
                           {isPreparingCamera ? <Loader2 className="h-7 w-7 animate-spin" /> : <div className="h-7 w-7 rounded-full bg-red-500" />}
                         </button>
                         <div className="flex min-w-[5.5rem] justify-end text-sm font-medium text-white/80">
-                          Record
+                          {maxDurationLabel} max
                         </div>
                       </>
                     )}
