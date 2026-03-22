@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 
-type ThemeMode = 'dark' | 'light' | 'system';
-type ThemeColor = 'default' | 'zinc' | 'slate' | 'neutral' | 'stone';
+export type ThemeMode = 'dark' | 'light' | 'system';
+export type ThemeColor = 'default' | 'zinc' | 'slate' | 'neutral' | 'stone';
 export type FontSizePreference = 'small' | 'medium' | 'large';
 export type LayoutDensity = 'wide' | 'compact' | 'very-compact';
 

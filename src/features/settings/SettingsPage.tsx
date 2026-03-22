@@ -2,65 +2,24 @@ import { useEffect, useRef, useState } from 'react';
 import { Navigate, useNavigate, useParams } from 'react-router-dom';
 import { APP_ROUTES, isSettingsTab, SettingsTab } from '@/app/routes';
 import { useProfile } from '@/hooks/useProfile';
-import { FontSizePreference, LayoutDensity, useTheme } from '@/components/ThemeProvider';
+import { useTheme } from '@/components/ThemeProvider';
 import { unlockAudioExplicit } from '@/utils/notificationSound';
 import { PanelPageLayout, PanelSection } from '@/components/panel/PanelPageLayout';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/Avatar';
 import { Button } from '@/components/ui/Button';
-import { Input } from '@/components/ui/Input';
-import { Label } from '@/components/ui/Label';
 import { cn } from '@/lib/utils';
 import {
   Bell,
-  Camera,
-  KeyRound,
   Loader2,
-  Monitor,
-  Moon,
-  Palette,
   Save,
-  Shield,
-  Sun,
-  Trash2,
   User,
-  Volume2,
 } from 'lucide-react';
-import PasskeysSettings from './PasskeysSettings';
-import DiscoverySettings from './DiscoverySettings';
-
-const SETTINGS_NAV_ITEMS: Array<{
-  id: SettingsTab;
-  label: string;
-  icon: typeof User;
-  description: string;
-}> = [
-  { id: 'profile', label: 'Profile', icon: User, description: 'Identity and public details' },
-  { id: 'appearance', label: 'Appearance', icon: Palette, description: 'Theme and visual preferences' },
-  { id: 'notifications', label: 'Notifications', icon: Bell, description: 'Chat sound behavior' },
-  { id: 'privacy', label: 'Privacy', icon: Shield, description: 'Discovery and account access' },
-  { id: 'passkeys', label: 'Passkeys', icon: KeyRound, description: 'Passwordless sign-in methods' },
-  { id: 'discovery', label: 'Discovery', icon: User, description: 'Codes and invite links' },
-];
-
-const FONT_SIZE_OPTIONS: Array<{
-  value: FontSizePreference;
-  label: string;
-  description: string;
-}> = [
-  { value: 'small', label: 'Small', description: 'Tighter text sizing for dense screens and smaller laptops.' },
-  { value: 'medium', label: 'Medium', description: 'Balanced readability and information density for everyday use.' },
-  { value: 'large', label: 'Large', description: 'Larger text and looser rhythm for easier reading.' },
-];
-
-const DENSITY_OPTIONS: Array<{
-  value: LayoutDensity;
-  label: string;
-  description: string;
-}> = [
-  { value: 'wide', label: 'Wide', description: 'More breathing room in panels, lists, headers, and controls.' },
-  { value: 'compact', label: 'Compact', description: 'Default density with balanced spacing across the app.' },
-  { value: 'very-compact', label: 'Very Compact', description: 'Fits more content on screen for heavy chat workflows.' },
-];
+import { SETTINGS_NAV_ITEMS } from './config';
+import AppearanceSettingsTab from './tabs/AppearanceSettingsTab';
+import DiscoverySettingsTab from './tabs/DiscoverySettingsTab';
+import NotificationsSettingsTab from './tabs/NotificationsSettingsTab';
+import PasskeysSettingsTab from './tabs/PasskeysSettingsTab';
+import PrivacySettingsTab from './tabs/PrivacySettingsTab';
+import ProfileSettingsTab from './tabs/ProfileSettingsTab';
 
 export default function SettingsPage() {
   const navigate = useNavigate();
@@ -198,22 +157,6 @@ export default function SettingsPage() {
     }
   };
 
-  const renderToggle = (checked: boolean) => (
-    <div
-      className={cn(
-        'relative h-6 w-11 shrink-0 rounded-full transition-colors',
-        checked ? 'bg-primary' : 'border bg-muted'
-      )}
-    >
-      <div
-        className={cn(
-          'absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-background shadow-sm transition-transform',
-          checked ? 'translate-x-5' : 'translate-x-0'
-        )}
-      />
-    </div>
-  );
-
   const statusMessages = (
     <>
       {error ? (
@@ -234,280 +177,70 @@ export default function SettingsPage() {
     </>
   );
 
+  const handleTestSound = async () => {
+    const successState = await unlockAudioExplicit();
+    if (successState) {
+      setSuccess('Sound enabled successfully.');
+      window.setTimeout(() => setSuccess(null), 3000);
+      return;
+    }
+
+    setError('Failed to enable sound. Please try again.');
+    window.setTimeout(() => setError(null), 3000);
+  };
+
   const sectionContent = (
     <>
       {activeTab === 'profile' ? (
-        <>
-          <PanelSection title="Identity" description="Update your public identity details and avatar.">
-            <div className="flex flex-col items-center gap-6 sm:flex-row sm:items-start">
-              <div className="relative shrink-0">
-                <Avatar className="h-28 w-28 border-4 border-background shadow-sm">
-                  {profile?.avatar ? <AvatarImage src={profile.avatar.url} className="object-cover" /> : null}
-                  <AvatarFallback className="bg-muted text-3xl">
-                    {(profile?.display_name || profile?.username || profile?.email || '?')[0].toUpperCase()}
-                  </AvatarFallback>
-                </Avatar>
-                <div className="absolute inset-0 flex items-center justify-center gap-2 rounded-full bg-black/40 opacity-0 backdrop-blur-sm transition-opacity hover:opacity-100">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    className="h-9 w-9 rounded-full text-white hover:bg-white/20 hover:text-white"
-                    onClick={() => fileInputRef.current?.click()}
-                    disabled={isUploadingAvatar}
-                  >
-                    {isUploadingAvatar ? <Loader2 className="h-4 w-4 animate-spin" /> : <Camera className="h-4 w-4" />}
-                  </Button>
-                  {profile?.avatar ? (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      className="h-9 w-9 rounded-full text-red-300 hover:bg-white/20 hover:text-red-300"
-                      onClick={handleDeleteAvatar}
-                      disabled={isDeletingAvatar}
-                    >
-                      {isDeletingAvatar ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-                    </Button>
-                  ) : null}
-                </div>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  onChange={handleAvatarUpload}
-                />
-              </div>
-
-              <div className="space-y-1 pt-2 text-center sm:text-left">
-                <div className="text-xl font-semibold">{profile?.display_name || profile?.username || 'User'}</div>
-                <div className="text-sm text-muted-foreground">{profile?.email}</div>
-                <div className="max-w-sm pt-2 text-sm text-muted-foreground">
-                  Adjust your avatar, display name, username, and bio from the same profile panel.
-                </div>
-              </div>
-            </div>
-          </PanelSection>
-
-          <PanelSection title="Profile Fields" description="These values are used across chat, discovery, and invitations.">
-            <div className="max-w-xl space-y-5">
-              <div className="space-y-2">
-                <Label htmlFor="settings-username">Username</Label>
-                <Input
-                  id="settings-username"
-                  value={username}
-                  onChange={(event) => setUsername(event.target.value)}
-                  placeholder="Choose a unique username"
-                  className="max-w-md"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="settings-display-name">Display Name</Label>
-                <Input
-                  id="settings-display-name"
-                  value={displayName}
-                  onChange={(event) => setDisplayName(event.target.value)}
-                  placeholder="How others see you"
-                  className="max-w-md"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="settings-bio">Bio</Label>
-                <textarea
-                  id="settings-bio"
-                  value={bio}
-                  onChange={(event) => setBio(event.target.value)}
-                  placeholder="A little about yourself"
-                  className="flex min-h-[100px] w-full max-w-md resize-none rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                />
-              </div>
-            </div>
-          </PanelSection>
-        </>
+        <ProfileSettingsTab
+          profile={profile}
+          username={username}
+          setUsername={setUsername}
+          displayName={displayName}
+          setDisplayName={setDisplayName}
+          bio={bio}
+          setBio={setBio}
+          fileInputRef={fileInputRef}
+          handleAvatarUpload={handleAvatarUpload}
+          handleDeleteAvatar={handleDeleteAvatar}
+          isUploadingAvatar={isUploadingAvatar}
+          isDeletingAvatar={isDeletingAvatar}
+        />
       ) : null}
 
       {activeTab === 'appearance' ? (
-        <>
-          <PanelSection title="Theme Mode" description="Switch between light, dark, and system appearance.">
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-              <Button variant={mode === 'light' ? 'default' : 'outline'} className="h-12" onClick={() => setMode('light')}>
-                <Sun className="mr-2 h-4 w-4" />
-                Light
-              </Button>
-              <Button variant={mode === 'dark' ? 'default' : 'outline'} className="h-12" onClick={() => setMode('dark')}>
-                <Moon className="mr-2 h-4 w-4" />
-                Dark
-              </Button>
-              <Button variant={mode === 'system' ? 'default' : 'outline'} className="h-12" onClick={() => setMode('system')}>
-                <Monitor className="mr-2 h-4 w-4" />
-                System
-              </Button>
-            </div>
-          </PanelSection>
-
-          <PanelSection title="Color Theme" description="Choose the accent palette used across the interface.">
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <Button
-                variant={theme === 'default' ? 'default' : 'outline'}
-                className="h-12 justify-start"
-                onClick={() => setTheme('default')}
-              >
-                <div className="mr-3 h-4 w-4 rounded-full bg-zinc-900 dark:bg-zinc-100" />
-                Default
-              </Button>
-              <Button
-                variant={theme === 'slate' ? 'default' : 'outline'}
-                className="h-12 justify-start"
-                onClick={() => setTheme('slate')}
-              >
-                <div className="mr-3 h-4 w-4 rounded-full bg-slate-900 dark:bg-slate-100" />
-                Slate
-              </Button>
-            </div>
-          </PanelSection>
-
-          <PanelSection
-            title="Font Size"
-            description="Stored in this browser and applied immediately across chat, panels, menus, and overlays."
-          >
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-              {FONT_SIZE_OPTIONS.map((option) => {
-                const isActive = fontSize === option.value;
-
-                return (
-                  <Button
-                    key={option.value}
-                    type="button"
-                    variant={isActive ? 'default' : 'outline'}
-                    className="h-auto min-h-20 items-start justify-start gap-1 whitespace-normal px-4 py-3 text-left"
-                    onClick={() => setFontSize(option.value)}
-                  >
-                    <span className="text-sm font-semibold">{option.label}</span>
-                    <span className={cn('text-xs', isActive ? 'text-primary-foreground/80' : 'text-muted-foreground')}>
-                      {option.description}
-                    </span>
-                  </Button>
-                );
-              })}
-            </div>
-          </PanelSection>
-
-          <PanelSection
-            title="Layout Density"
-            description="Adjust spacing, paddings, gaps, bubble sizing, and panel rhythm for this browser."
-          >
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-              {DENSITY_OPTIONS.map((option) => {
-                const isActive = density === option.value;
-
-                return (
-                  <Button
-                    key={option.value}
-                    type="button"
-                    variant={isActive ? 'default' : 'outline'}
-                    className="h-auto min-h-20 items-start justify-start gap-1 whitespace-normal px-4 py-3 text-left"
-                    onClick={() => setDensity(option.value)}
-                  >
-                    <span className="text-sm font-semibold">{option.label}</span>
-                    <span className={cn('text-xs', isActive ? 'text-primary-foreground/80' : 'text-muted-foreground')}>
-                      {option.description}
-                    </span>
-                  </Button>
-                );
-              })}
-            </div>
-          </PanelSection>
-        </>
+        <AppearanceSettingsTab
+          mode={mode}
+          setMode={setMode}
+          theme={theme}
+          setTheme={setTheme}
+          fontSize={fontSize}
+          setFontSize={setFontSize}
+          density={density}
+          setDensity={setDensity}
+        />
       ) : null}
 
       {activeTab === 'notifications' ? (
-        <PanelSection title="Sound Notifications" description="Control audible notifications for new chat events.">
-          <div className="space-y-4">
-            <Button
-              type="button"
-              variant="outline"
-              className="h-12 w-full justify-start"
-              onClick={async () => {
-                const successState = await unlockAudioExplicit();
-                if (successState) {
-                  setSuccess('Sound enabled successfully.');
-                  window.setTimeout(() => setSuccess(null), 3000);
-                  return;
-                }
-
-                setError('Failed to enable sound. Please try again.');
-                window.setTimeout(() => setError(null), 3000);
-              }}
-            >
-              <Volume2 className="mr-3 h-4 w-4 text-muted-foreground" />
-              Test and enable sound notifications
-            </Button>
-
-            <label className="flex cursor-pointer items-center justify-between rounded-2xl border bg-background/80 p-4 shadow-sm transition-colors hover:bg-accent/40">
-              <div className="space-y-1 pr-4">
-                <div className="text-sm font-medium">Sound Notifications</div>
-                <div className="text-sm text-muted-foreground">Play a sound when a new message is received.</div>
-              </div>
-              {renderToggle(soundEnabled)}
-              <input
-                type="checkbox"
-                className="hidden"
-                checked={soundEnabled}
-                onChange={(event) => setSoundEnabled(event.target.checked)}
-              />
-            </label>
-          </div>
-        </PanelSection>
+        <NotificationsSettingsTab
+          soundEnabled={soundEnabled}
+          setSoundEnabled={setSoundEnabled}
+          onTestSound={handleTestSound}
+        />
       ) : null}
 
       {activeTab === 'privacy' ? (
-        <PanelSection title="Privacy Controls" description="Control who can find you and who can start a chat.">
-          <div className="space-y-4">
-            <label className="flex cursor-pointer items-center justify-between rounded-2xl border bg-background/80 p-4 shadow-sm transition-colors hover:bg-accent/40">
-              <div className="space-y-1 pr-4">
-                <div className="text-sm font-medium">Private Account</div>
-                <div className="text-sm text-muted-foreground">Only approved users can message you.</div>
-              </div>
-              {renderToggle(isPrivate)}
-              <input
-                type="checkbox"
-                className="hidden"
-                checked={isPrivate}
-                onChange={(event) => setIsPrivate(event.target.checked)}
-              />
-            </label>
-
-            <label className="flex cursor-pointer items-center justify-between rounded-2xl border bg-background/80 p-4 shadow-sm transition-colors hover:bg-accent/40">
-              <div className="space-y-1 pr-4">
-                <div className="text-sm font-medium">Discoverable</div>
-                <div className="text-sm text-muted-foreground">Allow others to find you by username.</div>
-              </div>
-              {renderToggle(discoveryEnabled)}
-              <input
-                type="checkbox"
-                className="hidden"
-                checked={discoveryEnabled}
-                onChange={(event) => setDiscoveryEnabled(event.target.checked)}
-              />
-            </label>
-          </div>
-        </PanelSection>
+        <PrivacySettingsTab
+          isPrivate={isPrivate}
+          setIsPrivate={setIsPrivate}
+          discoveryEnabled={discoveryEnabled}
+          setDiscoveryEnabled={setDiscoveryEnabled}
+        />
       ) : null}
 
-      {activeTab === 'passkeys' ? (
-        <PanelSection title="Passkeys" description="Manage hardware-backed and password-manager-backed sign-in methods.">
-          <PasskeysSettings />
-        </PanelSection>
-      ) : null}
+      {activeTab === 'passkeys' ? <PasskeysSettingsTab /> : null}
 
-      {activeTab === 'discovery' ? (
-        <PanelSection title="Discovery" description="Generate shareable discovery codes and invite links.">
-          <DiscoverySettings />
-        </PanelSection>
-      ) : null}
+      {activeTab === 'discovery' ? <DiscoverySettingsTab /> : null}
     </>
   );
 
