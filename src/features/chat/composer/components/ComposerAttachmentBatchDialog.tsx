@@ -11,7 +11,7 @@ import {
 import { Button } from '@/components/ui/Button';
 import { cn } from '@/lib/utils';
 import { AttachmentMode } from '@/utils/fileUtils';
-import { ComposerReplyTarget } from '../types/message';
+import { ComposerReplyTarget } from '../../types/message';
 import { PendingMediaItem } from '../hooks/useAttachmentComposerController';
 
 interface ComposerAttachmentBatchDialogProps {

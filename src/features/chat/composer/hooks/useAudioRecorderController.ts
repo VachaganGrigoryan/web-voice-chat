@@ -4,7 +4,7 @@ import { VoiceRecorder as CapacitorVoiceRecorder } from 'capacitor-voice-recorde
 import type { SendMediaInput } from '@/hooks/useChat';
 import { getSocket } from '@/socket/socket';
 import { EVENTS } from '@/socket/events';
-import { ComposerReplyTarget } from '../types/message';
+import { ComposerReplyTarget } from '../../types/message';
 
 interface UseAudioRecorderControllerParams {
   receiverId: string;

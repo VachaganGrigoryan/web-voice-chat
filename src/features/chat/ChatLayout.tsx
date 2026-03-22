@@ -6,7 +6,7 @@ import { usePings } from '@/hooks/usePings';
 import { APP_ROUTES } from '@/app/routes';
 import { useAuthStore } from '@/store/authStore';
 import { authApi } from '@/api/endpoints';
-import ChatComposer from './ChatComposer';
+import ChatComposer from './composer';
 import { useChatAudioPlayerStore } from './media/players/audioPlayerStore';
 import { MediaViewer } from './media/MediaViewer';
 import { MessageActionsDialog } from './components/MessageActionsDialog';
