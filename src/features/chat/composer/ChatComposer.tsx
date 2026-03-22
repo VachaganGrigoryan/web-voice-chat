@@ -129,7 +129,7 @@ export default function ChatComposer({
         className={cn(
           'absolute bottom-full z-50 mb-3 rounded-[28px] border border-border/70 bg-background/98 p-3 shadow-2xl backdrop-blur-xl',
           activePanel === 'emoji'
-            ? 'left-0 w-[min(100%,22rem)]'
+            ? 'left-0 flex h-[28rem] w-[min(100%,26rem)] flex-col overflow-hidden'
             : 'right-0 w-[min(100%,22rem)]'
         )}
       >
@@ -197,7 +197,12 @@ export default function ChatComposer({
         }}
       >
         {isMobileViewport ? (
-          <DialogContent className="z-[60] [&>button]:hidden fixed inset-x-0 bottom-0 top-auto max-h-[75dvh] w-full translate-x-0 translate-y-0 rounded-t-[28px] border-x-0 border-b-0 border-t border-border/70 bg-background/98 p-4 shadow-2xl">
+          <DialogContent
+            className={cn(
+              'z-[60] [&>button]:hidden fixed inset-x-0 bottom-0 top-auto flex w-full translate-x-0 translate-y-0 flex-col overflow-hidden rounded-t-[28px] border-x-0 border-b-0 border-t border-border/70 bg-background/98 p-4 shadow-2xl',
+              activePanel === 'emoji' ? 'h-[75dvh] max-h-[75dvh]' : 'max-h-[75dvh]'
+            )}
+          >
             <div className="mx-auto mb-3 h-1.5 w-12 rounded-full bg-border/80" />
             <DialogTitle className="text-sm font-semibold">
               {activePanel === 'emoji' ? 'Emoji Panel' : 'Attachments'}
@@ -207,7 +212,12 @@ export default function ChatComposer({
                 ? `Emoji is fully working now. GIF and sticker tabs for ${contextLabel} ship as structured placeholders.`
                 : `Choose how to attach media or files in ${contextLabel}.`}
             </DialogDescription>
-            <div className="min-h-0 overflow-y-auto pb-[env(safe-area-inset-bottom)]">
+            <div
+              className={cn(
+                'min-h-0 flex-1 pb-[env(safe-area-inset-bottom)]',
+                activePanel === 'emoji' ? 'overflow-hidden' : 'overflow-y-auto'
+              )}
+            >
               {activePanel === 'emoji' ? (
                 <ComposerEmojiPanel
                   isMobileViewport={isMobileViewport}

@@ -1,7 +1,7 @@
 import * as React from 'react';
-import { EmojiPicker } from 'frimousse';
-import { Search } from 'lucide-react';
+import Picker from '@emoji-mart/react';
 import { cn } from '@/lib/utils';
+import { useTheme, type ThemeMode } from '@/components/ThemeProvider';
 
 export interface AppEmojiPickerProps {
   onSelectEmoji: (emoji: string) => void;
@@ -12,133 +12,171 @@ export interface AppEmojiPickerProps {
   className?: string;
 }
 
-const pickerListComponents = {
-  CategoryHeader: ({
-    category,
-    className,
-    ...props
-  }: React.ComponentProps<'div'> & { category: { label: string } }) => (
-    <div
-      className={cn(
-        'bg-background/95 px-3 pb-1.5 pt-3 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground backdrop-blur-sm',
-        className
-      )}
-      {...props}
-    >
-      {category.label}
-    </div>
-  ),
-  Row: ({ className, ...props }: React.ComponentProps<'div'>) => (
-    <div className={cn('scroll-my-1.5 px-1.5', className)} {...props} />
-  ),
-  Emoji: ({
-    emoji,
-    className,
-    ...props
-  }: React.ComponentProps<'button'> & {
-    emoji: { emoji: string; isActive: boolean };
-  }) => (
-    <button
-      type="button"
-      className={cn(
-        'flex h-8 w-8 items-center justify-center rounded-xl text-[1.15rem] transition-colors hover:bg-accent/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 data-[active]:bg-accent',
-        className
-      )}
-      {...props}
-    >
-      {emoji.emoji}
-    </button>
-  ),
-};
+type EmojiMartData = import('@emoji-mart/data').EmojiMartData;
+
+let emojiDataPromise: Promise<EmojiMartData> | null = null;
+
+function loadEmojiMartData() {
+  if (!emojiDataPromise) {
+    emojiDataPromise = import('@emoji-mart/data').then((module) => {
+      const resolvedModule = (module as { default?: unknown }).default ?? module;
+      return resolvedModule as EmojiMartData;
+    });
+  }
+
+  return emojiDataPromise;
+}
+
+function resolveDocumentTheme(mode: ThemeMode): 'light' | 'dark' {
+  if (typeof document !== 'undefined') {
+    if (document.documentElement.classList.contains('dark')) {
+      return 'dark';
+    }
+
+    if (document.documentElement.classList.contains('light')) {
+      return 'light';
+    }
+  }
+
+  if (mode === 'dark' || mode === 'light') {
+    return mode;
+  }
+
+  if (typeof window !== 'undefined') {
+    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  }
+
+  return 'light';
+}
+
+function useResolvedPickerTheme() {
+  const { mode } = useTheme();
+  const [resolvedTheme, setResolvedTheme] = React.useState<'light' | 'dark'>(
+    () => resolveDocumentTheme(mode)
+  );
+
+  React.useEffect(() => {
+    setResolvedTheme(resolveDocumentTheme(mode));
+
+    if (mode !== 'system' || typeof window === 'undefined') {
+      return;
+    }
+
+    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+    const handleChange = () => {
+      setResolvedTheme(resolveDocumentTheme(mode));
+    };
+
+    if (typeof mediaQuery.addEventListener === 'function') {
+      mediaQuery.addEventListener('change', handleChange);
+      return () => mediaQuery.removeEventListener('change', handleChange);
+    }
+
+    mediaQuery.addListener(handleChange);
+    return () => mediaQuery.removeListener(handleChange);
+  }, [mode]);
+
+  return resolvedTheme;
+}
+
+function extractNativeEmoji(value: unknown) {
+  if (!value || typeof value !== 'object') {
+    return null;
+  }
+
+  const maybeEmoji = value as { native?: unknown };
+  return typeof maybeEmoji.native === 'string' ? maybeEmoji.native : null;
+}
 
 export function AppEmojiPicker({
   onSelectEmoji,
   height = 360,
-  showSearch = true,
-  showPreview = true,
+  showSearch = false,
+  showPreview = false,
   showSkinToneSelector = true,
   className,
 }: AppEmojiPickerProps) {
+  const pickerTheme = useResolvedPickerTheme();
+  const [emojiData, setEmojiData] = React.useState<EmojiMartData | null>(null);
+
   const style = React.useMemo<React.CSSProperties>(
     () => ({
+      width: '100%',
       height: typeof height === 'number' ? `${height}px` : height,
+      ['--padding' as string]: '8px',
+      ['--sidebar-width' as string]: '0px',
     }),
     [height]
   );
 
+  const searchPosition = showSearch ? 'sticky' : 'none';
+  const previewPosition = showPreview ? 'bottom' : 'none';
+  const skinTonePosition =
+    showSkinToneSelector && showPreview
+      ? 'preview'
+      : showSkinToneSelector && showSearch
+      ? 'search'
+      : 'none';
+
+  React.useEffect(() => {
+    let cancelled = false;
+
+    void loadEmojiMartData().then((data) => {
+      if (!cancelled) {
+        setEmojiData(data);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   return (
-    <EmojiPicker.Root
-      locale="en"
-      columns={8}
-      emojibaseUrl="/emojibase"
-      onEmojiSelect={({ emoji }) => onSelectEmoji(emoji)}
+    <div
       className={cn(
-        'flex w-full min-w-0 flex-col overflow-hidden rounded-[22px] border border-border/70 bg-background shadow-sm',
+        'flex h-full w-full min-w-0 flex-col overflow-hidden rounded-[22px] border border-border/70 bg-background shadow-sm [&>div]:flex [&>div]:h-full [&>div]:w-full [&>div]:min-h-0 [&>div]:min-w-0 [&>div]:flex-1 [&>div>em-emoji-picker]:block [&>div>em-emoji-picker]:h-full [&>div>em-emoji-picker]:w-full [&>div>em-emoji-picker]:min-h-full [&>div>em-emoji-picker]:min-w-full [&>div>em-emoji-picker]:max-h-full [&>div>em-emoji-picker]:max-w-full [&>div>em-emoji-picker]:flex-1',
         className
       )}
       style={style}
     >
-      {showSearch ? (
-        <div className="border-b border-border/60 p-2.5">
-          <div className="relative">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <EmojiPicker.Search
-              className="h-10 w-full rounded-xl border border-border/60 bg-muted/30 py-2 pl-9 pr-3 text-sm outline-none transition-colors placeholder:text-muted-foreground focus:border-primary/30 focus:bg-background"
-              placeholder="Search emoji"
-              aria-label="Search emoji"
-            />
-          </div>
-        </div>
-      ) : null}
-
-      <EmojiPicker.Viewport className="min-h-0 flex-1 overscroll-contain px-1.5 pb-1.5">
-        <EmojiPicker.Loading className="flex h-full min-h-32 items-center justify-center px-4 text-sm text-muted-foreground">
-          Loading emoji…
-        </EmojiPicker.Loading>
-        <EmojiPicker.Empty className="flex h-full min-h-32 items-center justify-center px-4 text-center text-sm text-muted-foreground">
-          {({ search }) =>
-            search ? `No emoji found for "${search}".` : 'No emoji found.'
-          }
-        </EmojiPicker.Empty>
-        <EmojiPicker.List
-          className="select-none"
-          components={pickerListComponents}
+      {emojiData ? (
+        <Picker
+          data={emojiData}
+          locale="en"
+          set="native"
+          theme={pickerTheme}
+          navPosition="top"
+          searchPosition={searchPosition}
+          previewPosition={previewPosition}
+          skinTonePosition={skinTonePosition}
+          dynamicWidth
+          emojiButtonSize={32}
+          emojiSize={20}
+          maxFrequentRows={0}
+          onEmojiSelect={(value: unknown) => {
+            const emoji = extractNativeEmoji(value);
+            if (emoji) {
+              onSelectEmoji(emoji);
+            }
+          }}
+          style={{
+            height: '100%',
+            width: '100%',
+            minHeight: '100%',
+            minWidth: '100%',
+            maxHeight: '100%',
+            maxWidth: '100%',
+            flex: '1 1 auto',
+            ['--padding' as string]: '8px',
+            ['--sidebar-width' as string]: '0px',
+          }}
         />
-      </EmojiPicker.Viewport>
-
-      {showPreview || showSkinToneSelector ? (
-        <div className="flex min-h-11 items-center justify-between gap-3 border-t border-border/60 bg-muted/20 px-3 py-2">
-          {showPreview ? (
-            <EmojiPicker.ActiveEmoji>
-              {({ emoji }) => (
-                <div className="min-w-0 flex-1">
-                  {emoji ? (
-                    <div className="flex items-center gap-2 text-sm">
-                      <span className="text-lg leading-none">{emoji.emoji}</span>
-                      <span className="truncate text-foreground/90">
-                        {emoji.label}
-                      </span>
-                    </div>
-                  ) : (
-                    <span className="text-sm text-muted-foreground">
-                      Hover or use arrow keys to preview.
-                    </span>
-                  )}
-                </div>
-              )}
-            </EmojiPicker.ActiveEmoji>
-          ) : (
-            <div className="flex-1" />
-          )}
-
-          {showSkinToneSelector ? (
-            <EmojiPicker.SkinToneSelector
-              className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border/60 bg-background text-base shadow-sm transition-colors hover:bg-accent"
-              aria-label="Change skin tone"
-            />
-          ) : null}
+      ) : (
+        <div className="flex h-full min-h-32 items-center justify-center px-4 text-sm text-muted-foreground">
+          Loading emoji…
         </div>
-      ) : null}
-    </EmojiPicker.Root>
+      )}
+    </div>
   );
 }
