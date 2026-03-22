@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { ChevronLeft, ChevronRight, Download, X } from 'lucide-react';
 import { downloadFile } from '@/utils/download';
+import { CustomVideoPlayer } from './components/VideoPlayer';
 
 export interface MediaViewerImageItem {
   id: string;
@@ -248,37 +249,39 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
           className="fixed inset-0 z-50 bg-black/95"
           onClick={onClose}
         >
-          <div className="absolute inset-x-0 top-0 z-10 flex items-center justify-between px-4 py-4 text-white">
-            <div className="text-sm font-medium">
-              {isImageViewer && imageItems.length > 0 ? `${currentIndex + 1} / ${imageItems.length}` : ''}
+          {isImageViewer ? (
+            <div className="absolute inset-x-0 top-0 z-10 flex items-center justify-between px-4 py-4 text-white">
+              <div className="text-sm font-medium">
+                {imageItems.length > 0 ? `${currentIndex + 1} / ${imageItems.length}` : ''}
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  className="flex h-11 w-11 items-center justify-center rounded-full bg-white/10 transition-colors hover:bg-white/20"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    void downloadFile(activeUrl, activeDownloadName);
+                  }}
+                  aria-label="Download media"
+                  title="Download"
+                >
+                  <Download className="h-5 w-5" />
+                </button>
+                <button
+                  type="button"
+                  className="flex h-11 w-11 items-center justify-center rounded-full bg-white/10 transition-colors hover:bg-white/20"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onClose();
+                  }}
+                  aria-label="Close viewer"
+                  title="Close"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
             </div>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                className="flex h-11 w-11 items-center justify-center rounded-full bg-white/10 transition-colors hover:bg-white/20"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  void downloadFile(activeUrl, activeDownloadName);
-                }}
-                aria-label="Download media"
-                title="Download"
-              >
-                <Download className="h-5 w-5" />
-              </button>
-              <button
-                type="button"
-                className="flex h-11 w-11 items-center justify-center rounded-full bg-white/10 transition-colors hover:bg-white/20"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  onClose();
-                }}
-                aria-label="Close viewer"
-                title="Close"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-          </div>
+          ) : null}
 
           {isImageViewer && canGoPrevious ? (
             <button
@@ -339,16 +342,22 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
                   draggable={false}
                 />
               ) : (
-                <motion.video
+                <motion.div
                   key={activeUrl}
                   initial={{ opacity: 0.5, scale: 0.98 }}
                   animate={{ opacity: 1, scale: 1 }}
                   exit={{ opacity: 0.5, scale: 0.98 }}
-                  src={activeUrl}
-                  controls
-                  autoPlay
-                  className="max-h-full max-w-full object-contain"
-                />
+                  className="h-full w-full"
+                >
+                  <CustomVideoPlayer
+                    src={activeUrl}
+                    autoPlay
+                    onClose={onClose}
+                    onDownload={() => {
+                      void downloadFile(activeUrl, activeDownloadName);
+                    }}
+                  />
+                </motion.div>
               )}
             </AnimatePresence>
           </div>

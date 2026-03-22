@@ -1,8 +1,8 @@
 import React from 'react';
-import { Video } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { MessageBubble, MessageContent } from '../components/MessageShell';
 import { MessageMarkdown } from '../components/MessageMarkdown';
+import { VideoThumbnail } from '../components/VideoPlayer';
 import { MediaClickPayload } from '../types/message';
 import { MediaCollageMessage } from '../utils/mediaGroupUtils';
 
@@ -62,53 +62,51 @@ export const MediaCollageGroupRenderer: React.FC<MediaCollageGroupRendererProps>
       <div className={cn('grid gap-1 overflow-hidden rounded-[1.1rem]', getGridClassName(visibleMessages.length))}>
         {visibleMessages.map((message, index) => {
           const showOverflow = hiddenCount > 0 && index === visibleMessages.length - 1;
+          const handleClick = () =>
+            onMediaClick?.({
+              type: message.kind,
+              messageId: message.id,
+              url: message.kind === 'image' ? message.imageUrl : message.videoUrl,
+              downloadName: message.fileName,
+            });
 
           return (
-            <button
+            <div
               key={message.id}
-              type="button"
               className={cn(
-                'group relative overflow-hidden rounded-[0.9rem] bg-black/10 text-left transition-transform focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
+                'group relative overflow-hidden rounded-[0.9rem] bg-black/10 text-left transition-transform',
                 getTileClassName(index, visibleMessages.length)
               )}
-              onClick={() =>
-                onMediaClick?.({
-                  type: message.kind,
-                  messageId: message.id,
-                  url: message.kind === 'image' ? message.imageUrl : message.videoUrl,
-                  downloadName: message.fileName,
-                })
-              }
             >
               {message.kind === 'image' ? (
-                <img
-                  src={message.imageUrl}
-                  alt={message.fileName || 'Message image'}
-                  className="h-full w-full object-cover"
-                  referrerPolicy="no-referrer"
-                />
-              ) : (
-                <>
-                  <video
-                    src={message.videoUrl}
+                <button
+                  type="button"
+                  className="h-full w-full"
+                  onClick={handleClick}
+                >
+                  <img
+                    src={message.imageUrl}
+                    alt={message.fileName || 'Message image'}
                     className="h-full w-full object-cover"
-                    muted
-                    playsInline
-                    preload="metadata"
+                    referrerPolicy="no-referrer"
                   />
-                  <div className="absolute inset-0 bg-black/10" />
-                  <div className="absolute left-3 top-3 rounded-full bg-black/55 p-2 text-white">
-                    <Video className="h-4 w-4" />
-                  </div>
-                </>
+                </button>
+              ) : (
+                <VideoThumbnail
+                  src={message.videoUrl}
+                  className="h-full w-full rounded-[0.9rem]"
+                  videoClassName="h-full w-full object-cover"
+                  label="Video"
+                  onClick={handleClick}
+                />
               )}
 
               {showOverflow ? (
-                <div className="absolute inset-0 flex items-center justify-center bg-black/45 text-2xl font-semibold text-white">
+                <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/45 text-2xl font-semibold text-white">
                   +{hiddenCount}
                 </div>
               ) : null}
-            </button>
+            </div>
           );
         })}
       </div>

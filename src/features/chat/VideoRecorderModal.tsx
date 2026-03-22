@@ -11,6 +11,7 @@ import {
 import { Button } from '@/components/ui/Button';
 import { cn } from '@/lib/utils';
 import { getSupportedVideoMime } from '@/utils/fileUtils';
+import { CustomVideoPlayer } from './components/VideoPlayer';
 import { ComposerReplyTarget } from './types/message';
 
 const HARD_MAX_VIDEO_SIZE_BYTES = 10 * 1024 * 1024;
@@ -761,12 +762,10 @@ export default function VideoRecorderModal({
                 </div>
               </div>
             ) : isReviewMode ? (
-              <video
-                src={recordedUrl || undefined}
-                className="h-full w-full object-contain bg-black"
-                controls
-                playsInline
-                preload="metadata"
+              <CustomVideoPlayer
+                src={recordedUrl || ''}
+                autoPlay={false}
+                className="h-full w-full bg-black"
               />
             ) : streamRef.current ? (
               <video
