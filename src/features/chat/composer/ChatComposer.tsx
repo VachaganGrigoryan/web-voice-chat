@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { FILE_ATTACH_ACCEPT, MEDIA_ATTACH_ACCEPT } from '@/utils/fileUtils';
 import {
   Dialog,
@@ -188,14 +188,6 @@ export default function ChatComposer({
     !audioRecorder.audioUrl &&
     !audioRecorder.isVideoRecorderOpen;
 
-  const emojiPickerWidth = useMemo(() => {
-    if (typeof window === 'undefined') {
-      return 320;
-    }
-
-    return isMobileViewport ? Math.max(280, window.innerWidth - 24) : 340;
-  }, [isMobileViewport]);
-
   const renderDesktopPanel = () => {
     if (!activePanel || isMobileViewport) {
       return null;
@@ -215,7 +207,6 @@ export default function ChatComposer({
           <ComposerEmojiPanel
             isMobileViewport={isMobileViewport}
             contextLabel={contextLabel}
-            emojiPickerWidth={emojiPickerWidth}
             onSelectEmoji={textInput.appendText}
           />
         ) : (
@@ -300,7 +291,6 @@ export default function ChatComposer({
                 <ComposerEmojiPanel
                   isMobileViewport={isMobileViewport}
                   contextLabel={contextLabel}
-                  emojiPickerWidth={emojiPickerWidth}
                   onSelectEmoji={textInput.appendText}
                 />
               ) : (

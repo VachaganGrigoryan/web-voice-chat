@@ -2,12 +2,12 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { VoiceRecorder as CapacitorVoiceRecorder } from 'capacitor-voice-recorder';
 import { Button } from '@/components/ui/Button';
+import { AppEmojiPicker } from '@/components/ui/emoji-picker';
 import { Loader2, Mic, Pause, Play, Send, Smile, Square, Trash2, Video, X } from 'lucide-react';
 import { getSocket } from '@/socket/socket';
 import { EVENTS } from '@/socket/events';
 import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
-import EmojiPicker, { Theme } from 'emoji-picker-react';
 import { ComposerReplyTarget } from '../../types/message';
 import VideoRecorderModal from './VideoRecorderModal';
 
@@ -348,8 +348,8 @@ export default function VoiceRecorder({
     }
   };
 
-  const onEmojiClick = (emojiObject: any) => {
-    setText((prev) => prev + emojiObject.emoji);
+  const handleEmojiSelect = (emoji: string) => {
+    setText((prev) => prev + emoji);
     
     if (!typingTimeoutRef.current) {
       const socket = getSocket();
@@ -462,8 +462,12 @@ export default function VoiceRecorder({
                   </Button>
                   
                   {showEmojiPicker && (
-                    <div className="absolute bottom-full left-0 mb-2 z-50">
-                      <EmojiPicker onEmojiClick={onEmojiClick} theme={Theme.AUTO} width={window.innerWidth < 768 ? window.innerWidth - 32 : 300} height={400} />
+                    <div className="absolute bottom-full left-0 z-50 mb-2 w-[min(calc(100vw-2rem),18.75rem)]">
+                      <AppEmojiPicker
+                        onSelectEmoji={handleEmojiSelect}
+                        height={400}
+                        className="w-full"
+                      />
                     </div>
                   )}
 

@@ -1,19 +1,17 @@
 import React from 'react';
-import EmojiPicker, { Theme } from 'emoji-picker-react';
+import { AppEmojiPicker } from '@/components/ui/emoji-picker';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/Tabs';
 import { ComposerPlaceholderPanel } from './ComposerPlaceholderPanel';
 
 interface ComposerEmojiPanelProps {
   isMobileViewport: boolean;
   contextLabel: string;
-  emojiPickerWidth: number;
   onSelectEmoji: (emoji: string) => void;
 }
 
 export function ComposerEmojiPanel({
   isMobileViewport,
   contextLabel,
-  emojiPickerWidth,
   onSelectEmoji,
 }: ComposerEmojiPanelProps) {
   return (
@@ -29,12 +27,11 @@ export function ComposerEmojiPanel({
           Stickers
         </TabsTrigger>
       </TabsList>
-      <TabsContent value="emoji" className="mt-3 overflow-hidden rounded-2xl">
-        <EmojiPicker
-          onEmojiClick={(emojiObject) => onSelectEmoji(emojiObject.emoji)}
-          theme={Theme.AUTO}
-          width={emojiPickerWidth}
+      <TabsContent value="emoji" className="mt-3">
+        <AppEmojiPicker
+          onSelectEmoji={onSelectEmoji}
           height={isMobileViewport ? 360 : 400}
+          className="w-full"
         />
       </TabsContent>
       <TabsContent value="gif" className="mt-3">
