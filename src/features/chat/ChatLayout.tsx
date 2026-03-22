@@ -636,6 +636,7 @@ export default function ChatLayout() {
     if (message.isDeleted) return 'Message deleted';
     if (message.kind === 'text' || message.kind === 'emoji') return message.text;
     if (message.kind === 'image' || message.kind === 'video') return message.caption || `${message.kind} message`;
+    if (message.kind === 'file') return message.caption || message.fileName || 'File';
     if (message.kind === 'audio') return 'Voice message';
     if (message.kind === 'sticker') return 'Sticker';
     if (message.kind === 'system') return message.text;
@@ -1041,7 +1042,11 @@ export default function ChatLayout() {
                        {typingUsers[conv.peer_user.id] ? (
                          <span className="text-primary font-medium animate-pulse">Typing...</span>
                        ) : (
-                         conv.last_message?.type === 'voice' ? '🎤 Voice message' : conv.last_message?.text || 'Click to chat'
+                         conv.last_message?.type === 'voice'
+                           ? '🎤 Voice message'
+                           : conv.last_message?.type === 'file'
+                             ? '📎 File'
+                             : conv.last_message?.text || 'Click to chat'
                        )}
                      </span>
                   </div>

@@ -31,6 +31,8 @@ const getReplyTypeLabel = (type: MessageType) => {
       return 'Video';
     case 'voice':
       return 'Voice message';
+    case 'file':
+      return 'File';
     case 'sticker':
       return 'Sticker';
     case 'emoji':

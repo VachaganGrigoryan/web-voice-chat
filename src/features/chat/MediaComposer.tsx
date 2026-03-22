@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { AlertCircle, ImagePlus, Loader2, Paperclip, Send, Video, X } from 'lucide-react';
+import { AlertCircle, FileText, ImagePlus, Loader2, Send, Video, X } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -10,18 +10,24 @@ import {
 } from '@/components/ui/Dialog';
 import { Button } from '@/components/ui/Button';
 import { cn } from '@/lib/utils';
-import { getMessageType, validateFile } from '@/utils/fileUtils';
+import {
+  AttachmentMode,
+  FILE_ATTACH_ACCEPT,
+  MEDIA_ATTACH_ACCEPT,
+  getAttachmentMessageType,
+  validateAttachmentFile,
+} from '@/utils/fileUtils';
 import { ComposerReplyTarget } from './types/message';
 
-type MediaUploadType = 'image' | 'video';
+type AttachmentUploadType = 'image' | 'video' | 'file';
 type PendingMediaStatus = 'pending' | 'uploading' | 'failed';
 const MAX_MEDIA_ITEMS = 10;
 
 interface PendingMediaItem {
   id: string;
   file: File;
-  type: MediaUploadType;
-  previewUrl: string;
+  type: AttachmentUploadType;
+  previewUrl?: string;
   progress: number;
   status: PendingMediaStatus;
   error?: string;
@@ -61,9 +67,11 @@ export default function MediaComposer({
   replyTarget,
   onClearReplyTarget,
 }: MediaComposerProps) {
+  const mediaInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const itemsRef = useRef<PendingMediaItem[]>([]);
   const [items, setItems] = useState<PendingMediaItem[]>([]);
+  const [attachMode, setAttachMode] = useState<AttachmentMode>('media');
   const [captionText, setCaptionText] = useState('');
   const [isBatchUploading, setIsBatchUploading] = useState(false);
   const [hasSentCaption, setHasSentCaption] = useState(false);
@@ -84,7 +92,9 @@ export default function MediaComposer({
     return () => {
       itemsRef.current.forEach((item) => {
         item.abortController?.abort();
-        URL.revokeObjectURL(item.previewUrl);
+        if (item.previewUrl) {
+          URL.revokeObjectURL(item.previewUrl);
+        }
       });
     };
   }, []);
@@ -96,8 +106,19 @@ export default function MediaComposer({
     }
   }, [items.length, isBatchUploading]);
 
-  const revokePreviewUrl = (previewUrl: string) => {
-    URL.revokeObjectURL(previewUrl);
+  const revokePreviewUrl = (previewUrl?: string) => {
+    if (previewUrl) {
+      URL.revokeObjectURL(previewUrl);
+    }
+  };
+
+  const openPickerForMode = (mode: AttachmentMode) => {
+    if (mode === 'media') {
+      mediaInputRef.current?.click();
+      return;
+    }
+
+    fileInputRef.current?.click();
   };
 
   const dismissModal = () => {
@@ -129,31 +150,38 @@ export default function MediaComposer({
     );
   };
 
-  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = (
+    event: React.ChangeEvent<HTMLInputElement>,
+    mode: AttachmentMode
+  ) => {
     const files = Array.from(event.target.files || []);
     if (!files.length) {
       return;
     }
 
-    const nextSelections: Array<{ file: File; type: MediaUploadType }> = [];
+    setAttachMode(mode);
+    const nextSelections: Array<{ file: File; type: AttachmentUploadType; previewUrl?: string }> = [];
     const errors: string[] = [];
 
     files.forEach((file) => {
-      const validationError = validateFile(file);
+      const validationError = validateAttachmentFile(file, mode);
       if (validationError) {
         errors.push(`${file.name}: ${validationError}`);
         return;
       }
 
-      const type = getMessageType(file);
-      if (type !== 'image' && type !== 'video') {
-        errors.push(`${file.name}: only images and videos can be attached here`);
+      const type = getAttachmentMessageType(file, mode);
+      if (!type) {
+        errors.push(
+          `${file.name}: ${mode === 'media' ? 'only images and videos can be attached here' : 'unsupported file type'}`
+        );
         return;
       }
 
       nextSelections.push({
         file,
         type,
+        previewUrl: type === 'image' || type === 'video' ? URL.createObjectURL(file) : undefined,
       });
     });
 
@@ -169,11 +197,11 @@ export default function MediaComposer({
       );
     }
 
-    const nextItems: PendingMediaItem[] = acceptedSelections.map(({ file, type }) => ({
+    const nextItems: PendingMediaItem[] = acceptedSelections.map(({ file, type, previewUrl }) => ({
         id: createItemId(),
         file,
         type,
-        previewUrl: URL.createObjectURL(file),
+        previewUrl,
         progress: 0,
         status: 'pending',
       }));
@@ -289,9 +317,20 @@ export default function MediaComposer({
   const canSend = items.some((item) => item.status === 'pending' || item.status === 'failed');
   const isModalOpen = items.length > 0;
   const canAddMore = items.length < MAX_MEDIA_ITEMS;
-  const sendButtonLabel = items.length === 1 ? 'Send media' : `Send ${items.length} items`;
+  const isFileBatch = items.every((item) => item.type === 'file');
+  const sendButtonLabel = isFileBatch
+    ? items.length === 1
+      ? 'Send file'
+      : `Send ${items.length} files`
+    : items.length === 1
+      ? 'Send media'
+      : `Send ${items.length} items`;
   const captionHelpText =
-    items.length <= 1
+    isFileBatch
+      ? items.length <= 1
+        ? 'This text will be sent with the file message.'
+        : 'This text will be attached only to the first file in the batch.'
+      : items.length <= 1
       ? 'This text will be sent as the caption for this media.'
       : hasSentCaption
       ? 'The batch caption is already attached to the first sent item.'
@@ -314,27 +353,72 @@ export default function MediaComposer({
   const batchContextLabel = replyTarget
     ? `Sending as ${replyTarget.mode === 'thread' ? 'thread reply' : 'reply'}`
     : 'Sending as one media batch';
+  const activeModeMetaLabel = attachMode === 'media' ? 'Media mode' : 'File mode';
+  const canSwitchModes = !isBatchUploading && items.length === 0;
+  const CurrentModeIcon = attachMode === 'media' ? ImagePlus : FileText;
+  const NextModeIcon = attachMode === 'media' ? FileText : ImagePlus;
+  const currentModeLabel = attachMode === 'media' ? 'Media' : 'File';
+  const nextModeLabel = attachMode === 'media' ? 'File' : 'Media';
 
   return (
     <>
-      <Button
-        variant="ghost"
-        size="icon"
-        className="relative h-10 w-10 rounded-full shrink-0 text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
-        onClick={() => fileInputRef.current?.click()}
-        disabled={isUploading || isBatchUploading}
-        title={replyTarget ? `Attach media as ${replyTarget.mode === 'thread' ? 'thread reply' : 'reply'}` : 'Attach media'}
-      >
-        {isBatchUploading ? <Loader2 className="h-5 w-5 animate-spin" /> : <Paperclip className="h-5 w-5" />}
-        {replyTarget ? <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-primary" /> : null}
-      </Button>
+      <div className="relative shrink-0">
+        <div className="relative">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="relative h-10 w-10 rounded-full border border-border/60 bg-background/90 text-muted-foreground shadow-sm transition-colors hover:bg-primary/10 hover:text-primary"
+            onClick={() => openPickerForMode(attachMode)}
+            disabled={isUploading || isBatchUploading}
+            title={
+              attachMode === 'media'
+                ? replyTarget
+                  ? `Attach media as ${replyTarget.mode === 'thread' ? 'thread reply' : 'reply'}`
+                  : 'Attach media'
+                : 'Attach file'
+            }
+          >
+            {isBatchUploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <CurrentModeIcon className="h-4.5 w-4.5" />}
+            {replyTarget ? <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-primary" /> : null}
+          </Button>
+          <button
+            type="button"
+            className={cn(
+              'absolute -bottom-1 -right-1 flex h-5.5 min-w-[1.4rem] items-center justify-center rounded-full border border-background bg-primary px-1 text-primary-foreground shadow-sm transition-transform',
+              canSwitchModes ? 'hover:scale-105 active:scale-95' : 'cursor-default opacity-70'
+            )}
+            onClick={() => {
+              if (canSwitchModes) {
+                setAttachMode((current) => (current === 'media' ? 'file' : 'media'));
+              }
+            }}
+            disabled={!canSwitchModes}
+            aria-label={`Switch attach mode to ${nextModeLabel}`}
+            title={`Switch to ${nextModeLabel}`}
+          >
+            <NextModeIcon className="h-3 w-3" />
+          </button>
+          <div className="pointer-events-none absolute -top-1 left-1/2 -translate-x-1/2 rounded-full bg-background/95 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-muted-foreground shadow-sm">
+            {currentModeLabel}
+          </div>
+        </div>
+      </div>
+
+      <input
+        type="file"
+        ref={mediaInputRef}
+        className="hidden"
+        onChange={(event) => handleFileChange(event, 'media')}
+        accept={MEDIA_ATTACH_ACCEPT}
+        multiple
+      />
 
       <input
         type="file"
         ref={fileInputRef}
         className="hidden"
-        onChange={handleFileChange}
-        accept="image/*,video/*"
+        onChange={(event) => handleFileChange(event, 'file')}
+        accept={FILE_ATTACH_ACCEPT}
         multiple
       />
 
@@ -398,6 +482,9 @@ export default function MediaComposer({
                   {batchMetaLabel}
                 </span>
                 <span className="rounded-full bg-muted/60 px-2.5 py-1">
+                  {activeModeMetaLabel}
+                </span>
+                <span className="rounded-full bg-muted/60 px-2.5 py-1">
                   {batchContextLabel}
                 </span>
                 {hasSentCaption ? (
@@ -423,10 +510,18 @@ export default function MediaComposer({
                 <div className="rounded-[18px] border border-border/60 bg-muted/20 p-2 sm:rounded-[22px] sm:p-3 md:p-4">
                   <div className="mb-3">
                     <div className="text-sm font-semibold text-foreground">
-                      {items.length === 1 ? 'Selected item' : `${items.length} selected items`}
+                      {isFileBatch
+                        ? items.length === 1
+                          ? 'Selected file'
+                          : `${items.length} selected files`
+                        : items.length === 1
+                          ? 'Selected item'
+                          : `${items.length} selected items`}
                     </div>
                     <div className="text-xs text-muted-foreground">
-                      The preview stays scrollable while the caption and send controls remain fixed.
+                      {isFileBatch
+                        ? 'Files stay in a compact document list while the caption and send controls remain fixed.'
+                        : 'The preview stays scrollable while the caption and send controls remain fixed.'}
                     </div>
                   </div>
 
@@ -436,42 +531,68 @@ export default function MediaComposer({
                         key={item.id}
                         className="overflow-hidden rounded-[18px] border border-border/60 bg-background/80"
                       >
-                        <div className={cn('relative overflow-hidden bg-muted', previewAspectClass)}>
-                          {item.type === 'image' ? (
+                        {item.type === 'file' ? (
+                          <div className="flex min-h-[6.5rem] items-center gap-3 bg-muted/35 px-3 py-3 sm:min-h-[7rem] sm:px-4">
+                            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-background text-muted-foreground shadow-sm">
+                              <FileText className="h-5 w-5" />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <div className="truncate text-sm font-medium text-foreground">{item.file.name}</div>
+                              <div className="mt-1 text-xs text-muted-foreground">
+                                {item.file.type || 'Unknown file type'}
+                              </div>
+                              <div className="mt-1 text-xs text-muted-foreground">
+                                {(item.file.size / 1024 / 1024).toFixed(item.file.size >= 1024 * 1024 ? 1 : 2)} MB
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              className="flex h-7 w-7 items-center justify-center rounded-full bg-black/55 text-white transition-colors hover:bg-black/70 sm:h-8 sm:w-8"
+                              onClick={() => removeItem(item.id)}
+                              aria-label={item.status === 'uploading' ? 'Cancel upload' : 'Remove selected file'}
+                              title={item.status === 'uploading' ? 'Cancel upload' : 'Remove'}
+                            >
+                              <X className="h-4 w-4" />
+                            </button>
+                          </div>
+                        ) : (
+                          <div className={cn('relative overflow-hidden bg-muted', previewAspectClass)}>
+                            {item.type === 'image' ? (
                             <img
                               src={item.previewUrl}
                               alt={item.file.name}
                               className="h-full w-full object-cover"
                             />
-                          ) : (
-                            <>
-                              <video
-                                src={item.previewUrl}
-                                className="h-full w-full object-cover"
-                                muted
-                                playsInline
-                                preload="metadata"
-                              />
-                              <div className="absolute inset-0 flex items-center justify-center bg-black/20">
-                                <div className="rounded-full bg-black/55 p-2 text-white">
-                                  <Video className="h-4 w-4" />
+                            ) : (
+                              <>
+                                <video
+                                  src={item.previewUrl}
+                                  className="h-full w-full object-cover"
+                                  muted
+                                  playsInline
+                                  preload="metadata"
+                                />
+                                <div className="absolute inset-0 flex items-center justify-center bg-black/20">
+                                  <div className="rounded-full bg-black/55 p-2 text-white">
+                                    <Video className="h-4 w-4" />
+                                  </div>
                                 </div>
-                              </div>
-                            </>
-                          )}
-                          <div className="absolute left-2 top-2 rounded-full bg-black/55 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-white">
-                            {item.type}
+                              </>
+                            )}
+                            <div className="absolute left-2 top-2 rounded-full bg-black/55 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-white">
+                              {item.type}
+                            </div>
+                            <button
+                              type="button"
+                              className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full bg-black/55 text-white transition-colors hover:bg-black/70 sm:h-8 sm:w-8"
+                              onClick={() => removeItem(item.id)}
+                              aria-label={item.status === 'uploading' ? 'Cancel upload' : 'Remove selected media'}
+                              title={item.status === 'uploading' ? 'Cancel upload' : 'Remove'}
+                            >
+                              <X className="h-4 w-4" />
+                            </button>
                           </div>
-                          <button
-                            type="button"
-                            className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full bg-black/55 text-white transition-colors hover:bg-black/70 sm:h-8 sm:w-8"
-                            onClick={() => removeItem(item.id)}
-                            aria-label={item.status === 'uploading' ? 'Cancel upload' : 'Remove selected media'}
-                            title={item.status === 'uploading' ? 'Cancel upload' : 'Remove'}
-                          >
-                            <X className="h-4 w-4" />
-                          </button>
-                        </div>
+                        )}
 
                         <div className="space-y-1.5 px-2.5 py-2 sm:px-3 sm:py-2.5">
                           <div className="truncate text-[11px] font-medium text-foreground sm:text-xs">{item.file.name}</div>

@@ -37,7 +37,7 @@ export interface MediaMeta {
   duration_ms?: number | null;
 }
 
-export type MessageType = 'voice' | 'text' | 'image' | 'emoji' | 'sticker' | 'video';
+export type MessageType = 'voice' | 'text' | 'image' | 'emoji' | 'sticker' | 'video' | 'file';
 export type ReplyMode = 'quote' | 'thread';
 
 export interface ReplyPreview {
