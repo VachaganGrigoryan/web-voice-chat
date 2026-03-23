@@ -164,8 +164,13 @@ export function ChatSidebar({
   onOpenConversationMenuAtPoint,
 }: ChatSidebarProps) {
   return (
-    <div className={cn('h-full w-full border-r bg-muted/10 md:w-80', selectedUser ? 'hidden md:flex' : 'flex')}>
-      <div className="flex h-full flex-1 flex-col">
+    <div
+      className={cn(
+        'h-full min-h-0 w-full border-r bg-muted/10 md:w-80',
+        selectedUser ? 'hidden md:flex' : 'flex'
+      )}
+    >
+      <div className="flex h-full min-h-0 flex-1 flex-col">
         <div className="flex h-16 shrink-0 items-center justify-between border-b p-4">
           <ProfileTriggerButton
             title={profile?.display_name || profile?.username || userEmail}
