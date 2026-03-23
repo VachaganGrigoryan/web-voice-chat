@@ -10,6 +10,7 @@ interface ComposerInputRowProps {
   hasText: boolean;
   text: string;
   textareaRef: React.RefObject<HTMLTextAreaElement | null>;
+  isPanelDocked?: boolean;
   recorderTrigger: ComposerRecorderTriggerProps;
   onTogglePanel: (panel: 'emoji' | 'attachments') => void;
   onTextChange: (value: string) => void;
@@ -24,6 +25,7 @@ export function ComposerInputRow({
   hasText,
   text,
   textareaRef,
+  isPanelDocked = false,
   recorderTrigger,
   onTogglePanel,
   onTextChange,
@@ -37,7 +39,14 @@ export function ComposerInputRow({
     recorderTrigger.nextMode === 'audio' ? Mic : Video;
 
   return (
-    <div className="flex items-end gap-2 rounded-[28px] border border-border/70 bg-background p-2 shadow-sm">
+    <div
+      className={cn(
+        'flex items-end gap-2 border border-border/70 bg-background p-2',
+        isPanelDocked
+          ? 'rounded-t-[28px] rounded-b-none border-b-0 shadow-none'
+          : 'rounded-[28px] shadow-sm'
+      )}
+    >
       <Button
         variant="ghost"
         size="icon"

@@ -118,6 +118,7 @@ export default function ChatComposer({
     textInput.isSendingText ||
     attachmentComposer.isBatchUploading;
   const isEmojiPanel = activePanel === 'emoji';
+  const isMobileEmojiPanelOpen = isMobileViewport && isEmojiPanel;
 
   const renderDesktopPanel = () => {
     if (!activePanel || isMobileViewport) {
@@ -148,6 +149,33 @@ export default function ChatComposer({
             isBusy={isBusy}
           />
         )}
+      </div>
+    );
+  };
+
+  const renderMobileEmojiPanel = () => {
+    if (!isMobileViewport) {
+      return null;
+    }
+
+    return (
+      <div
+        className={cn(
+          'overflow-hidden transition-[max-height,opacity] duration-200 ease-out',
+          isMobileEmojiPanelOpen
+            ? 'max-h-[min(40dvh,19rem)] opacity-100'
+            : 'pointer-events-none max-h-0 opacity-0'
+        )}
+      >
+        <div className="h-[min(40dvh,19rem)] overflow-hidden rounded-b-[28px] border border-border/70 border-t-0 bg-background/98">
+          <div className="flex h-full min-h-0 flex-col px-3 pb-[calc(0.5rem+env(safe-area-inset-bottom))] pt-2">
+            <ComposerEmojiPanel
+              isMobileViewport={isMobileViewport}
+              contextLabel={contextLabel}
+              onSelectEmoji={textInput.appendText}
+            />
+          </div>
+        </div>
       </div>
     );
   };
@@ -190,7 +218,7 @@ export default function ChatComposer({
       />
 
       <Dialog
-        open={isMobileViewport && !!activePanel}
+        open={isMobileViewport && activePanel === 'attachments'}
         onOpenChange={(open) => {
           if (!open) {
             closePanels();
@@ -207,51 +235,37 @@ export default function ChatComposer({
             )}
           >
             <div className={cn('mx-auto h-1.5 w-12 rounded-full bg-border/80', isEmojiPanel ? 'mb-2' : 'mb-3')} />
-            {isEmojiPanel ? (
-              <>
-                <DialogTitle className="sr-only">Emoji Panel</DialogTitle>
-                <DialogDescription className="sr-only">
-                  Choose emojis, GIFs, or stickers in the {contextLabel} composer.
-                </DialogDescription>
-              </>
-            ) : (
-              <>
-                <DialogTitle className="text-sm font-semibold">
-                  Attachments
-                </DialogTitle>
-                <DialogDescription className="mb-3 text-xs text-muted-foreground">
-                  {`Choose how to attach media or files in ${contextLabel}.`}
-                </DialogDescription>
-              </>
-            )}
+            <DialogTitle className="text-sm font-semibold">
+              Attachments
+            </DialogTitle>
+            <DialogDescription className="mb-3 text-xs text-muted-foreground">
+              {`Choose how to attach media or files in ${contextLabel}.`}
+            </DialogDescription>
             <div
               className={cn(
                 'min-h-0 flex-1',
-                isEmojiPanel
-                  ? 'overflow-hidden pb-[env(safe-area-inset-bottom)]'
-                  : 'overflow-y-auto pb-[env(safe-area-inset-bottom)]'
+                'overflow-y-auto pb-[env(safe-area-inset-bottom)]'
               )}
             >
-              {isEmojiPanel ? (
-                <ComposerEmojiPanel
-                  isMobileViewport={isMobileViewport}
-                  contextLabel={contextLabel}
-                  onSelectEmoji={textInput.appendText}
-                />
-              ) : (
-                <ComposerAttachmentPanel
-                  attachMode={attachmentComposer.attachMode}
-                  onAttachModeChange={attachmentComposer.setAttachMode}
-                  onPickAttachments={handlePickAttachments}
-                  isBusy={isBusy}
-                />
-              )}
+              <ComposerAttachmentPanel
+                attachMode={attachmentComposer.attachMode}
+                onAttachModeChange={attachmentComposer.setAttachMode}
+                onPickAttachments={handlePickAttachments}
+                isBusy={isBusy}
+              />
             </div>
           </DialogContent>
         ) : null}
       </Dialog>
 
-      <div className="w-full bg-background/90 pb-[calc(0.75rem+env(safe-area-inset-bottom))] pt-3 backdrop-blur-md">
+      <div
+        className={cn(
+          'w-full bg-background/90 pt-3 backdrop-blur-md',
+          isMobileEmojiPanelOpen
+            ? 'pb-0'
+            : 'pb-[calc(0.75rem+env(safe-area-inset-bottom))]'
+        )}
+      >
         <ComposerReplyBar
           replyTarget={replyTarget}
           onClear={onClearReplyTarget}
@@ -275,10 +289,16 @@ export default function ChatComposer({
                 hasText={textInput.hasText}
                 text={textInput.text}
                 textareaRef={textInput.textareaRef}
+                isPanelDocked={isMobileEmojiPanelOpen}
                 recorderTrigger={recorderTrigger}
                 onTogglePanel={handleTogglePanel}
                 onTextChange={textInput.handleTextChange}
-                onTextareaFocus={() => textInput.setIsFocused(true)}
+                onTextareaFocus={() => {
+                  if (isMobileEmojiPanelOpen) {
+                    closePanels();
+                  }
+                  textInput.setIsFocused(true);
+                }}
                 onTextareaBlur={() => {
                   window.setTimeout(() => textInput.setIsFocused(false), 120);
                 }}
@@ -288,6 +308,7 @@ export default function ChatComposer({
               />
             )}
           />
+          {renderMobileEmojiPanel()}
         </div>
       </div>
     </>
