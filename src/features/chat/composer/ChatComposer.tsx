@@ -27,7 +27,6 @@ export default function ChatComposer({
   );
   const desktopPanelRef = useRef<HTMLDivElement | null>(null);
   const composerShellRef = useRef<HTMLDivElement | null>(null);
-  const didAutoOpenMobileMediaRef = useRef(false);
 
   const textInput = useComposerTextInput({
     receiverId,
@@ -118,24 +117,6 @@ export default function ChatComposer({
   const isMobileAttachmentPanelOpen = isMobileViewport && isAttachmentsPanel;
   const isMobileDockedPanelOpen = isMobileEmojiPanelOpen || isMobileAttachmentPanelOpen;
 
-  useEffect(() => {
-    if (!isMobileAttachmentPanelOpen || attachmentComposer.attachMode !== 'media') {
-      didAutoOpenMobileMediaRef.current = false;
-      return;
-    }
-
-    if (didAutoOpenMobileMediaRef.current) {
-      return;
-    }
-
-    didAutoOpenMobileMediaRef.current = true;
-    const timeoutId = window.setTimeout(() => {
-      attachmentComposer.openPickerForMode('media');
-    }, 0);
-
-    return () => window.clearTimeout(timeoutId);
-  }, [attachmentComposer, isMobileAttachmentPanelOpen, attachmentComposer.attachMode]);
-
   const renderDesktopPanel = () => {
     if (!activePanel || isMobileViewport) {
       return null;
@@ -192,11 +173,6 @@ export default function ChatComposer({
               onAttachModeChange={attachmentComposer.setAttachMode}
               onPickAttachments={handlePickAttachments}
               isBusy={isBusy}
-              isAutoOpeningMedia={
-                isMobileAttachmentPanelOpen &&
-                attachmentComposer.attachMode === 'media' &&
-                !attachmentComposer.isBatchDialogOpen
-              }
             />
           </div>
         </div>

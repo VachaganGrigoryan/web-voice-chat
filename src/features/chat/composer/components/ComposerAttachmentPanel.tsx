@@ -1,5 +1,5 @@
 import React from 'react';
-import { FileText, ImagePlus, Loader2 } from 'lucide-react';
+import { FileText, ImagePlus } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/Tabs';
 import { cn } from '@/lib/utils';
@@ -10,7 +10,6 @@ interface ComposerAttachmentPanelProps {
   onAttachModeChange: (mode: 'media' | 'file') => void;
   onPickAttachments: (mode: 'media' | 'file') => void;
   isBusy: boolean;
-  isAutoOpeningMedia?: boolean;
 }
 
 export function ComposerAttachmentPanel({
@@ -19,43 +18,30 @@ export function ComposerAttachmentPanel({
   onAttachModeChange,
   onPickAttachments,
   isBusy,
-  isAutoOpeningMedia = false,
 }: ComposerAttachmentPanelProps) {
   const renderMobileMediaPanel = () => (
-    <button
-      type="button"
-      className="flex h-full min-h-0 w-full flex-col overflow-hidden rounded-2xl border border-border/60 bg-muted/20 text-left transition-colors hover:bg-muted/30"
-      onClick={() => onPickAttachments('media')}
-      disabled={isBusy}
-    >
-      <div className="grid flex-1 grid-cols-4 gap-1 p-1.5">
-        {Array.from({ length: 12 }, (_, index) => (
-          <div
-            key={index}
-            className={cn(
-              'aspect-square rounded-xl bg-muted/70',
-              index % 3 === 0 && 'bg-muted/55',
-              index % 5 === 0 && 'bg-muted/45'
-            )}
-          />
-        ))}
-      </div>
-      <div className="flex items-center gap-2 border-t border-border/50 px-3 py-2.5">
-        {isAutoOpeningMedia ? (
-          <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-        ) : (
-          <ImagePlus className="h-4 w-4 text-muted-foreground" />
-        )}
-        <div className="min-w-0">
-          <div className="text-sm font-medium text-foreground">
-            {isAutoOpeningMedia ? 'Opening gallery…' : 'Recent media'}
+    <div className="rounded-2xl border border-border/60 bg-muted/20 p-4">
+      <div className="flex items-start gap-3">
+        <div className="mt-0.5 rounded-2xl bg-primary/10 p-2 text-primary">
+          <ImagePlus className="h-5 w-5" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="text-sm font-semibold text-foreground">
+            Gallery / Media
           </div>
-          <div className="text-[11px] text-muted-foreground">
-            Tap anywhere to reopen your device gallery.
+          <div className="mt-1 text-xs text-muted-foreground">
+            Choose photos and videos using the current media picker flow.
           </div>
         </div>
       </div>
-    </button>
+      <Button
+        className="mt-4 w-full rounded-full"
+        onClick={() => onPickAttachments('media')}
+        disabled={isBusy}
+      >
+        Open media picker
+      </Button>
+    </div>
   );
 
   return (
