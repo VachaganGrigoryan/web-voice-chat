@@ -15,7 +15,24 @@ import {
   ReplyMode,
   ThreadSummary,
   ConversationReadUpdate,
+  CreateCallRequest,
+  AcceptCallRequest,
+  CallSession,
+  CallDoc,
 } from './types';
+
+const extractResponseData = <T>(payload: T | SuccessResponse<T>): T => {
+  if (
+    payload &&
+    typeof payload === 'object' &&
+    'data' in payload &&
+    'success' in payload
+  ) {
+    return payload.data;
+  }
+
+  return payload as T;
+};
 
 export const authApi = {
   register: (email: string) => apiClient.post('/auth/register', { email }),
@@ -142,6 +159,25 @@ export const pingsApi = {
   blockUser: (peer_user_id: string) => apiClient.post<PingResponse>('/pings/block', { peer_user_id }),
   unblockUser: (peer_user_id: string) => apiClient.post<PingResponse>('/pings/unblock', { peer_user_id }),
   getBlockedUsers: () => apiClient.get<PingResponse[]>('/pings/blocked'),
+};
+
+export const callsApi = {
+  create: (data: CreateCallRequest) =>
+    apiClient.post<SuccessResponse<CallSession>>('/calls', data),
+  getActive: async () => {
+    const response = await apiClient.get<SuccessResponse<CallSession | null> | CallSession | null>('/calls/active');
+    return extractResponseData(response.data);
+  },
+  accept: (callId: string, data: AcceptCallRequest) =>
+    apiClient.post<SuccessResponse<CallSession>>(`/calls/${callId}/accept`, data),
+  reject: async (callId: string) => {
+    const response = await apiClient.post<SuccessResponse<CallDoc> | CallDoc>(`/calls/${callId}/reject`);
+    return extractResponseData(response.data);
+  },
+  end: async (callId: string) => {
+    const response = await apiClient.post<SuccessResponse<CallDoc> | CallDoc>(`/calls/${callId}/end`);
+    return extractResponseData(response.data);
+  },
 };
 
 export const healthApi = {

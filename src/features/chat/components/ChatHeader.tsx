@@ -4,7 +4,9 @@ import {
   Bell,
   Clock,
   Loader2,
+  Phone,
   UserPlus,
+  Video,
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { ProfileTriggerButton } from './ProfileTriggerButton';
@@ -19,9 +21,13 @@ interface ChatHeaderProps {
   pingStatus: string;
   isSendingPing: boolean;
   canPing: boolean;
+  canCall: boolean;
+  isCallBusy: boolean;
   onCloseConversation: () => void;
   onOpenProfile: () => void;
   onSendPing: () => void;
+  onStartAudioCall: () => void;
+  onStartVideoCall: () => void;
 }
 
 export function ChatHeader({
@@ -34,9 +40,13 @@ export function ChatHeader({
   pingStatus,
   isSendingPing,
   canPing,
+  canCall,
+  isCallBusy,
   onCloseConversation,
   onOpenProfile,
   onSendPing,
+  onStartAudioCall,
+  onStartVideoCall,
 }: ChatHeaderProps) {
   return (
     <div className="h-16 border-b flex items-center px-4 justify-between bg-background/95 backdrop-blur z-10 shrink-0 shadow-sm">
@@ -71,7 +81,35 @@ export function ChatHeader({
       </div>
 
       <div className="flex items-center">
-        {!isPingAccepted ? (
+        {isPingAccepted ? (
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-10 w-10 rounded-full"
+              onClick={onStartAudioCall}
+              disabled={!canCall || isCallBusy}
+              title="Start audio call"
+              aria-label="Start audio call"
+            >
+              <Phone className="h-4 w-4" />
+            </Button>
+
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-10 w-10 rounded-full"
+              onClick={onStartVideoCall}
+              disabled={!canCall || isCallBusy}
+              title="Start video call"
+              aria-label="Start video call"
+            >
+              <Video className="h-4 w-4" />
+            </Button>
+          </div>
+        ) : (
           <Button
             onClick={onSendPing}
             disabled={
@@ -103,7 +141,7 @@ export function ChatHeader({
               </>
             )}
           </Button>
-        ) : null}
+        )}
       </div>
     </div>
   );
