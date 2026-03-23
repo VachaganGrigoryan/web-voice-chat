@@ -10,6 +10,7 @@ import {
   CallOfferPayload,
   CallPeerUserSummary,
   CallSession,
+  CallTerminalPayload,
   CallType,
   IceServer,
 } from '@/api/types';
@@ -24,6 +25,7 @@ export type CallPhase =
   | 'connecting'
   | 'active'
   | 'reconnecting'
+  | 'ended'
   | 'ending'
   | 'failed';
 
@@ -71,7 +73,10 @@ interface CallControllerState {
   hasEmittedConnected: boolean;
   localTerminalAction: LocalTerminalAction;
   disconnectTimeoutId: number | null;
-  endingFallbackTimeoutId: number | null;
+  terminalFallbackTimeoutId: number | null;
+  pendingTerminalActionId: number | null;
+  terminalDisplayTimeoutId: number | null;
+  endScreenMessage: string | null;
   error: string | null;
 }
 
@@ -105,12 +110,18 @@ const initialCallState: CallControllerState = {
   hasEmittedConnected: false,
   localTerminalAction: null,
   disconnectTimeoutId: null,
-  endingFallbackTimeoutId: null,
+  terminalFallbackTimeoutId: null,
+  pendingTerminalActionId: null,
+  terminalDisplayTimeoutId: null,
+  endScreenMessage: null,
   error: null,
 };
 
 const ICE_DISCONNECT_GRACE_MS = 3_000;
-const ENDING_FALLBACK_TIMEOUT_MS = 4_000;
+const TERMINAL_REST_FALLBACK_TIMEOUT_MS = 2_000;
+const END_SCREEN_DURATION_MS = 2_500;
+let nextTerminalActionId = 0;
+const backgroundRejectFallbackTimeouts = new Map<string, number>();
 
 export const useCallStore = create<CallControllerState>(() => initialCallState);
 
@@ -232,11 +243,27 @@ const clearDisconnectTimeout = () => {
   }
 };
 
-const clearEndingFallbackTimeout = () => {
-  const timeoutId = getCallState().endingFallbackTimeoutId;
+const clearTerminalFallbackTimeout = () => {
+  const timeoutId = getCallState().terminalFallbackTimeoutId;
   if (timeoutId !== null) {
     window.clearTimeout(timeoutId);
-    setCallState({ endingFallbackTimeoutId: null });
+    setCallState({ terminalFallbackTimeoutId: null });
+  }
+};
+
+const clearBackgroundRejectFallback = (callId: string) => {
+  const timeoutId = backgroundRejectFallbackTimeouts.get(callId);
+  if (timeoutId !== undefined) {
+    window.clearTimeout(timeoutId);
+    backgroundRejectFallbackTimeouts.delete(callId);
+  }
+};
+
+const clearTerminalDisplayTimeout = () => {
+  const timeoutId = getCallState().terminalDisplayTimeoutId;
+  if (timeoutId !== null) {
+    window.clearTimeout(timeoutId);
+    setCallState({ terminalDisplayTimeoutId: null });
   }
 };
 
@@ -278,14 +305,16 @@ const clearPeerConnectionState = (preserveLocalStream: boolean) => {
 
 const resetCallState = () => {
   clearDisconnectTimeout();
-  clearEndingFallbackTimeout();
+  clearTerminalFallbackTimeout();
+  clearTerminalDisplayTimeout();
   clearPeerConnectionState(false);
   useCallStore.setState(initialCallState);
 };
 
 const prepareRecoveryReset = () => {
   clearDisconnectTimeout();
-  clearEndingFallbackTimeout();
+  clearTerminalFallbackTimeout();
+  clearTerminalDisplayTimeout();
   clearPeerConnectionState(true);
   const state = getCallState();
   if (!state.call) {
@@ -302,6 +331,8 @@ const prepareRecoveryReset = () => {
     isAccepting: false,
     isEnding: false,
     localTerminalAction: null,
+    pendingTerminalActionId: null,
+    endScreenMessage: null,
   });
 };
 
@@ -364,26 +395,76 @@ const finalizeTerminalCall = (
   resetCallState();
 };
 
-const beginEndingCall = (action: Exclude<LocalTerminalAction, null>) => {
+const normalizeTerminalPayload = (payload: CallTerminalPayload) => {
+  if ('call' in payload) {
+    return {
+      call: payload.call,
+      peerUser: payload.peer_user,
+    };
+  }
+
+  return {
+    call: payload,
+    peerUser: null,
+  };
+};
+
+const showTerminalCallScreen = (
+  callDoc: CallDoc,
+  peerUserOverride: CallPeerUserSummary | null = null
+) => {
+  const state = getCallState();
+  if (!state.call || state.call.id !== callDoc.id) {
+    return;
+  }
+
+  clearDisconnectTimeout();
+  clearTerminalFallbackTimeout();
+  clearTerminalDisplayTimeout();
+  clearPeerConnectionState(false);
+
+  const peerUser = peerUserOverride ?? state.peerUser;
+  const endScreenMessage = getTerminalCallMessage(callDoc, peerUser) || 'The call ended.';
+  const timeoutId = window.setTimeout(() => {
+    const latestState = getCallState();
+    if (latestState.call?.id !== callDoc.id || latestState.phase !== 'ended') {
+      return;
+    }
+
+    resetCallState();
+  }, END_SCREEN_DURATION_MS);
+
+  setCallState({
+    phase: 'ended',
+    call: callDoc,
+    peerUser,
+    isStarting: false,
+    isAccepting: false,
+    isEnding: false,
+    isResuming: false,
+    resumeSource: null,
+    localTerminalAction: null,
+    terminalFallbackTimeoutId: null,
+    pendingTerminalActionId: null,
+    endScreenMessage,
+    terminalDisplayTimeoutId: timeoutId,
+    error: null,
+  });
+};
+
+const beginEndingCall = (
+  action: Exclude<LocalTerminalAction, null>
+): { call: CallDoc; actionId: number } | null => {
   const state = getCallState();
   if (!state.call || state.phase === 'idle' || state.phase === 'ending' || !!state.localTerminalAction) {
     return null;
   }
 
   clearDisconnectTimeout();
-  clearEndingFallbackTimeout();
+  clearTerminalFallbackTimeout();
 
   const callId = state.call.id;
-  const timeoutId = window.setTimeout(() => {
-    const latestState = getCallState();
-    if (latestState.call?.id !== callId || latestState.phase !== 'ending') {
-      return;
-    }
-
-    finalizeTerminalCall(null, {
-      fallbackMessage: action === 'reject' ? 'The call was rejected.' : 'The call ended.',
-    });
-  }, ENDING_FALLBACK_TIMEOUT_MS);
+  const actionId = ++nextTerminalActionId;
 
   setCallState({
     phase: 'ending',
@@ -393,11 +474,121 @@ const beginEndingCall = (action: Exclude<LocalTerminalAction, null>) => {
     isResuming: false,
     resumeSource: null,
     localTerminalAction: action,
-    endingFallbackTimeoutId: timeoutId,
+    terminalFallbackTimeoutId: null,
+    pendingTerminalActionId: actionId,
+    endScreenMessage: null,
     error: null,
   });
 
-  return state.call;
+  return {
+    call: state.call,
+    actionId,
+  };
+};
+
+const isPendingTerminalAction = (
+  callId: string,
+  action: Exclude<LocalTerminalAction, null>,
+  actionId: number
+) => {
+  const state = getCallState();
+  return (
+    state.call?.id === callId &&
+    state.localTerminalAction === action &&
+    state.pendingTerminalActionId === actionId
+  );
+};
+
+const runTerminalRestFallback = async (
+  callId: string,
+  action: Exclude<LocalTerminalAction, null>,
+  actionId: number
+) => {
+  clearTerminalFallbackTimeout();
+
+  if (!isPendingTerminalAction(callId, action, actionId)) {
+    return;
+  }
+
+  try {
+    const callDoc =
+      action === 'reject'
+        ? await callsApi.reject(callId)
+        : await callsApi.end(callId);
+
+    if (!isPendingTerminalAction(callId, action, actionId)) {
+      return;
+    }
+
+    finalizeTerminalCall(callDoc, { suppressToast: true });
+  } catch (error) {
+    if (!isPendingTerminalAction(callId, action, actionId)) {
+      return;
+    }
+
+    toast.error(
+      getErrorMessage(
+        error,
+        action === 'reject' ? 'Unable to reject the call.' : 'Unable to end the call.'
+      )
+    );
+    resetCallState();
+  }
+};
+
+const scheduleTerminalRestFallback = (
+  callId: string,
+  action: Exclude<LocalTerminalAction, null>,
+  actionId: number
+) => {
+  clearTerminalFallbackTimeout();
+
+  const timeoutId = window.setTimeout(() => {
+    void runTerminalRestFallback(callId, action, actionId);
+  }, TERMINAL_REST_FALLBACK_TIMEOUT_MS);
+
+  setCallState({ terminalFallbackTimeoutId: timeoutId });
+};
+
+const performSocketPrimaryTerminalAction = async (
+  action: Exclude<LocalTerminalAction, null>,
+  socketEvent: typeof EVENTS.CALL_REJECT | typeof EVENTS.CALL_HANGUP
+) => {
+  const started = beginEndingCall(action);
+  if (!started) {
+    return;
+  }
+
+  const {
+    call: currentCall,
+    actionId,
+  } = started;
+
+  if (!isSocketConnected()) {
+    await runTerminalRestFallback(currentCall.id, action, actionId);
+    return;
+  }
+
+  emitCallEvent(socketEvent, { call_id: currentCall.id } satisfies CallActionPayload);
+  scheduleTerminalRestFallback(currentCall.id, action, actionId);
+};
+
+const rejectCallWithSocketFallback = (callId: string) => {
+  clearBackgroundRejectFallback(callId);
+
+  if (!isSocketConnected()) {
+    void safeRejectCallRequest(callId);
+    return;
+  }
+
+  emitCallEvent(EVENTS.CALL_REJECT, { call_id: callId } satisfies CallActionPayload);
+
+  const timeoutId = window.setTimeout(() => {
+    backgroundRejectFallbackTimeouts.delete(callId);
+    void safeRejectCallRequest(callId);
+  }, TERMINAL_REST_FALLBACK_TIMEOUT_MS);
+
+  backgroundRejectFallbackTimeouts.set(callId, timeoutId);
 };
 
 const toRtcIceServers = (iceServers: IceServer[]): RTCIceServer[] =>
@@ -1047,19 +1238,7 @@ export const rejectIncomingCall = async () => {
     return;
   }
 
-  const currentCall = beginEndingCall('reject');
-  if (!currentCall) {
-    return;
-  }
-
-  emitCallEvent(EVENTS.CALL_REJECT, { call_id: call.id } satisfies CallActionPayload);
-
-  try {
-    const callDoc = await callsApi.reject(currentCall.id);
-    finalizeTerminalCall(callDoc, { suppressToast: true });
-  } catch (error) {
-    toast.error(getErrorMessage(error, 'Unable to reject the call.'));
-  }
+  await performSocketPrimaryTerminalAction('reject', EVENTS.CALL_REJECT);
 };
 
 export const endCurrentCall = async () => {
@@ -1068,19 +1247,7 @@ export const endCurrentCall = async () => {
     return;
   }
 
-  const currentCall = beginEndingCall('end');
-  if (!currentCall) {
-    return;
-  }
-
-  emitCallEvent(EVENTS.CALL_HANGUP, { call_id: call.id } satisfies CallActionPayload);
-
-  try {
-    const callDoc = await callsApi.end(currentCall.id);
-    finalizeTerminalCall(callDoc, { suppressToast: true });
-  } catch (error) {
-    toast.error(getErrorMessage(error, 'Unable to end the call.'));
-  }
+  await performSocketPrimaryTerminalAction('end', EVENTS.CALL_HANGUP);
 };
 
 export const toggleMicrophone = () => {
@@ -1140,7 +1307,8 @@ export const hydrateRecoverableCall = (session: CallSession) => {
     isResuming: sameCall ? state.isResuming : false,
     resumeSource: sameCall ? state.resumeSource : null,
     needsRecoveryOffer: role === 'caller' && isRecoverableCall(session.call),
-    localTerminalAction: sameCall && !isTerminalStatus(session.call.status) ? state.localTerminalAction : null,
+    localTerminalAction: null,
+    pendingTerminalActionId: null,
     error: sameCall ? state.error : null,
   });
 };
@@ -1206,8 +1374,7 @@ export const attemptCallRecovery = async (source: RecoverySource) => {
 export const handleIncomingSession = async (session: CallSession) => {
   const state = getCallState();
   if (state.phase !== 'idle' && state.call?.id !== session.call.id) {
-    emitCallEvent(EVENTS.CALL_REJECT, { call_id: session.call.id } satisfies CallActionPayload);
-    await safeRejectCallRequest(session.call.id);
+    rejectCallWithSocketFallback(session.call.id);
     toast.info('Missed an incoming call because another call is already in progress.');
     return;
   }
@@ -1228,6 +1395,10 @@ export const handleIncomingSession = async (session: CallSession) => {
 
 export const handleAcceptedSession = async (session: CallSession) => {
   const state = getCallState();
+  if (state.phase === 'ending' || !!state.localTerminalAction) {
+    return;
+  }
+
   const { call } = state;
   if (call && call.id !== session.call.id) {
     return;
@@ -1429,15 +1600,28 @@ const getTerminalCallMessage = (callDoc: CallDoc, peerUser: CallPeerUserSummary 
   }
 };
 
-export const handleTerminalCall = (callDoc: CallDoc) => {
+export const handleTerminalCall = (payload: CallTerminalPayload) => {
+  const { call: callDoc, peerUser: payloadPeerUser } = normalizeTerminalPayload(payload);
+  clearBackgroundRejectFallback(callDoc.id);
+
   const { call, peerUser, phase } = getCallState();
   if (call?.id !== callDoc.id) {
     return;
   }
 
+  clearTerminalFallbackTimeout();
+
+  if (phase !== 'ending' && isTerminalStatus(callDoc.status)) {
+    showTerminalCallScreen(callDoc, payloadPeerUser);
+    return;
+  }
+
   finalizeTerminalCall(callDoc, {
     suppressToast: phase === 'ending',
-    fallbackMessage: phase !== 'ending' ? getTerminalCallMessage(callDoc, peerUser) : null,
+    fallbackMessage:
+      phase !== 'ending'
+        ? getTerminalCallMessage(callDoc, payloadPeerUser ?? peerUser)
+        : null,
   });
 };
 

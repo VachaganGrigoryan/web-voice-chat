@@ -21,6 +21,7 @@ import type {
   CallOfferPayload,
   CallPeerUserSummary,
   CallSession,
+  CallTerminalPayload,
 } from '@/api/types';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/Avatar';
 import { Button } from '@/components/ui/Button';
@@ -386,6 +387,53 @@ function AudioCallOverlay() {
   );
 }
 
+function EndedOverlay() {
+  const call = useCallStore((state) => state.call);
+  const peerUser = useCallStore((state) => state.peerUser);
+  const endScreenMessage = useCallStore((state) => state.endScreenMessage);
+
+  const peerLabel = getPeerLabel(peerUser);
+  const avatarUrl = getAvatarUrl(peerUser);
+  const statusLabel =
+    call?.status === 'rejected'
+      ? 'Call declined'
+      : call?.status === 'expired'
+        ? 'Missed call'
+        : call?.status === 'cancelled'
+          ? 'Call cancelled'
+          : call?.type === 'video'
+            ? 'Video call ended'
+            : 'Audio call ended';
+
+  return (
+    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/80 p-4 backdrop-blur-md">
+      <div className="w-full max-w-md overflow-hidden rounded-[32px] border border-white/10 bg-slate-950/95 text-white shadow-2xl">
+        <div className="relative overflow-hidden px-8 pb-8 pt-10">
+          <div className="absolute inset-x-0 top-0 h-40 bg-[radial-gradient(circle_at_top,_rgba(248,113,113,0.22),_transparent_62%)]" />
+
+          <div className="relative flex flex-col items-center text-center">
+            <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-medium uppercase tracking-[0.22em] text-white/70">
+              <PhoneOff className="h-3.5 w-3.5" />
+              {statusLabel}
+            </div>
+
+            <Avatar className="h-24 w-24 border-2 border-white/15 shadow-lg">
+              {avatarUrl ? <AvatarImage src={avatarUrl} className="object-cover" /> : null}
+              <AvatarFallback className="bg-white/10 text-3xl text-white">
+                {peerLabel[0]?.toUpperCase() || '?'}
+              </AvatarFallback>
+            </Avatar>
+
+            <div className="mt-6 text-2xl font-semibold tracking-tight">{peerLabel}</div>
+            <div className="mt-2 text-sm text-white/70">{endScreenMessage || 'The call ended.'}</div>
+            <div className="mt-4 text-xs uppercase tracking-[0.2em] text-white/45">Closing…</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function VideoCallOverlay() {
   const phase = useCallStore((state) => state.phase);
   const peerUser = useCallStore((state) => state.peerUser);
@@ -595,7 +643,7 @@ export function CallRoot() {
 
     const handleIncoming = wrapAsync<CallSession>(handleIncomingSession, EVENTS.CALL_INCOMING);
     const handleAccepted = wrapAsync<CallSession>(handleAcceptedSession, EVENTS.CALL_ACCEPTED);
-    const handleRejected = wrapAsync<CallDoc>(handleTerminalCall, EVENTS.CALL_REJECTED);
+    const handleRejected = wrapAsync<CallTerminalPayload>(handleTerminalCall, EVENTS.CALL_REJECTED);
     const handleRecoveryAvailable = wrapAsync<CallSession>(async (payload) => {
       hydrateRecoverableCall(payload);
       await attemptCallRecovery('recovery-available');
@@ -606,7 +654,7 @@ export function CallRoot() {
     const handleConnected = wrapAsync<CallActionPayload>(handleConnectedSignal, EVENTS.CALL_CONNECTED);
     const handleReconnecting = wrapAsync<CallDoc>(handleReconnectingCall, EVENTS.CALL_RECONNECTING);
     const handleResumed = wrapAsync<CallSession>(handleResumedSession, EVENTS.CALL_RESUMED);
-    const handleEnded = wrapAsync<CallDoc>(handleTerminalCall, EVENTS.CALL_ENDED);
+    const handleEnded = wrapAsync<CallTerminalPayload>(handleTerminalCall, EVENTS.CALL_ENDED);
     const handleDisconnect = () => {
       handleSocketDisconnected();
     };
@@ -656,6 +704,10 @@ export function CallRoot() {
         onRetry={() => void refreshRecoverableCall('manual')}
       />
     );
+  }
+
+  if (phase === 'ended') {
+    return <EndedOverlay />;
   }
 
   if (isRinging) {

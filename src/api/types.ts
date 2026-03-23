@@ -224,6 +224,8 @@ export interface CallSession {
   ice_servers: IceServer[];
 }
 
+export type CallTerminalPayload = CallDoc | CallSession;
+
 export interface CallActionPayload {
   call_id: string;
 }
