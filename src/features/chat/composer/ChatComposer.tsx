@@ -1,11 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { FILE_ATTACH_ACCEPT, MEDIA_ATTACH_ACCEPT } from '@/utils/fileUtils';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogTitle,
-} from '@/components/ui/Dialog';
 import { cn } from '@/lib/utils';
 import { MOBILE_BREAKPOINT } from '../utils/chatLayoutUtils';
 import { useComposerTextInput } from './hooks/useComposerTextInput';
@@ -33,6 +27,7 @@ export default function ChatComposer({
   );
   const desktopPanelRef = useRef<HTMLDivElement | null>(null);
   const composerShellRef = useRef<HTMLDivElement | null>(null);
+  const didAutoOpenMobileMediaRef = useRef(false);
 
   const textInput = useComposerTextInput({
     receiverId,
@@ -118,7 +113,28 @@ export default function ChatComposer({
     textInput.isSendingText ||
     attachmentComposer.isBatchUploading;
   const isEmojiPanel = activePanel === 'emoji';
+  const isAttachmentsPanel = activePanel === 'attachments';
   const isMobileEmojiPanelOpen = isMobileViewport && isEmojiPanel;
+  const isMobileAttachmentPanelOpen = isMobileViewport && isAttachmentsPanel;
+  const isMobileDockedPanelOpen = isMobileEmojiPanelOpen || isMobileAttachmentPanelOpen;
+
+  useEffect(() => {
+    if (!isMobileAttachmentPanelOpen || attachmentComposer.attachMode !== 'media') {
+      didAutoOpenMobileMediaRef.current = false;
+      return;
+    }
+
+    if (didAutoOpenMobileMediaRef.current) {
+      return;
+    }
+
+    didAutoOpenMobileMediaRef.current = true;
+    const timeoutId = window.setTimeout(() => {
+      attachmentComposer.openPickerForMode('media');
+    }, 0);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [attachmentComposer, isMobileAttachmentPanelOpen, attachmentComposer.attachMode]);
 
   const renderDesktopPanel = () => {
     if (!activePanel || isMobileViewport) {
@@ -143,12 +159,47 @@ export default function ChatComposer({
           />
         ) : (
           <ComposerAttachmentPanel
+            isMobileViewport={isMobileViewport}
             attachMode={attachmentComposer.attachMode}
             onAttachModeChange={attachmentComposer.setAttachMode}
             onPickAttachments={handlePickAttachments}
             isBusy={isBusy}
           />
         )}
+      </div>
+    );
+  };
+
+  const renderMobileAttachmentPanel = () => {
+    if (!isMobileViewport) {
+      return null;
+    }
+
+    return (
+      <div
+        className={cn(
+          'overflow-hidden transition-[max-height,opacity] duration-200 ease-out',
+          isMobileAttachmentPanelOpen
+            ? 'max-h-[min(40dvh,19rem)] opacity-100'
+            : 'pointer-events-none max-h-0 opacity-0'
+        )}
+      >
+        <div className="h-[min(40dvh,19rem)] overflow-hidden rounded-b-[28px] border border-border/70 border-t-0 bg-background/98">
+          <div className="flex h-full min-h-0 flex-col px-3 pb-[calc(0.5rem+env(safe-area-inset-bottom))] pt-2">
+            <ComposerAttachmentPanel
+              isMobileViewport={isMobileViewport}
+              attachMode={attachmentComposer.attachMode}
+              onAttachModeChange={attachmentComposer.setAttachMode}
+              onPickAttachments={handlePickAttachments}
+              isBusy={isBusy}
+              isAutoOpeningMedia={
+                isMobileAttachmentPanelOpen &&
+                attachmentComposer.attachMode === 'media' &&
+                !attachmentComposer.isBatchDialogOpen
+              }
+            />
+          </div>
+        </div>
       </div>
     );
   };
@@ -217,51 +268,10 @@ export default function ChatComposer({
         canAddMore={attachmentComposer.canAddMore}
       />
 
-      <Dialog
-        open={isMobileViewport && activePanel === 'attachments'}
-        onOpenChange={(open) => {
-          if (!open) {
-            closePanels();
-          }
-        }}
-      >
-        {isMobileViewport ? (
-          <DialogContent
-            className={cn(
-              'z-[60] [&>button]:hidden fixed inset-x-0 bottom-0 top-auto flex w-full translate-x-0 translate-y-0 flex-col overflow-hidden rounded-t-[28px] border-x-0 border-b-0 border-t border-border/70 bg-background/98 shadow-2xl',
-              isEmojiPanel
-                ? 'h-[75dvh] max-h-[75dvh] gap-0 px-3 pb-0 pt-3'
-                : 'max-h-[75dvh] p-4'
-            )}
-          >
-            <div className={cn('mx-auto h-1.5 w-12 rounded-full bg-border/80', isEmojiPanel ? 'mb-2' : 'mb-3')} />
-            <DialogTitle className="text-sm font-semibold">
-              Attachments
-            </DialogTitle>
-            <DialogDescription className="mb-3 text-xs text-muted-foreground">
-              {`Choose how to attach media or files in ${contextLabel}.`}
-            </DialogDescription>
-            <div
-              className={cn(
-                'min-h-0 flex-1',
-                'overflow-y-auto pb-[env(safe-area-inset-bottom)]'
-              )}
-            >
-              <ComposerAttachmentPanel
-                attachMode={attachmentComposer.attachMode}
-                onAttachModeChange={attachmentComposer.setAttachMode}
-                onPickAttachments={handlePickAttachments}
-                isBusy={isBusy}
-              />
-            </div>
-          </DialogContent>
-        ) : null}
-      </Dialog>
-
       <div
         className={cn(
           'w-full bg-background/90 pt-3 backdrop-blur-md',
-          isMobileEmojiPanelOpen
+          isMobileDockedPanelOpen
             ? 'pb-0'
             : 'pb-[calc(0.75rem+env(safe-area-inset-bottom))]'
         )}
@@ -289,12 +299,12 @@ export default function ChatComposer({
                 hasText={textInput.hasText}
                 text={textInput.text}
                 textareaRef={textInput.textareaRef}
-                isPanelDocked={isMobileEmojiPanelOpen}
+                isPanelDocked={isMobileDockedPanelOpen}
                 recorderTrigger={recorderTrigger}
                 onTogglePanel={handleTogglePanel}
                 onTextChange={textInput.handleTextChange}
                 onTextareaFocus={() => {
-                  if (isMobileEmojiPanelOpen) {
+                  if (isMobileDockedPanelOpen) {
                     closePanels();
                   }
                   textInput.setIsFocused(true);
@@ -309,6 +319,7 @@ export default function ChatComposer({
             )}
           />
           {renderMobileEmojiPanel()}
+          {renderMobileAttachmentPanel()}
         </div>
       </div>
     </>
