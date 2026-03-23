@@ -1,13 +1,11 @@
 import { type MouseEvent as ReactMouseEvent } from 'react';
 import { Bell, LogOut, MoreVertical } from 'lucide-react';
 import { Conversation, User } from '@/api/types';
-import { APP_ROUTES } from '@/app/routes';
 import { Button } from '@/components/ui/Button';
 import { ScrollArea } from '@/components/ui/ScrollArea';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/Avatar';
 import { ProfileTriggerButton } from '@/features/chat/components/ProfileTriggerButton';
 import { UserSearch } from '@/features/discovery/UserSearch';
-import { ConversationMenuState } from '@/features/chat/components/ConversationActionsMenu';
 import { cn } from '@/lib/utils';
 import { formatMessageDay, formatMessageTime, isSameLocalDay } from '@/utils/dateUtils';
 
@@ -193,38 +191,47 @@ export function ChatSidebar({
           </div>
         </div>
 
-        <div className="flex min-h-0 flex-1 flex-col p-4">
-          <UserSearch onSelectUser={onSelectSearchUser} />
+        <div className="flex min-h-0 flex-1 flex-col">
+          <div className="shrink-0 px-4 pt-4">
+            <UserSearch onSelectUser={onSelectSearchUser} />
 
-          <div className="mb-2 shrink-0 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-            Chats
-          </div>
-
-          <ScrollArea className="-mx-4 min-h-0 flex-1 px-4">
-            <div className="space-y-2 pb-4">
-              {contacts.map((conversation) => (
-                <ConversationListItem
-                  key={conversation.conversation_id}
-                  conversation={conversation}
-                  isSelected={selectedUser === conversation.peer_user.id}
-                  isCurrentUserConversation={conversation.peer_user.id === currentUserId}
-                  isTyping={!!typingUsers[conversation.peer_user.id]}
-                  isMenuOpen={activeConversationMenuPeerUserId === conversation.peer_user.id}
-                  onSelect={() => onSelectConversation(conversation.peer_user.id)}
-                  onOpenMenu={(event) => onOpenConversationMenu(event, conversation.peer_user.id, conversation.unread_count ?? 0)}
-                  onOpenMenuAtPoint={(event) =>
-                    onOpenConversationMenuAtPoint(event, conversation.peer_user.id, conversation.unread_count ?? 0)
-                  }
-                />
-              ))}
-
-              {contacts.length === 0 ? (
-                <div className="m-1 rounded-lg border border-dashed bg-muted/30 p-4 text-center text-sm text-muted-foreground">
-                  No recent conversations
-                </div>
+            <div className="mb-2 flex items-center justify-between px-0.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              <span>Chats</span>
+              {contacts.length > 0 ? (
+                <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">
+                  {contacts.length}
+                </span>
               ) : null}
             </div>
-          </ScrollArea>
+          </div>
+
+          <div className="min-h-0 flex-1 overflow-hidden px-4 pb-4">
+            <ScrollArea className="h-full" viewportClassName="overscroll-contain">
+              <div className="space-y-2 pb-4 pr-1">
+                {contacts.map((conversation) => (
+                  <ConversationListItem
+                    key={conversation.conversation_id}
+                    conversation={conversation}
+                    isSelected={selectedUser === conversation.peer_user.id}
+                    isCurrentUserConversation={conversation.peer_user.id === currentUserId}
+                    isTyping={!!typingUsers[conversation.peer_user.id]}
+                    isMenuOpen={activeConversationMenuPeerUserId === conversation.peer_user.id}
+                    onSelect={() => onSelectConversation(conversation.peer_user.id)}
+                    onOpenMenu={(event) => onOpenConversationMenu(event, conversation.peer_user.id, conversation.unread_count ?? 0)}
+                    onOpenMenuAtPoint={(event) =>
+                      onOpenConversationMenuAtPoint(event, conversation.peer_user.id, conversation.unread_count ?? 0)
+                    }
+                  />
+                ))}
+
+                {contacts.length === 0 ? (
+                  <div className="m-1 rounded-lg border border-dashed bg-muted/30 p-4 text-center text-sm text-muted-foreground">
+                    No recent conversations
+                  </div>
+                ) : null}
+              </div>
+            </ScrollArea>
+          </div>
         </div>
       </div>
     </div>
