@@ -195,7 +195,7 @@ export function ChatSidebar({
             Chats
           </div>
 
-          <ScrollArea className="-mx-4 flex-1 px-4">
+          <ScrollArea className="-mx-4 min-h-0 flex-1 px-4">
             <div className="space-y-2 pb-4">
               {contacts.map((conversation) => (
                 <ConversationListItem
