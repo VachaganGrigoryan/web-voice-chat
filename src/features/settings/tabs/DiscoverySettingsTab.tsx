@@ -13,16 +13,16 @@ export default function DiscoverySettingsTab() {
   const [copiedLink, setCopiedLink] = useState(false);
 
   const regenerateCodeMutation = useMutation({
-    mutationFn: () => discoveryApi.regenerateCode().then((res) => res.data),
-    onSuccess: (data: any) => {
-      setCode(data.data.code);
+    mutationFn: () => discoveryApi.regenerateCode(),
+    onSuccess: (data) => {
+      setCode(data.code);
     },
   });
 
   const createLinkMutation = useMutation({
-    mutationFn: () => discoveryApi.createLink(604800, 10).then((res) => res.data),
-    onSuccess: (data: any) => {
-      const backendUrl = data.data.url;
+    mutationFn: () => discoveryApi.createLink(604800, 10),
+    onSuccess: (data) => {
+      const backendUrl = data.url;
       try {
         const urlObj = new URL(backendUrl);
         const token = urlObj.pathname.split('/').pop();
