@@ -165,6 +165,83 @@ export interface PingItem {
 
 export type PingResponse = PingItem;
 
+export type CallType = 'audio' | 'video';
+export type CallStatus =
+  | 'ringing'
+  | 'accepted'
+  | 'connecting'
+  | 'active'
+  | 'reconnecting'
+  | 'rejected'
+  | 'cancelled'
+  | 'expired'
+  | 'ended';
+
+export interface CallPeerUserSummary {
+  id: string;
+  username: string;
+  display_name: string | null;
+  avatar: Record<string, any> | null;
+  is_online: boolean;
+}
+
+export interface IceServer {
+  urls: string | string[];
+  username: string | null;
+  credential: string | null;
+}
+
+export interface CallDoc {
+  id: string;
+  caller_user_id: string;
+  callee_user_id: string;
+  participant_user_ids: [string, string] | string[];
+  type: CallType;
+  status: CallStatus;
+  room_id: string;
+  created_at: string;
+  updated_at: string;
+  answered_at: string | null;
+  ended_at: string | null;
+  expires_at: string | null;
+  reconnect_deadline_at: string | null;
+  disconnected_user_ids: string[];
+  is_live: boolean;
+}
+
+export interface CreateCallRequest {
+  callee_user_id: string;
+  type: CallType;
+}
+
+export interface AcceptCallRequest {
+  socket_id: string;
+}
+
+export interface CallSession {
+  call: CallDoc;
+  peer_user: CallPeerUserSummary;
+  ice_servers: IceServer[];
+}
+
+export type CallTerminalPayload = CallDoc | CallSession;
+
+export interface CallActionPayload {
+  call_id: string;
+}
+
+export interface CallOfferPayload extends CallActionPayload {
+  sdp: any;
+}
+
+export interface CallAnswerPayload extends CallActionPayload {
+  sdp: any;
+}
+
+export interface CallIceCandidatePayload extends CallActionPayload {
+  candidate: any;
+}
+
 export interface PaginatedResponse<T> {
   success: boolean;
   data: T[];

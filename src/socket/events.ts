@@ -13,6 +13,13 @@ export const EVENTS = {
   CONVERSATION_READ: 'conversation_read',
   CLIENT_TYPING_START: 'typing_start',
   CLIENT_TYPING_STOP: 'typing_stop',
+  CALL_OFFER: 'call.offer',
+  CALL_ANSWER: 'call.answer',
+  CALL_ICE_CANDIDATE: 'call.ice_candidate',
+  CALL_CONNECTED: 'call.connected',
+  CALL_HANGUP: 'call.hangup',
+  CALL_REJECT: 'call.reject',
+  CALL_RESUME: 'call.resume',
 
   // Server -> Client
   RECEIVE_MESSAGE: 'receive_message',
@@ -35,4 +42,11 @@ export const EVENTS = {
   PING_CANCELLED: 'ping_cancelled',
   USER_BLOCKED: 'user_blocked',
   CHAT_PERMISSION_UPDATED: 'chat_permission_updated',
+  CALL_INCOMING: 'call.incoming',
+  CALL_ACCEPTED: 'call.accepted',
+  CALL_REJECTED: 'call.rejected',
+  CALL_RECOVERY_AVAILABLE: 'call.recovery_available',
+  CALL_RECONNECTING: 'call.reconnecting',
+  CALL_RESUMED: 'call.resumed',
+  CALL_ENDED: 'call.ended',
 } as const;

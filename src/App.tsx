@@ -12,6 +12,7 @@ import PublicRoute from '@/components/PublicRoute';
 import { ThemeProvider } from '@/components/ThemeProvider';
 import { APP_ROUTES, getDefaultAuthedPath } from '@/app/routes';
 import { useAuthStore } from '@/store/authStore';
+import CallRoot from '@/features/calls/CallRoot';
 
 const queryClient = new QueryClient();
 
@@ -31,6 +32,7 @@ export default function App() {
     <ThemeProvider defaultMode="system" defaultTheme="default">
       <QueryClientProvider client={queryClient}>
         <HashRouter>
+          <CallRoot />
           <Routes>
             <Route element={<PublicRoute />}>
               <Route path={APP_ROUTES.login} element={<AuthPage />} />

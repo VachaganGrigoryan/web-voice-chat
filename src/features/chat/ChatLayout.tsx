@@ -30,6 +30,7 @@ import {
 } from './hooks/useChatInteractionState';
 import { useChatReadState } from './hooks/useChatReadState';
 import { useThreadPanelLayout } from './hooks/useThreadPanelLayout';
+import { startCall, useCallStore } from '@/features/calls/callController';
 
 export default function ChatLayout() {
   const { peerUserId, rootMessageId } = useParams<{
@@ -67,6 +68,7 @@ export default function ChatLayout() {
   const { userEmail, userId, logout, refreshToken } = useAuthStore();
   const { profile } = useProfile();
   const { socket } = useSocketStore();
+  const callPhase = useCallStore((state) => state.phase);
   const {
     incoming,
     outgoing,
@@ -96,6 +98,7 @@ export default function ChatLayout() {
     outgoing,
     selectedUser,
   });
+  const isCallBusy = callPhase !== 'idle';
 
   const {
     data: threadMessagesPages,
@@ -322,9 +325,53 @@ export default function ChatLayout() {
               pingStatus={pingStatus}
               isSendingPing={isSendingPing}
               canPing={!selectedUserSummary || selectedUserSummary.can_ping}
+              canCall={isPingAccepted && selectedUser !== userId}
+              isCallBusy={isCallBusy}
               onCloseConversation={closeActiveConversation}
               onOpenProfile={() => navigate(APP_ROUTES.profile(selectedUser))}
               onSendPing={() => sendPing(selectedUser)}
+              onStartAudioCall={() =>
+                void startCall({
+                  peerUserId: selectedUser,
+                  type: 'audio',
+                  peerUser: {
+                    id: selectedUser,
+                    username: selectedConversationUser?.username || selectedUserSummary?.username || '',
+                    display_name:
+                      selectedConversationUser?.display_name ||
+                      selectedUserSummary?.display_name ||
+                      displaySelectedUser ||
+                      null,
+                    avatar: selectedConversationUser?.avatar || selectedUserSummary?.avatar || null,
+                    is_online:
+                      onlineUsers?.includes(selectedUser) ||
+                      selectedConversationUser?.is_online ||
+                      selectedUserSummary?.is_online ||
+                      false,
+                  },
+                })
+              }
+              onStartVideoCall={() =>
+                void startCall({
+                  peerUserId: selectedUser,
+                  type: 'video',
+                  peerUser: {
+                    id: selectedUser,
+                    username: selectedConversationUser?.username || selectedUserSummary?.username || '',
+                    display_name:
+                      selectedConversationUser?.display_name ||
+                      selectedUserSummary?.display_name ||
+                      displaySelectedUser ||
+                      null,
+                    avatar: selectedConversationUser?.avatar || selectedUserSummary?.avatar || null,
+                    is_online:
+                      onlineUsers?.includes(selectedUser) ||
+                      selectedConversationUser?.is_online ||
+                      selectedUserSummary?.is_online ||
+                      false,
+                  },
+                })
+              }
             />
 
             {isPingAccepted ? (
