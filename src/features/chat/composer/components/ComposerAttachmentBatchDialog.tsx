@@ -14,6 +14,14 @@ import { AttachmentMode } from '@/utils/fileUtils';
 import { ComposerReplyTarget } from '../../types/message';
 import { PendingMediaItem } from '../hooks/useAttachmentComposerController';
 
+const formatFileSize = (bytes: number) => {
+  if (bytes >= 1024 * 1024) {
+    return `${(bytes / 1024 / 1024).toFixed(bytes >= 10 * 1024 * 1024 ? 0 : 1)} MB`;
+  }
+
+  return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+};
+
 interface ComposerAttachmentBatchDialogProps {
   open: boolean;
   items: PendingMediaItem[];
@@ -45,7 +53,7 @@ export function ComposerAttachmentBatchDialog({
   onAddMore,
   canAddMore,
 }: ComposerAttachmentBatchDialogProps) {
-  const isFileBatch = items.every((item) => item.type === 'file');
+  const isFileBatch = attachMode === 'file';
   const sendButtonLabel = isFileBatch
     ? items.length === 1
       ? 'Send file'
@@ -79,7 +87,7 @@ export function ComposerAttachmentBatchDialog({
   const batchMetaLabel = `${items.length}/10 selected`;
   const batchContextLabel = replyTarget
     ? `Sending as ${replyTarget.mode === 'thread' ? 'thread reply' : 'reply'}`
-    : 'Sending as one media batch';
+    : `Sending as one ${isFileBatch ? 'file' : 'media'} batch`;
   const activeModeMetaLabel = attachMode === 'media' ? 'Media mode' : 'File mode';
   const canSend = items.some((item) => item.status === 'pending' || item.status === 'failed');
 
@@ -104,10 +112,12 @@ export function ComposerAttachmentBatchDialog({
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <DialogTitle className="text-sm font-semibold sm:text-base">
-                  Send media
+                  {isFileBatch ? 'Send files' : 'Send media'}
                 </DialogTitle>
                 <DialogDescription className="mt-1 text-xs text-muted-foreground">
-                  Preview the batch, add a caption, then send it as one flow.
+                  {isFileBatch
+                    ? 'Review the selected files, add an optional message, then send.'
+                    : 'Preview the batch, add a caption, then send it as one flow.'}
                 </DialogDescription>
               </div>
               <div className="flex items-center gap-2">
@@ -179,83 +189,67 @@ export function ComposerAttachmentBatchDialog({
                       ? 'Selected item'
                       : `${items.length} selected items`}
                   </div>
-                  <div className="text-xs text-muted-foreground">
-                    {isFileBatch
-                      ? 'Files stay in a compact document list while the caption and send controls remain fixed.'
-                      : 'The preview stays scrollable while the caption and send controls remain fixed.'}
-                  </div>
+                <div className="text-xs text-muted-foreground">
+                  {isFileBatch
+                    ? 'Files stay in a compact list while the message and send controls remain fixed.'
+                    : 'The preview stays scrollable while the caption and send controls remain fixed.'}
                 </div>
+              </div>
 
-                <div className={cn('grid gap-2 sm:gap-2.5', previewGridClassName)}>
+                <div
+                  className={cn(
+                    isFileBatch ? 'space-y-2' : 'grid gap-2 sm:gap-2.5',
+                    !isFileBatch && previewGridClassName
+                  )}
+                >
                   {items.map((item) => (
                     <div
                       key={item.id}
                       className="overflow-hidden rounded-[18px] border border-border/60 bg-background/80"
                     >
-                      {item.type === 'file' ? (
-                        <div className="flex min-h-[6.5rem] items-center gap-3 bg-muted/35 px-3 py-3 sm:min-h-[7rem] sm:px-4">
-                          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-background text-muted-foreground shadow-sm">
-                            <FileText className="h-5 w-5" />
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <div className="truncate text-sm font-medium text-foreground">
-                              {item.file.name}
+                      <div
+                        className={cn(
+                          'relative overflow-hidden bg-muted',
+                          isFileBatch ? 'flex items-center gap-3 px-4 py-3' : previewAspectClass
+                        )}
+                      >
+                        {isFileBatch ? (
+                          <div className="flex min-w-0 flex-1 items-center gap-3 pr-8">
+                            <div className="rounded-2xl bg-primary/10 p-2 text-primary">
+                              <FileText className="h-5 w-5" />
                             </div>
-                            <div className="mt-1 text-xs text-muted-foreground">
-                              {item.file.type || 'Unknown file type'}
-                            </div>
-                            <div className="mt-1 text-xs text-muted-foreground">
-                              {(
-                                item.file.size /
-                                1024 /
-                                1024
-                              ).toFixed(item.file.size >= 1024 * 1024 ? 1 : 2)}{' '}
-                              MB
-                            </div>
-                          </div>
-                          <button
-                            type="button"
-                            className="flex h-7 w-7 items-center justify-center rounded-full bg-black/55 text-white transition-colors hover:bg-black/70 sm:h-8 sm:w-8"
-                            onClick={() => onRemoveItem(item.id)}
-                            aria-label={
-                              item.status === 'uploading'
-                                ? 'Cancel upload'
-                                : 'Remove selected file'
-                            }
-                            title={item.status === 'uploading' ? 'Cancel upload' : 'Remove'}
-                          >
-                            <X className="h-4 w-4" />
-                          </button>
-                        </div>
-                      ) : (
-                        <div
-                          className={cn(
-                            'relative overflow-hidden bg-muted',
-                            previewAspectClass
-                          )}
-                        >
-                          {item.type === 'image' ? (
-                            <img
-                              src={item.previewUrl}
-                              alt={item.file.name}
-                              className="h-full w-full object-cover"
-                            />
-                          ) : (
-                            <>
-                              <video
-                                src={item.previewUrl}
-                                className="h-full w-full object-cover"
-                                muted
-                                playsInline
-                                preload="metadata"
-                              />
-                              <div className="absolute inset-0 flex items-center justify-center bg-black/20">
-                                <div className="rounded-full bg-black/55 p-2 text-white">
-                                  <Video className="h-4 w-4" />
-                                </div>
+                            <div className="min-w-0">
+                              <div className="truncate text-sm font-medium text-foreground">
+                                {item.file.name}
                               </div>
-                            </>
-                          )}
+                              <div className="text-xs text-muted-foreground">
+                                {formatFileSize(item.file.size)}
+                                {item.file.type ? ` • ${item.file.type}` : ''}
+                              </div>
+                            </div>
+                          </div>
+                        ) : item.type === 'image' ? (
+                          <img
+                            src={item.previewUrl}
+                            alt={item.file.name}
+                            className="h-full w-full object-cover"
+                          />
+                        ) : (
+                          <>
+                            <video
+                              src={item.previewUrl}
+                              className="h-full w-full object-cover"
+                              muted
+                              playsInline
+                              preload="metadata"
+                            />
+                            <div className="absolute inset-0 flex items-center justify-center bg-black/20">
+                              <div className="rounded-full bg-black/55 p-2 text-white">
+                                <Video className="h-4 w-4" />
+                              </div>
+                            </div>
+                          </>
+                        )}
                           <div className="absolute left-2 top-2 rounded-full bg-black/55 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-white">
                             {item.type}
                           </div>
@@ -272,13 +266,14 @@ export function ComposerAttachmentBatchDialog({
                           >
                             <X className="h-4 w-4" />
                           </button>
-                        </div>
-                      )}
+                      </div>
 
                       <div className="space-y-1.5 px-2.5 py-2 sm:px-3 sm:py-2.5">
-                        <div className="truncate text-[11px] font-medium text-foreground sm:text-xs">
-                          {item.file.name}
-                        </div>
+                        {isFileBatch ? null : (
+                          <div className="truncate text-[11px] font-medium text-foreground sm:text-xs">
+                            {item.file.name}
+                          </div>
+                        )}
                         <div className="space-y-1">
                           <div className="h-1.5 overflow-hidden rounded-full bg-muted">
                             <div

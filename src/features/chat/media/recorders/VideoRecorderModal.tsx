@@ -38,7 +38,8 @@ interface VideoRecorderModalProps {
   onOpenChange: (open: boolean) => void;
   receiverId: string;
   onSendVideo: (data: {
-    type: 'voice' | 'image' | 'sticker' | 'video' | 'file';
+    type: 'media';
+    media_kind: 'video';
     receiver_id: string;
     file: File;
     text?: string;
@@ -658,7 +659,8 @@ export default function VideoRecorderModal({
       });
 
       await onSendVideo({
-        type: 'video',
+        type: 'media',
+        media_kind: 'video',
         receiver_id: receiverId,
         file,
         duration_ms: recordingDurationSec * 1000,

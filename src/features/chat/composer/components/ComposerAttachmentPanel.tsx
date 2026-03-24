@@ -126,7 +126,7 @@ export function ComposerAttachmentPanel({
             <div className="min-w-0 flex-1">
               <div className="text-sm font-semibold text-foreground">Files</div>
               <div className="mt-1 text-xs text-muted-foreground">
-                Attach documents, images, audio, and supported files using the existing validated upload flow.
+                Attach documents, archives, or other supported files up to 25MB.
               </div>
             </div>
           </div>

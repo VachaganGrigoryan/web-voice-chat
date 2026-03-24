@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { ArrowDown, Loader2, MessageSquare } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { GlobalAudioPlayerBar } from '../media/players/GlobalAudioPlayerBar';
@@ -70,6 +70,10 @@ export function MainChatPane({
   resizeHandle,
   threadPanel,
 }: MainChatPaneProps) {
+  const loadMoreSentinelRef = useRef<HTMLDivElement | null>(null);
+  const loadMoreObserverRef = useRef<IntersectionObserver | null>(null);
+  const isFetchingNextPageRef = useRef(isFetchingNextPage);
+
   const {
     scrollContainerRef,
     pendingNewMessageCount,
@@ -84,6 +88,50 @@ export function MainChatPane({
     newestEdge: 'start',
     onVisibleMessageIdsChange,
   });
+
+  useEffect(() => {
+    isFetchingNextPageRef.current = isFetchingNextPage;
+  }, [isFetchingNextPage]);
+
+  useEffect(() => {
+    const root = scrollContainerRef.current;
+    const sentinel = loadMoreSentinelRef.current;
+
+    loadMoreObserverRef.current?.disconnect();
+    loadMoreObserverRef.current = null;
+
+    if (!root || !sentinel || !hasNextPage) {
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const [entry] = entries;
+        if (!entry?.isIntersecting || isFetchingNextPageRef.current) {
+          return;
+        }
+
+        isFetchingNextPageRef.current = true;
+        void Promise.resolve(fetchNextPage()).finally(() => {
+          isFetchingNextPageRef.current = false;
+        });
+      },
+      {
+        root,
+        rootMargin: '120px 0px 0px 0px',
+      }
+    );
+
+    observer.observe(sentinel);
+    loadMoreObserverRef.current = observer;
+
+    return () => {
+      observer.disconnect();
+      if (loadMoreObserverRef.current === observer) {
+        loadMoreObserverRef.current = null;
+      }
+    };
+  }, [fetchNextPage, hasNextPage, scrollContainerRef]);
 
   return (
     <>
@@ -138,19 +186,7 @@ export function MainChatPane({
               </div>
             ) : null}
 
-            <div
-              className="h-1 w-full"
-              ref={(node) => {
-                if (node && hasNextPage && !isFetchingNextPage) {
-                  const observer = new IntersectionObserver((entries) => {
-                    if (entries[0].isIntersecting) {
-                      fetchNextPage();
-                    }
-                  });
-                  observer.observe(node);
-                }
-              }}
-            />
+            <div className="h-1 w-full" ref={loadMoreSentinelRef} />
 
             {mainChatMessages.length === 0 && !isFetchingNextPage ? (
               <div className="flex flex-col items-center justify-center py-12 text-center opacity-50">

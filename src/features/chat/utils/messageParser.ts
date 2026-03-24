@@ -5,10 +5,10 @@ import {
   FileMessage,
   ImageMessage,
   MessageStatus,
-  StickerMessage,
   TextMessage,
   VideoMessage,
 } from '../types/message';
+import { getPresentedMessageKind } from './messagePresentation';
 
 function createBaseMessage(doc: MessageDoc, currentUserId?: string | null) {
   return {
@@ -44,8 +44,9 @@ function createBaseMessage(doc: MessageDoc, currentUserId?: string | null) {
 
 export function parseMessage(doc: MessageDoc, currentUserId?: string | null): ChatMessage {
   const base = createBaseMessage(doc, currentUserId);
+  const presentedKind = getPresentedMessageKind(doc.type, doc.media?.kind);
 
-  switch (doc.type) {
+  switch (presentedKind) {
     case 'text':
       return {
         ...base,
@@ -70,7 +71,7 @@ export function parseMessage(doc: MessageDoc, currentUserId?: string | null): Ch
         fileName: doc.media?.key?.split('/').pop(),
         caption: doc.text || undefined,
       } satisfies VideoMessage;
-    case 'voice':
+    case 'audio':
       return {
         ...base,
         kind: 'audio',
@@ -89,24 +90,11 @@ export function parseMessage(doc: MessageDoc, currentUserId?: string | null): Ch
         mimeType: doc.media?.mime,
         caption: doc.text || undefined,
       } satisfies FileMessage;
-    case 'emoji':
-      return {
-        ...base,
-        kind: 'emoji',
-        text: doc.text || '',
-      };
-    case 'sticker':
-      return {
-        ...base,
-        kind: 'sticker',
-        stickerUrl: doc.media?.url || '',
-        media: doc.media || undefined,
-      } satisfies StickerMessage;
     default:
       return {
         ...base,
         kind: 'unknown',
-        originalType: doc.type,
+        originalType: doc.media?.kind ? `${doc.type}:${doc.media.kind}` : doc.type,
         text: doc.text || undefined,
         media: doc.media || undefined,
       };
