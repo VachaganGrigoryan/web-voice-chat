@@ -4,6 +4,7 @@ import { useEffect } from 'react';
 import { useSocketStore } from '@/socket/socket';
 import { EVENTS } from '@/socket/events';
 import { toast } from 'sonner';
+import { extractApiError } from '@/utils/apiError';
 
 export function usePings() {
   const queryClient = useQueryClient();
@@ -42,23 +43,16 @@ export function usePings() {
 
   const incomingQuery = useQuery({
     queryKey: ['pings', 'incoming'],
-    queryFn: () => pingsApi.getIncoming().then(res => res.data.data),
+    queryFn: () => pingsApi.getIncoming().then(res => res.data),
   });
 
   const outgoingQuery = useQuery({
     queryKey: ['pings', 'outgoing'],
-    queryFn: () => pingsApi.getOutgoing().then(res => res.data.data),
+    queryFn: () => pingsApi.getOutgoing().then(res => res.data),
   });
 
-  const getErrorMessage = (error: any, fallback: string) => {
-    const errorData = error.response?.data?.error;
-    if (typeof errorData === 'string') return errorData;
-    if (errorData?.message) return errorData.message;
-    return fallback;
-  };
-
   const sendPingMutation = useMutation({
-    mutationFn: (userId: string) => pingsApi.sendPing(userId).then(res => res.data.data),
+    mutationFn: (userId: string) => pingsApi.sendPing(userId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['pings', 'outgoing'] });
       toast.success('Ping sent successfully');
@@ -69,48 +63,48 @@ export function usePings() {
         toast.info('Ping already sent or relationship exists');
         return;
       }
-      toast.error(getErrorMessage(error, 'Failed to send ping'));
+      toast.error(extractApiError(error, 'Failed to send ping'));
     }
   });
 
   const acceptPingMutation = useMutation({
-    mutationFn: (pingId: string) => pingsApi.acceptPing(pingId).then(res => res.data.data),
+    mutationFn: (pingId: string) => pingsApi.acceptPing(pingId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['pings', 'incoming'] });
       queryClient.invalidateQueries({ queryKey: ['conversations'] });
       toast.success('Ping accepted');
     },
     onError: (error: any) => {
-      toast.error(getErrorMessage(error, 'Failed to accept ping'));
+      toast.error(extractApiError(error, 'Failed to accept ping'));
     }
   });
 
   const declinePingMutation = useMutation({
-    mutationFn: (pingId: string) => pingsApi.declinePing(pingId).then(res => res.data.data),
+    mutationFn: (pingId: string) => pingsApi.declinePing(pingId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['pings', 'incoming'] });
       queryClient.invalidateQueries({ queryKey: ['pings', 'outgoing'] });
       toast.success('Ping declined');
     },
     onError: (error: any) => {
-      toast.error(getErrorMessage(error, 'Failed to decline ping'));
+      toast.error(extractApiError(error, 'Failed to decline ping'));
     }
   });
 
   const cancelPingMutation = useMutation({
-    mutationFn: (pingId: string) => pingsApi.cancelPing(pingId).then(res => res.data),
+    mutationFn: (pingId: string) => pingsApi.cancelPing(pingId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['pings', 'incoming'] });
       queryClient.invalidateQueries({ queryKey: ['pings', 'outgoing'] });
       toast.success('Ping cancelled');
     },
     onError: (error: any) => {
-      toast.error(getErrorMessage(error, 'Failed to cancel ping'));
+      toast.error(extractApiError(error, 'Failed to cancel ping'));
     }
   });
 
   const blockUserMutation = useMutation({
-    mutationFn: (peerUserId: string) => pingsApi.blockUser(peerUserId).then(res => res.data),
+    mutationFn: (peerUserId: string) => pingsApi.blockUser(peerUserId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['pings', 'incoming'] });
       queryClient.invalidateQueries({ queryKey: ['pings', 'outgoing'] });
@@ -118,7 +112,7 @@ export function usePings() {
       toast.success('User blocked');
     },
     onError: (error: any) => {
-      toast.error(getErrorMessage(error, 'Failed to block user'));
+      toast.error(extractApiError(error, 'Failed to block user'));
     }
   });
 

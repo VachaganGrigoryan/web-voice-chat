@@ -114,7 +114,7 @@ export default function AuthPage() {
       const verifyRes = await authApi.passkeys.loginFinish({ email: data.email, credential });
       
       // 4. Handle success (extract tokens directly from response based on spec)
-      const { access_token, refresh_token } = (verifyRes.data.data || verifyRes.data) as any;
+      const { access_token, refresh_token } = verifyRes;
       setTokens(access_token, refresh_token);
       navigate(redirectUrl);
     } catch (err: any) {
@@ -134,7 +134,7 @@ export default function AuthPage() {
     setError(null);
     try {
       const response = await authApi.verify(email, code);
-      const { access_token, refresh_token } = response.data.data;
+      const { access_token, refresh_token } = response;
       setTokens(access_token, refresh_token);
       navigate(redirectUrl);
     } catch (err: any) {

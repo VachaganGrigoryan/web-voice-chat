@@ -296,10 +296,8 @@ const emitOutgoingMessage = (message: MessageDoc, type: string, selectedUser: st
 export const useConversations = () => {
   return useInfiniteQuery({
     queryKey: ['conversations'],
-    queryFn: async ({ pageParam }) => {
-      const response = await conversationsApi.getConversations(20, pageParam as string | undefined);
-      return response.data;
-    },
+    queryFn: ({ pageParam }) =>
+      conversationsApi.getConversations(20, pageParam as string | undefined),
     getNextPageParam: (lastPage) => lastPage.meta?.next_cursor,
     initialPageParam: undefined,
   });
@@ -308,13 +306,11 @@ export const useConversations = () => {
 export const useThreadMessages = (threadRootId: string | null) => {
   return useInfiniteQuery({
     queryKey: ['threadMessages', threadRootId],
-    queryFn: async ({ pageParam }) => {
+    queryFn: ({ pageParam }) => {
       if (!threadRootId) {
-        return { data: [], meta: { next_cursor: null, limit: 20, total: 0 }, success: true };
+        return Promise.resolve({ data: [], meta: { next_cursor: null, limit: 20, total: 0 }, success: true });
       }
-
-      const response = await messagesApi.getThreadMessages(threadRootId, 20, pageParam as string | undefined);
-      return response.data;
+      return messagesApi.getThreadMessages(threadRootId, 20, pageParam as string | undefined);
     },
     getNextPageParam: (lastPage) => lastPage.meta?.next_cursor,
     enabled: !!threadRootId,
@@ -335,9 +331,9 @@ export const useChat = (selectedUser: string | null = null, openThreadRootId: st
   useQuery({
     queryKey: ['onlineUsers'],
     queryFn: async () => {
-      const response = await realtimeApi.getOnlineUsers();
-      setOnlineUsers(response.data.data);
-      return response.data.data;
+      const onlineUserIds = await realtimeApi.getOnlineUsers();
+      setOnlineUsers(onlineUserIds);
+      return onlineUserIds;
     },
     // We rely on socket events for updates, but this fetches initial state
     staleTime: Infinity, 
@@ -350,10 +346,9 @@ export const useChat = (selectedUser: string | null = null, openThreadRootId: st
     isFetchingNextPage,
   } = useInfiniteQuery({
     queryKey: ['messages', selectedUser],
-    queryFn: async ({ pageParam }) => {
-      if (!selectedUser) return { data: [], meta: { next_cursor: null, limit: 20, total: 0 }, success: true };
-      const response = await messagesApi.getHistory(selectedUser, 20, pageParam as string | undefined);
-      return response.data;
+    queryFn: ({ pageParam }) => {
+      if (!selectedUser) return Promise.resolve({ data: [], meta: { next_cursor: null, limit: 20, total: 0 }, success: true });
+      return messagesApi.getHistory(selectedUser, 20, pageParam as string | undefined);
     },
     getNextPageParam: (lastPage) => lastPage.meta?.next_cursor,
     enabled: !!selectedUser,
@@ -361,21 +356,16 @@ export const useChat = (selectedUser: string | null = null, openThreadRootId: st
   });
 
   const sendMessageMutation = useMutation({
-    mutationFn: async (data: SendMediaInput) => {
-      const response = await messagesApi.uploadMedia({
+    mutationFn: (data: SendMediaInput) =>
+      messagesApi.uploadMedia({
         ...data,
         onUploadProgress: data.onUploadProgress
           ? (event) => {
-              if (!event.total) {
-                return;
-              }
-
+              if (!event.total) return;
               data.onUploadProgress?.(Math.round((event.loaded / event.total) * 100));
             }
           : undefined,
-      });
-      return response.data.data;
-    },
+      }),
     onSuccess: (newMessage, variables) => {
       if (selectedUser) {
         const messageWithClientBatchId = variables.client_batch_id
@@ -392,10 +382,7 @@ export const useChat = (selectedUser: string | null = null, openThreadRootId: st
   });
 
   const sendTextMutation = useMutation({
-    mutationFn: async (data: SendTextInput) => {
-      const response = await messagesApi.sendText(data);
-      return response.data.data;
-    },
+    mutationFn: (data: SendTextInput) => messagesApi.sendText(data),
     onSuccess: (newMessage) => {
       if (selectedUser) {
         emitOutgoingMessage(newMessage, 'text', selectedUser);
@@ -405,10 +392,8 @@ export const useChat = (selectedUser: string | null = null, openThreadRootId: st
   });
 
   const editMessageMutation = useMutation({
-    mutationFn: async ({ messageId, text }: { messageId: string; text: string }) => {
-      const response = await messagesApi.editMessage(messageId, text);
-      return response.data;
-    },
+    mutationFn: ({ messageId, text }: { messageId: string; text: string }) =>
+      messagesApi.editMessage(messageId, text),
     onSuccess: (updatedMessage) => {
       updateMessageAcrossCacheGroup(queryClient, 'messages', updatedMessage.id, () => updatedMessage);
       updateMessageAcrossCacheGroup(queryClient, 'threadMessages', updatedMessage.id, () => updatedMessage);
@@ -417,10 +402,7 @@ export const useChat = (selectedUser: string | null = null, openThreadRootId: st
   });
 
   const deleteMessageMutation = useMutation({
-    mutationFn: async (messageId: string) => {
-      const response = await messagesApi.deleteMessage(messageId);
-      return response.data;
-    },
+    mutationFn: (messageId: string) => messagesApi.deleteMessage(messageId),
     onSuccess: (updatedMessage) => {
       applyMessageDeletedEventToCaches(
         queryClient,
@@ -439,10 +421,8 @@ export const useChat = (selectedUser: string | null = null, openThreadRootId: st
   });
 
   const toggleReactionMutation = useMutation({
-    mutationFn: async ({ messageId, emoji }: { messageId: string; emoji: string }) => {
-      const response = await messagesApi.toggleReaction(messageId, emoji);
-      return response.data.data;
-    },
+    mutationFn: ({ messageId, emoji }: { messageId: string; emoji: string }) =>
+      messagesApi.toggleReaction(messageId, emoji),
     onMutate: async ({ messageId, emoji }) => {
       if (!currentUserId) {
         return;

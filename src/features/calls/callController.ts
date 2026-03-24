@@ -17,6 +17,57 @@ import {
 import { useAuthStore } from '@/store/authStore';
 import { EVENTS } from '@/socket/events';
 import { useSocketStore } from '@/socket/socket';
+import { extractApiError } from '@/utils/apiError';
+import { ICE_DISCONNECT_GRACE_MS, TERMINAL_REST_FALLBACK_TIMEOUT_MS, END_SCREEN_DURATION_MS } from './callConfig';
+
+/*
+ * CALL STATE MACHINE
+ * ==================
+ * Phases and their valid transitions:
+ *
+ *   idle
+ *    ├──[startCall]──────────────► outgoing-ringing
+ *    └──[handleIncomingSession]──► incoming-ringing
+ *
+ *   outgoing-ringing
+ *    ├──[handleAcceptedSession]──► connecting
+ *    ├──[handleTerminalCall]─────► ended / failed
+ *    └──[endCurrentCall]─────────► ending → idle
+ *
+ *   incoming-ringing
+ *    ├──[acceptIncomingCall]─────► connecting
+ *    ├──[rejectIncomingCall]─────► ending → idle
+ *    └──[handleTerminalCall]─────► ended / failed
+ *
+ *   connecting
+ *    ├──[handleConnectedSignal]──► active
+ *    ├──[ICE disconnect + grace]─► reconnecting
+ *    └──[handleTerminalCall]─────► ended / failed
+ *
+ *   active
+ *    ├──[ICE disconnect + grace]─► reconnecting
+ *    ├──[endCurrentCall]─────────► ending → idle
+ *    └──[handleTerminalCall]─────► ended / failed
+ *
+ *   reconnecting
+ *    ├──[handleResumedSession]───► connecting
+ *    ├──[attemptCallRecovery]────► reconnecting (retry)
+ *    ├──[handleRecoveryExpired]──► idle
+ *    └──[handleTerminalCall]─────► ended / failed
+ *
+ *   ending  (local terminal action in-flight, waiting for server ack)
+ *    └──[ack / fallback timeout]─► idle
+ *
+ *   ended / failed  (terminal display)
+ *    └──[END_SCREEN_DURATION_MS]─► idle
+ *
+ * Recovery entry points (see attemptCallRecovery for details):
+ *   'page-load' | 'socket-connect' | 'manual' | 'recovery-available'
+ *
+ * Roles:
+ *   caller — initiates the call, sends the SDP offer
+ *   callee — receives the call, sends the SDP answer
+ */
 
 export type CallPhase =
   | 'idle'
@@ -117,9 +168,7 @@ const initialCallState: CallControllerState = {
   error: null,
 };
 
-const ICE_DISCONNECT_GRACE_MS = 3_000;
-const TERMINAL_REST_FALLBACK_TIMEOUT_MS = 2_000;
-const END_SCREEN_DURATION_MS = 2_500;
+
 let nextTerminalActionId = 0;
 const backgroundRejectFallbackTimeouts = new Map<string, number>();
 
@@ -131,13 +180,6 @@ const getSocket = () => useSocketStore.getState().socket;
 const isSocketConnected = () => !!getSocket()?.connected;
 const getCurrentUserId = () => useAuthStore.getState().userId;
 
-const getErrorMessage = (error: any, fallback: string) => {
-  const errorData = error?.response?.data?.error;
-  if (typeof errorData === 'string') return errorData;
-  if (errorData?.message) return errorData.message;
-  if (typeof error?.message === 'string' && error.message.trim()) return error.message;
-  return fallback;
-};
 
 const isRecoverableStatus = (status: CallDoc['status']) =>
   status === 'accepted' ||
@@ -527,7 +569,7 @@ const runTerminalRestFallback = async (
     }
 
     toast.error(
-      getErrorMessage(
+      extractApiError(
         error,
         action === 'reject' ? 'Unable to reject the call.' : 'Unable to end the call.'
       )
@@ -1145,12 +1187,10 @@ export const startCall = async ({ peerUserId, type, peerUser }: StartCallInput) 
   let createdSession: CallSession | null = null;
 
   try {
-    const response = await callsApi.create({
+    createdSession = await callsApi.create({
       callee_user_id: peerUserId,
       type,
     });
-
-    createdSession = response.data.data;
     setCallState({
       call: createdSession.call,
       peerUser: createdSession.peer_user,
@@ -1167,7 +1207,7 @@ export const startCall = async ({ peerUserId, type, peerUser }: StartCallInput) 
       await safeEndCallRequest(createdSession.call.id);
     }
 
-    failAndResetCall(getErrorMessage(error, 'Unable to start the call.'));
+    failAndResetCall(extractApiError(error, 'Unable to start the call.'));
   } finally {
     setCallState({ isStarting: false });
   }
@@ -1198,10 +1238,9 @@ export const acceptIncomingCall = async () => {
   let acceptedSession: CallSession | null = null;
 
   try {
-    const response = await callsApi.accept(state.call.id, {
+    acceptedSession = await callsApi.accept(state.call.id, {
       socket_id: socketId,
     } satisfies AcceptCallRequest);
-    acceptedSession = response.data.data;
 
     setCallState({
       call: acceptedSession.call,
@@ -1226,7 +1265,7 @@ export const acceptIncomingCall = async () => {
     }
   } catch (error) {
     await safeEndCallRequest(acceptedSession?.call?.id || state.call.id);
-    failAndResetCall(getErrorMessage(error, 'Unable to accept the call.'));
+    failAndResetCall(extractApiError(error, 'Unable to accept the call.'));
   } finally {
     setCallState({ isAccepting: false });
   }
@@ -1313,6 +1352,17 @@ export const hydrateRecoverableCall = (session: CallSession) => {
   });
 };
 
+/**
+ * Low-level resume operation. Assumes the call is in a recoverable state and
+ * the socket is connected. Transitions the phase to 'reconnecting', recreates
+ * the peer connection, and emits `call.resume` to the server.
+ *
+ * Behavioral differences by source:
+ * - `'manual'`: Shows a toast if the socket is not connected (user needs feedback).
+ * - All other sources: Fails silently if socket is unavailable.
+ *
+ * Returns `true` if recovery was initiated, `false` if it was skipped.
+ */
 export const resumeRecoveredCall = async (source: RecoverySource) => {
   const state = getCallState();
   if (!state.call || state.phase === 'ending' || !!state.localTerminalAction) {
@@ -1346,6 +1396,19 @@ export const resumeRecoveredCall = async (source: RecoverySource) => {
   return true;
 };
 
+/**
+ * Entry point for all call recovery attempts. Validates recoverability (phase,
+ * deadline, local terminal actions) before delegating to `resumeRecoveredCall`.
+ *
+ * Called from four sources — each has slightly different semantics:
+ * - `'page-load'`:        On app mount if `callsApi.getActive()` finds a live call.
+ * - `'socket-connect'`:   When the socket reconnects while a call is in state.
+ * - `'manual'`:           User taps the "Retry" button in the UI. Shows toasts on failure.
+ * - `'recovery-available'`: Server sends `call.recovery_available` — the deadline was extended.
+ *
+ * The `source` is forwarded to `resumeRecoveredCall` which uses it to decide
+ * whether to surface errors to the user.
+ */
 export const attemptCallRecovery = async (source: RecoverySource) => {
   const state = getCallState();
   if (
@@ -1366,7 +1429,7 @@ export const attemptCallRecovery = async (source: RecoverySource) => {
   try {
     return await resumeRecoveredCall(source);
   } catch (error) {
-    setRecoveryError(getErrorMessage(error, 'Unable to recover the call.'), source === 'manual');
+    setRecoveryError(extractApiError(error, 'Unable to recover the call.'), source === 'manual');
     return false;
   }
 };
@@ -1453,7 +1516,7 @@ export const handleOfferSignal = async (payload: CallOfferPayload) => {
     await sendAnswerForCurrentCall();
   } catch (error) {
     if (getCallState().phase === 'reconnecting') {
-      setRecoveryError(getErrorMessage(error, 'Unable to apply the recovered offer.'));
+      setRecoveryError(extractApiError(error, 'Unable to apply the recovered offer.'));
       return;
     }
 
@@ -1484,7 +1547,7 @@ export const handleAnswerSignal = async (payload: CallAnswerPayload) => {
     markCallAsConnecting();
   } catch (error) {
     if (getCallState().phase === 'reconnecting') {
-      setRecoveryError(getErrorMessage(error, 'Unable to apply the recovered answer.'));
+      setRecoveryError(extractApiError(error, 'Unable to apply the recovered answer.'));
       return;
     }
 
@@ -1580,7 +1643,7 @@ export const handleResumedSession = async (session: CallSession) => {
 
     await maybeSendRecoveryOffer();
   } catch (error) {
-    setRecoveryError(getErrorMessage(error, 'Unable to resume the recovered call.'));
+    setRecoveryError(extractApiError(error, 'Unable to resume the recovered call.'));
   }
 };
 
@@ -1625,6 +1688,14 @@ export const handleTerminalCall = (payload: CallTerminalPayload) => {
   });
 };
 
+/**
+ * Called when the server-side reconnect deadline passes without a successful
+ * recovery. Triggered either by a local deadline check in `attemptCallRecovery`
+ * or by the `call.recovery_available` event expiring on the server.
+ *
+ * Resets state to idle and shows a toast. No-ops if already idle (e.g., the
+ * call was ended by the other party before the deadline check fired).
+ */
 export const handleRecoveryExpired = (
   message = 'The reconnect window ended and the call could not be recovered.'
 ) => {
