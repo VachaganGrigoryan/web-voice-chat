@@ -26,6 +26,12 @@ interface ChatSidebarProps {
   onOpenConversationMenuAtPoint: (event: ReactMouseEvent<HTMLElement>, peerUserId: string, unreadCount: number) => void;
 }
 
+function shortenMessageText(text: string | null | undefined, limit = 20): string {
+  if (!text) return 'Click to chat';
+  const cleaned = text.replace(/\s+/g, ' ').trim();
+  return cleaned.length > limit ? cleaned.slice(0, limit) + '…' : cleaned;
+}
+
 function formatConversationTimestamp(value: string | null) {
   if (!value) {
     return '';
@@ -111,7 +117,7 @@ function ConversationListItem({
               ) : conversation.last_message?.type === 'file' ? (
                 '📎 File'
               ) : (
-                conversation.last_message?.text || 'Click to chat'
+                shortenMessageText(conversation.last_message?.text)
               )}
             </span>
             {conversation.unread_count > 0 ? (
