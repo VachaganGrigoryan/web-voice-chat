@@ -1,6 +1,7 @@
 import { Socket } from 'socket.io-client';
 import { create } from 'zustand';
 import { EVENTS } from './events';
+import { getMessageTypeLabel, getPresentedMessageKind } from '@/features/chat/utils/messagePresentation';
 import { useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { MessageDeletedEvent, MessageDoc, MessageReactionsUpdate, ThreadSummary } from '@/api/types';
@@ -748,6 +749,8 @@ const extractThreadReplyEvent = (
       message: payload.message,
       summary: {
         thread_root_id: payload.thread_root_id,
+        conversation_id: payload.conversation_id,
+        is_thread_root: payload.is_thread_root,
         thread_reply_count: payload.thread_reply_count,
         last_thread_reply_at: payload.last_thread_reply_at,
       },
@@ -759,6 +762,8 @@ const extractThreadReplyEvent = (
     summary: payload.thread_root_id
       ? {
           thread_root_id: payload.thread_root_id,
+          conversation_id: payload.conversation_id,
+          is_thread_root: payload.is_thread_root,
           thread_reply_count: payload.thread_reply_count,
           last_thread_reply_at: payload.last_thread_reply_at,
         }
@@ -857,7 +862,16 @@ export const useRealtimeMessages = (
           }
           
           const title = senderName ? `New message from ${senderName}` : 'New Message';
-          const body = message.type === 'voice' ? '🎤 Voice message' : message.text || 'New message';
+          const presentedKind = getPresentedMessageKind(message.type, message.media?.kind);
+          const body =
+            message.text?.trim() ||
+            (presentedKind === 'audio' && message.media?.kind === 'voice'
+              ? '🎤 Voice message'
+              : presentedKind === 'audio' && message.media?.kind === 'audio'
+              ? '🎵 Audio'
+              : presentedKind === 'file'
+              ? '📎 File'
+              : getMessageTypeLabel(message.type, message.media?.kind));
           sendNotification(title, body);
         }
       }

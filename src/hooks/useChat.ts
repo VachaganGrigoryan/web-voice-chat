@@ -1,12 +1,18 @@
 import { useEffect } from 'react';
 import { useInfiniteQuery, useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
 import { messagesApi, realtimeApi, conversationsApi } from '@/api/endpoints';
+import { toSinglePageResponse } from '@/api/utils';
 import { applyMessageDeletedEventToCaches, useSocket, usePresence, useRealtimeMessages, useSocketStore } from '@/socket/socket';
-import { MessageDoc, MessageReactionGroup, MessageReactionsUpdate, ReplyMode } from '@/api/types';
+import {
+  MessageDoc,
+  MessageReactionGroup,
+  MessageReactionsUpdate,
+  PreviewMediaKind,
+  ReplyMode,
+} from '@/api/types';
 import { useAuthStore } from '@/store/authStore';
 
-export interface SendMediaInput {
-  type: 'voice' | 'image' | 'sticker' | 'video' | 'file';
+interface BaseSendMediaInput {
   receiver_id: string;
   file: File;
   text?: string;
@@ -17,6 +23,16 @@ export interface SendMediaInput {
   signal?: AbortSignal;
   onUploadProgress?: (progress: number) => void;
 }
+
+export type SendMediaInput =
+  | (BaseSendMediaInput & {
+      type: 'media';
+      media_kind: PreviewMediaKind;
+    })
+  | (BaseSendMediaInput & {
+      type: 'file';
+      media_kind?: never;
+    });
 
 export interface SendTextInput {
   receiver_id: string;
@@ -306,11 +322,11 @@ export const useConversations = () => {
 export const useThreadMessages = (threadRootId: string | null) => {
   return useInfiniteQuery({
     queryKey: ['threadMessages', threadRootId],
-    queryFn: ({ pageParam }) => {
+    queryFn: async () => {
       if (!threadRootId) {
-        return Promise.resolve({ data: [], meta: { next_cursor: null, limit: 20, total: 0 }, success: true });
+        return toSinglePageResponse([], 0);
       }
-      return messagesApi.getThreadMessages(threadRootId, 20, pageParam as string | undefined);
+      return toSinglePageResponse(await messagesApi.getThreadMessages(threadRootId));
     },
     getNextPageParam: (lastPage) => lastPage.meta?.next_cursor,
     enabled: !!threadRootId,
@@ -403,17 +419,12 @@ export const useChat = (selectedUser: string | null = null, openThreadRootId: st
 
   const deleteMessageMutation = useMutation({
     mutationFn: (messageId: string) => messagesApi.deleteMessage(messageId),
-    onSuccess: (updatedMessage) => {
+    onSuccess: (deletedMessage) => {
       applyMessageDeletedEventToCaches(
         queryClient,
         {
-          message_id: updatedMessage.id,
-          conversation_id: updatedMessage.conversation_id,
-          actor_user_id: currentUserId || updatedMessage.sender_id,
-          deleted_for_everyone: !!updatedMessage.is_deleted,
-          hidden_for_me: updatedMessage.sender_id === currentUserId,
-          deleted_media: !!updatedMessage.media,
-          updated_at: updatedMessage.updated_at,
+          ...deletedMessage,
+          updated_at: new Date().toISOString(),
         },
         currentUserId
       );
@@ -466,8 +477,10 @@ export const useChat = (selectedUser: string | null = null, openThreadRootId: st
       queryClient.invalidateQueries({ queryKey: ['messages'] });
       queryClient.invalidateQueries({ queryKey: ['threadMessages'] });
     },
-    onSuccess: (update) => {
-      applyReactionUpdate(queryClient, update);
+    onSuccess: (updatedMessage) => {
+      updateMessageAcrossCacheGroup(queryClient, 'messages', updatedMessage.id, () => updatedMessage);
+      updateMessageAcrossCacheGroup(queryClient, 'threadMessages', updatedMessage.id, () => updatedMessage);
+      updateConversationPreview(queryClient, updatedMessage);
     },
   });
 
