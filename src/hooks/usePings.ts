@@ -4,7 +4,7 @@ import { useEffect } from 'react';
 import { useSocketStore } from '@/socket/socket';
 import { EVENTS } from '@/socket/events';
 import { toast } from 'sonner';
-import { extractApiError } from '@/utils/apiError';
+import { extractApiError } from '@/api/errors';
 
 export function usePings() {
   const queryClient = useQueryClient();

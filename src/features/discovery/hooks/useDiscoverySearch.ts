@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import { discoveryApi } from '@/api/endpoints';
 import { DiscoveredUser } from '@/api/types';
+import { extractApiError } from '@/api/errors';
 import { useDebounce } from '@/hooks/useDebounce';
-import { extractApiError } from '@/utils/apiError';
 
 export const DISCOVERY_SEARCH_MIN_LENGTH = 3;
 

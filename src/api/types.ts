@@ -59,6 +59,18 @@ export interface MessageResponse {
   message: string;
 }
 
+export interface ApiError {
+  code: string;
+  message: string;
+  details?: unknown | null;
+}
+
+export interface ErrorResponse {
+  success: false;
+  error: ApiError;
+  request_id?: string | null;
+}
+
 export interface RegenerateCodeResponse {
   code: string;
   token_preview: string;

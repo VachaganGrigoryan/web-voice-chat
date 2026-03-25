@@ -14,10 +14,10 @@ import {
   CallType,
   IceServer,
 } from '@/api/types';
+import { extractApiError } from '@/api/errors';
 import { useAuthStore } from '@/store/authStore';
 import { EVENTS } from '@/socket/events';
 import { useSocketStore } from '@/socket/socket';
-import { extractApiError } from '@/utils/apiError';
 import { ICE_DISCONNECT_GRACE_MS, TERMINAL_REST_FALLBACK_TIMEOUT_MS, END_SCREEN_DURATION_MS } from './callConfig';
 
 /*
