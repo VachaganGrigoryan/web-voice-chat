@@ -1,12 +1,18 @@
 import { useEffect } from 'react';
 import { useInfiniteQuery, useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
 import { messagesApi, realtimeApi, conversationsApi } from '@/api/endpoints';
+import { toSinglePageResponse } from '@/api/utils';
 import { applyMessageDeletedEventToCaches, useSocket, usePresence, useRealtimeMessages, useSocketStore } from '@/socket/socket';
-import { MessageDoc, MessageReactionGroup, MessageReactionsUpdate, ReplyMode } from '@/api/types';
+import {
+  MessageDoc,
+  MessageReactionGroup,
+  MessageReactionsUpdate,
+  PreviewMediaKind,
+  ReplyMode,
+} from '@/api/types';
 import { useAuthStore } from '@/store/authStore';
 
-export interface SendMediaInput {
-  type: 'voice' | 'image' | 'sticker' | 'video' | 'file';
+interface BaseSendMediaInput {
   receiver_id: string;
   file: File;
   text?: string;
@@ -17,6 +23,16 @@ export interface SendMediaInput {
   signal?: AbortSignal;
   onUploadProgress?: (progress: number) => void;
 }
+
+export type SendMediaInput =
+  | (BaseSendMediaInput & {
+      type: 'media';
+      media_kind: PreviewMediaKind;
+    })
+  | (BaseSendMediaInput & {
+      type: 'file';
+      media_kind?: never;
+    });
 
 export interface SendTextInput {
   receiver_id: string;
@@ -296,10 +312,8 @@ const emitOutgoingMessage = (message: MessageDoc, type: string, selectedUser: st
 export const useConversations = () => {
   return useInfiniteQuery({
     queryKey: ['conversations'],
-    queryFn: async ({ pageParam }) => {
-      const response = await conversationsApi.getConversations(20, pageParam as string | undefined);
-      return response.data;
-    },
+    queryFn: ({ pageParam }) =>
+      conversationsApi.getConversations(20, pageParam as string | undefined),
     getNextPageParam: (lastPage) => lastPage.meta?.next_cursor,
     initialPageParam: undefined,
   });
@@ -308,13 +322,11 @@ export const useConversations = () => {
 export const useThreadMessages = (threadRootId: string | null) => {
   return useInfiniteQuery({
     queryKey: ['threadMessages', threadRootId],
-    queryFn: async ({ pageParam }) => {
+    queryFn: async () => {
       if (!threadRootId) {
-        return { data: [], meta: { next_cursor: null, limit: 20, total: 0 }, success: true };
+        return toSinglePageResponse([], 0);
       }
-
-      const response = await messagesApi.getThreadMessages(threadRootId, 20, pageParam as string | undefined);
-      return response.data;
+      return toSinglePageResponse(await messagesApi.getThreadMessages(threadRootId));
     },
     getNextPageParam: (lastPage) => lastPage.meta?.next_cursor,
     enabled: !!threadRootId,
@@ -335,9 +347,9 @@ export const useChat = (selectedUser: string | null = null, openThreadRootId: st
   useQuery({
     queryKey: ['onlineUsers'],
     queryFn: async () => {
-      const response = await realtimeApi.getOnlineUsers();
-      setOnlineUsers(response.data.data);
-      return response.data.data;
+      const onlineUserIds = await realtimeApi.getOnlineUsers();
+      setOnlineUsers(onlineUserIds);
+      return onlineUserIds;
     },
     // We rely on socket events for updates, but this fetches initial state
     staleTime: Infinity, 
@@ -350,10 +362,9 @@ export const useChat = (selectedUser: string | null = null, openThreadRootId: st
     isFetchingNextPage,
   } = useInfiniteQuery({
     queryKey: ['messages', selectedUser],
-    queryFn: async ({ pageParam }) => {
-      if (!selectedUser) return { data: [], meta: { next_cursor: null, limit: 20, total: 0 }, success: true };
-      const response = await messagesApi.getHistory(selectedUser, 20, pageParam as string | undefined);
-      return response.data;
+    queryFn: ({ pageParam }) => {
+      if (!selectedUser) return Promise.resolve({ data: [], meta: { next_cursor: null, limit: 20, total: 0 }, success: true });
+      return messagesApi.getHistory(selectedUser, 20, pageParam as string | undefined);
     },
     getNextPageParam: (lastPage) => lastPage.meta?.next_cursor,
     enabled: !!selectedUser,
@@ -361,21 +372,16 @@ export const useChat = (selectedUser: string | null = null, openThreadRootId: st
   });
 
   const sendMessageMutation = useMutation({
-    mutationFn: async (data: SendMediaInput) => {
-      const response = await messagesApi.uploadMedia({
+    mutationFn: (data: SendMediaInput) =>
+      messagesApi.uploadMedia({
         ...data,
         onUploadProgress: data.onUploadProgress
           ? (event) => {
-              if (!event.total) {
-                return;
-              }
-
+              if (!event.total) return;
               data.onUploadProgress?.(Math.round((event.loaded / event.total) * 100));
             }
           : undefined,
-      });
-      return response.data.data;
-    },
+      }),
     onSuccess: (newMessage, variables) => {
       if (selectedUser) {
         const messageWithClientBatchId = variables.client_batch_id
@@ -392,10 +398,7 @@ export const useChat = (selectedUser: string | null = null, openThreadRootId: st
   });
 
   const sendTextMutation = useMutation({
-    mutationFn: async (data: SendTextInput) => {
-      const response = await messagesApi.sendText(data);
-      return response.data.data;
-    },
+    mutationFn: (data: SendTextInput) => messagesApi.sendText(data),
     onSuccess: (newMessage) => {
       if (selectedUser) {
         emitOutgoingMessage(newMessage, 'text', selectedUser);
@@ -405,10 +408,8 @@ export const useChat = (selectedUser: string | null = null, openThreadRootId: st
   });
 
   const editMessageMutation = useMutation({
-    mutationFn: async ({ messageId, text }: { messageId: string; text: string }) => {
-      const response = await messagesApi.editMessage(messageId, text);
-      return response.data;
-    },
+    mutationFn: ({ messageId, text }: { messageId: string; text: string }) =>
+      messagesApi.editMessage(messageId, text),
     onSuccess: (updatedMessage) => {
       updateMessageAcrossCacheGroup(queryClient, 'messages', updatedMessage.id, () => updatedMessage);
       updateMessageAcrossCacheGroup(queryClient, 'threadMessages', updatedMessage.id, () => updatedMessage);
@@ -417,21 +418,13 @@ export const useChat = (selectedUser: string | null = null, openThreadRootId: st
   });
 
   const deleteMessageMutation = useMutation({
-    mutationFn: async (messageId: string) => {
-      const response = await messagesApi.deleteMessage(messageId);
-      return response.data;
-    },
-    onSuccess: (updatedMessage) => {
+    mutationFn: (messageId: string) => messagesApi.deleteMessage(messageId),
+    onSuccess: (deletedMessage) => {
       applyMessageDeletedEventToCaches(
         queryClient,
         {
-          message_id: updatedMessage.id,
-          conversation_id: updatedMessage.conversation_id,
-          actor_user_id: currentUserId || updatedMessage.sender_id,
-          deleted_for_everyone: !!updatedMessage.is_deleted,
-          hidden_for_me: updatedMessage.sender_id === currentUserId,
-          deleted_media: !!updatedMessage.media,
-          updated_at: updatedMessage.updated_at,
+          ...deletedMessage,
+          updated_at: new Date().toISOString(),
         },
         currentUserId
       );
@@ -439,10 +432,8 @@ export const useChat = (selectedUser: string | null = null, openThreadRootId: st
   });
 
   const toggleReactionMutation = useMutation({
-    mutationFn: async ({ messageId, emoji }: { messageId: string; emoji: string }) => {
-      const response = await messagesApi.toggleReaction(messageId, emoji);
-      return response.data.data;
-    },
+    mutationFn: ({ messageId, emoji }: { messageId: string; emoji: string }) =>
+      messagesApi.toggleReaction(messageId, emoji),
     onMutate: async ({ messageId, emoji }) => {
       if (!currentUserId) {
         return;
@@ -486,8 +477,10 @@ export const useChat = (selectedUser: string | null = null, openThreadRootId: st
       queryClient.invalidateQueries({ queryKey: ['messages'] });
       queryClient.invalidateQueries({ queryKey: ['threadMessages'] });
     },
-    onSuccess: (update) => {
-      applyReactionUpdate(queryClient, update);
+    onSuccess: (updatedMessage) => {
+      updateMessageAcrossCacheGroup(queryClient, 'messages', updatedMessage.id, () => updatedMessage);
+      updateMessageAcrossCacheGroup(queryClient, 'threadMessages', updatedMessage.id, () => updatedMessage);
+      updateConversationPreview(queryClient, updatedMessage);
     },
   });
 

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { discoveryApi } from '@/api/endpoints';
 import { DiscoveredUser } from '@/api/types';
+import { extractApiError } from '@/api/errors';
 import { useDebounce } from '@/hooks/useDebounce';
 
 export const DISCOVERY_SEARCH_MIN_LENGTH = 3;
@@ -43,14 +44,14 @@ export function useDiscoverySearch(input: string) {
         if (looksLikeDiscoveryCode(debouncedInput)) {
           const result = await discoveryApi.resolveCode(debouncedInput.toUpperCase());
           if (!isCancelled) {
-            setResults([result.data.data]);
+            setResults([result]);
           }
           return;
         }
 
         const result = await discoveryApi.searchUsers(debouncedInput);
         if (!isCancelled) {
-          setResults(result.data.data);
+          setResults(result);
         }
       } catch (err: any) {
         if (isCancelled) {
@@ -64,7 +65,7 @@ export function useDiscoverySearch(input: string) {
         }
 
         console.error('Search error:', err);
-        setError('Failed to search users');
+        setError(extractApiError(err, 'Failed to search users'));
       } finally {
         if (!isCancelled) {
           setIsSearching(false);

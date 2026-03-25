@@ -1,6 +1,7 @@
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from 'sonner';
+import { getApiErrorStatus, getRetryDelayMs, isRateLimitError } from '@/api/errors';
 import AuthPage from '@/features/auth/AuthPage';
 import ChatLayout from '@/features/chat/ChatLayout';
 import InvitePage from '@/features/invite/InvitePage';
@@ -14,7 +15,25 @@ import { APP_ROUTES, getDefaultAuthedPath } from '@/app/routes';
 import { useAuthStore } from '@/store/authStore';
 import CallRoot from '@/features/calls/CallRoot';
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      retry: (failureCount, error) => {
+        if (isRateLimitError(error)) {
+          return false;
+        }
+
+        const status = getApiErrorStatus(error);
+        if (status !== null && status >= 400 && status < 500 && status !== 408) {
+          return false;
+        }
+
+        return failureCount < 3;
+      },
+      retryDelay: (attemptIndex, error) => getRetryDelayMs(error, attemptIndex),
+    },
+  },
+});
 
 function RootRedirect() {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);

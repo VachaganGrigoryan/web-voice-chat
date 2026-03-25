@@ -260,7 +260,8 @@ export function useAudioRecorderController({
     try {
       const file = new File([audioBlob], audioFileName, { type: audioMimeType });
       await onSendMedia({
-        type: 'voice',
+        type: 'media',
+        media_kind: 'voice',
         receiver_id: receiverId,
         file,
         duration_ms: durationSec * 1000,

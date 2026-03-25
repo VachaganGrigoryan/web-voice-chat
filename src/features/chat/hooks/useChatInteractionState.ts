@@ -1,4 +1,5 @@
 import { useEffect, useState, type MouseEvent as ReactMouseEvent } from 'react';
+import type { SendMediaInput, SendTextInput } from '@/hooks/useChat';
 import { ConversationMenuState } from '../components/ConversationActionsMenu';
 import { MessageMenuAnchor } from '../components/MessageShell';
 import {
@@ -8,24 +9,6 @@ import {
 } from '../types/message';
 
 type ActiveMessageSurface = 'main' | 'thread';
-
-type SendTextInput = {
-  receiver_id: string;
-  text: string;
-};
-
-type SendMediaInput = {
-  type: 'voice' | 'image' | 'sticker' | 'video' | 'file';
-  receiver_id: string;
-  file: File;
-  text?: string;
-  duration_ms?: number;
-  reply_mode?: ComposerReplyTarget['mode'] | null;
-  reply_to_message_id?: string;
-  client_batch_id?: string;
-  signal?: AbortSignal;
-  onUploadProgress?: (progress: number) => void;
-};
 
 type MediaViewerImageItem = {
   id: string;
@@ -95,7 +78,9 @@ const getMessagePreviewText = (message: ChatMessage) => {
     return message.caption || `${message.kind} message`;
   }
   if (message.kind === 'file') return message.caption || message.fileName || 'File';
-  if (message.kind === 'audio') return 'Voice message';
+  if (message.kind === 'audio') {
+    return message.media?.kind === 'audio' ? 'Audio' : 'Voice message';
+  }
   if (message.kind === 'sticker') return 'Sticker';
   if (message.kind === 'system') return message.text;
   return 'Message';

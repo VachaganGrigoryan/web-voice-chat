@@ -21,6 +21,9 @@ interface UseChatConversationViewParams {
 const byCreatedAtAscending = (left: ChatMessage, right: ChatMessage) =>
   new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime();
 
+const getAudioMediaKind = (message: AudioMessage): 'voice' | 'audio' =>
+  message.media?.kind === 'audio' ? 'audio' : 'voice';
+
 export function useChatConversationView({
   messages,
   threadMessagesPages,
@@ -87,6 +90,11 @@ export function useChatConversationView({
         .map((message) => ({
           id: message.id,
           src: message.audioUrl,
+          mediaKind: getAudioMediaKind(message),
+          title:
+            getAudioMediaKind(message) === 'audio'
+              ? message.fileName || 'Audio file'
+              : 'Voice message',
           durationMs: message.durationSec ? message.durationSec * 1000 : 0,
           createdAt: message.createdAt,
           isRead: message.status === 'read',
@@ -107,6 +115,11 @@ export function useChatConversationView({
       .map((message) => ({
         id: message.id,
         src: message.audioUrl,
+        mediaKind: getAudioMediaKind(message),
+        title:
+          getAudioMediaKind(message) === 'audio'
+            ? message.fileName || 'Audio file'
+            : 'Voice message',
         durationMs: message.durationSec ? message.durationSec * 1000 : 0,
         createdAt: message.createdAt,
         isRead: message.status === 'read',

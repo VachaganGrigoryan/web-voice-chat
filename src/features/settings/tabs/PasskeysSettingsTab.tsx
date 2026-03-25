@@ -21,7 +21,7 @@ export default function PasskeysSettingsTab() {
 
   const { data: passkeys = [], isLoading } = useQuery({
     queryKey: ['passkeys'],
-    queryFn: () => authApi.passkeys.list().then((res) => res.data?.data?.items || []),
+    queryFn: () => authApi.passkeys.list(),
   });
 
   const deleteMutation = useMutation({
@@ -36,21 +36,26 @@ export default function PasskeysSettingsTab() {
     setError(null);
     try {
       const deviceName = nickname.trim() || 'My Device';
-      const optionsRes = await authApi.passkeys.registerStart(deviceName);
-      const options = optionsRes.data.publicKey || optionsRes.data.data?.publicKey || optionsRes.data.data || optionsRes.data;
+      const optionsPayload = await authApi.passkeys.registerStart(deviceName) as Record<string, any>;
+      const options = 'optionsJSON' in optionsPayload
+        ? { ...optionsPayload }
+        : { optionsJSON: optionsPayload };
 
-      if (options.authenticatorSelection) {
-        options.authenticatorSelection.authenticatorAttachment = undefined;
-        options.authenticatorSelection.residentKey = 'preferred';
-        options.authenticatorSelection.userVerification = 'preferred';
+      if (options.optionsJSON?.authenticatorSelection) {
+        options.optionsJSON.authenticatorSelection.authenticatorAttachment = undefined;
+        options.optionsJSON.authenticatorSelection.residentKey = 'preferred';
+        options.optionsJSON.authenticatorSelection.userVerification = 'preferred';
       } else {
-        options.authenticatorSelection = {
-          residentKey: 'preferred',
-          userVerification: 'preferred',
+        options.optionsJSON = {
+          ...options.optionsJSON,
+          authenticatorSelection: {
+            residentKey: 'preferred',
+            userVerification: 'preferred',
+          },
         };
       }
 
-      const credential = await startRegistration(options);
+      const credential = await startRegistration(options as Parameters<typeof startRegistration>[0]);
 
       try {
         if (credential.response && credential.response.clientDataJSON) {

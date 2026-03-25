@@ -69,8 +69,10 @@ export interface AudioMessage extends BaseMessage {
   kind: 'audio';
   audioUrl: string;
   media?: MediaMeta;
+  fileName?: string;
   durationSec?: number;
   waveform?: number[];
+  caption?: string;
 }
 
 export interface FileMessage extends BaseMessage {

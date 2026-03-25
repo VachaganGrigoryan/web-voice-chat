@@ -25,6 +25,9 @@ export const AudioMessageRenderer: React.FC<AudioMessageRendererProps> = ({
   audioQueueKey,
   audioQueue,
 }) => {
+  const mediaKind = message.media?.kind === 'audio' ? 'audio' : 'voice';
+  const playerTitle = mediaKind === 'audio' ? message.fileName || 'Audio file' : 'Voice message';
+
   return (
     <MessageBubble
       isOwn={message.isOwn}
@@ -35,6 +38,8 @@ export const AudioMessageRenderer: React.FC<AudioMessageRendererProps> = ({
       <MessageReplyPreview message={message} />
       <AudioPlayer
         src={message.audioUrl}
+        mediaKind={mediaKind}
+        title={playerTitle}
         durationMs={message.durationSec ? message.durationSec * 1000 : 0}
         messageId={message.id}
         queueKey={audioQueueKey}
@@ -47,6 +52,16 @@ export const AudioMessageRenderer: React.FC<AudioMessageRendererProps> = ({
           message.isOwn ? "bg-primary-foreground/10" : "bg-background/50"
         )}
       />
+      {message.caption ? (
+        <div
+          className={cn(
+            'px-3 pb-2 pt-2 text-sm leading-relaxed',
+            message.isOwn ? 'text-primary-foreground/90' : 'text-foreground'
+          )}
+        >
+          {message.caption}
+        </div>
+      ) : null}
       {bubbleFooter}
     </MessageBubble>
   );

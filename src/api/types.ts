@@ -1,3 +1,16 @@
+import type {
+  OpenApiCallStatus,
+  OpenApiCallType,
+  OpenApiDiscoveryVia,
+  OpenApiMediaKind,
+  OpenApiMediaUploadType,
+  OpenApiMessageStatus,
+  OpenApiMessageType,
+  OpenApiPingStatus,
+  OpenApiPreviewMediaKind,
+  OpenApiReplyMode,
+} from './openapi-contract';
+
 export interface AvatarMeta {
   storage: string;
   key: string;
@@ -10,7 +23,7 @@ export interface User {
   id: string;
   email: string;
   is_verified: boolean;
-  username: string | null;
+  username: string;
   display_name: string | null;
   bio: string | null;
   avatar: AvatarMeta | null;
@@ -22,13 +35,77 @@ export interface User {
   updated_at: string;
 }
 
+export interface SelectedUserProfile {
+  id: string;
+  username: string;
+  display_name: string | null;
+  bio: string | null;
+  avatar: AvatarMeta | null;
+  is_online: boolean;
+}
+
 export interface TokenPair {
   access_token: string;
   refresh_token: string;
   token_type: string;
 }
 
+export interface GenericCodeSentResponse {
+  email: string;
+  message: string;
+}
+
+export interface MessageResponse {
+  message: string;
+}
+
+export interface ApiError {
+  code: string;
+  message: string;
+  details?: unknown | null;
+}
+
+export interface ErrorResponse {
+  success: false;
+  error: ApiError;
+  request_id?: string | null;
+}
+
+export interface RegenerateCodeResponse {
+  code: string;
+  token_preview: string;
+  expires_at: string | null;
+}
+
+export interface CreateInviteLinkResponse {
+  token: string;
+  url: string;
+  expires_at: string | null;
+  max_uses: number | null;
+}
+
+export interface PasskeyDeleteResult {
+  deleted: boolean;
+}
+
+export interface PasskeyResponse {
+  credential_id: string;
+  nickname: string | null;
+  transports: string[] | null;
+  device_type: string | null;
+  backed_up: boolean | null;
+  aaguid: string | null;
+  created_at: string;
+  last_used_at: string | null;
+}
+
+export type PasskeyAuthenticationOptionsPayload = Record<string, unknown>;
+export type PasskeyRegistrationOptionsPayload = Record<string, unknown> & {
+  nickname?: string | null;
+};
+
 export interface MediaMeta {
+  kind: OpenApiMediaKind;
   storage: string;
   key: string;
   url: string;
@@ -37,13 +114,17 @@ export interface MediaMeta {
   duration_ms?: number | null;
 }
 
-export type MessageType = 'voice' | 'text' | 'image' | 'emoji' | 'sticker' | 'video' | 'file';
-export type ReplyMode = 'quote' | 'thread';
+export type MessageType = OpenApiMessageType;
+export type MediaKind = OpenApiMediaKind;
+export type MediaUploadType = OpenApiMediaUploadType;
+export type PreviewMediaKind = OpenApiPreviewMediaKind;
+export type ReplyMode = OpenApiReplyMode;
 
 export interface ReplyPreview {
   message_id: string;
   sender_id: string;
   type: MessageType;
+  media_kind?: MediaKind | null;
   text: string | null;
   is_deleted: boolean;
 }
@@ -57,6 +138,8 @@ export interface MessageReactionGroup {
 
 export interface ThreadSummary {
   thread_root_id: string;
+  conversation_id: string;
+  is_thread_root: boolean;
   thread_reply_count: number;
   last_thread_reply_at: string | null;
 }
@@ -78,7 +161,7 @@ export interface MessageDoc {
   thread_unread_count?: number;
   last_thread_reply_at: string | null;
   reactions: MessageReactionGroup[];
-  status: 'sent' | 'delivered' | 'read';
+  status: OpenApiMessageStatus;
   edited_at: string | null;
   is_deleted?: boolean;
   deleted_at?: string | null;
@@ -96,18 +179,22 @@ export interface MessageReactionsUpdate {
   updated_at: string;
 }
 
-export interface MessageDeletedEvent {
+export interface DeleteMessageResponse {
   message_id: string;
   conversation_id: string;
   actor_user_id: string;
   deleted_for_everyone: boolean;
   hidden_for_me: boolean;
   deleted_media: boolean;
+}
+
+export interface MessageDeletedEvent extends DeleteMessageResponse {
   updated_at?: string | null;
 }
 
 export interface ConversationReadUpdate {
-  updated_count: number;
+  updated_count?: number;
+  [key: string]: unknown;
 }
 
 export type PingStatus =
@@ -124,9 +211,9 @@ export interface UserSummary {
   display_name: string | null;
   avatar: AvatarMeta | null;
   is_online: boolean;
-  can_ping: boolean;
-  chat_allowed: boolean;
-  ping_status: PingStatus;
+  can_ping?: boolean;
+  chat_allowed?: boolean;
+  ping_status?: PingStatus;
 }
 
 export interface Conversation {
@@ -134,10 +221,10 @@ export interface Conversation {
   peer_user: UserSummary;
   last_message: {
     id: string;
-    type: string;
+    type: MessageType;
     text: string | null;
     media: MediaMeta | null;
-    status: string;
+    status: OpenApiMessageStatus;
     created_at: string;
   } | null;
   last_message_at: string | null;
@@ -145,37 +232,35 @@ export interface Conversation {
 }
 
 export interface DiscoveredUser extends UserSummary {
-  discovered_via: string;
+  discovered_via: OpenApiDiscoveryVia | null;
 }
 
 export interface Ping {
   id: string;
   from_user_id: string;
   to_user_id: string;
-  status: 'pending' | 'accepted' | 'declined' | 'cancelled' | 'blocked';
+  status: OpenApiPingStatus;
   created_at: string;
   updated_at: string;
   responded_at: string | null;
 }
 
-export interface PingItem {
+export interface PingListItem {
   ping: Ping;
-  peer: UserSummary;
+  peer: {
+    id: string;
+    username: string;
+    display_name: string | null;
+    avatar: AvatarMeta | null;
+    is_online: boolean;
+  };
 }
 
-export type PingResponse = PingItem;
+export type PingItem = PingListItem;
+export type PingResponse = Ping;
 
-export type CallType = 'audio' | 'video';
-export type CallStatus =
-  | 'ringing'
-  | 'accepted'
-  | 'connecting'
-  | 'active'
-  | 'reconnecting'
-  | 'rejected'
-  | 'cancelled'
-  | 'expired'
-  | 'ended';
+export type CallType = OpenApiCallType;
+export type CallStatus = OpenApiCallStatus;
 
 export interface CallPeerUserSummary {
   id: string;
@@ -246,23 +331,16 @@ export interface PaginatedResponse<T> {
   success: boolean;
   data: T[];
   meta: {
+    cursor?: string | null;
     next_cursor: string | null;
-    limit: number;
+    limit: number | null;
     total: number | null;
   };
-  request_id?: string;
+  request_id?: string | null;
 }
 
 export interface SuccessResponse<T> {
   success: boolean;
   data: T;
-}
-
-export interface ErrorResponse {
-  success: boolean;
-  error: {
-    code: string;
-    message: string;
-    details: any;
-  };
+  request_id?: string | null;
 }

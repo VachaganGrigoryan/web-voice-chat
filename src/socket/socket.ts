@@ -1,7 +1,8 @@
 import { Socket } from 'socket.io-client';
 import { create } from 'zustand';
 import { EVENTS } from './events';
-import { useEffect, useRef } from 'react';
+import { getMessageTypeLabel, getPresentedMessageKind } from '@/features/chat/utils/messagePresentation';
+import { useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { MessageDeletedEvent, MessageDoc, MessageReactionsUpdate, ThreadSummary } from '@/api/types';
 import { socketClient } from './socketClient';
@@ -9,19 +10,24 @@ import { useAuthStore } from '@/store/authStore';
 
 export type MessageStatusScope = 'main' | 'thread';
 
-export interface MessageStatusPayload {
-  message_id?: string;
-  message_ids?: string[];
+interface MessageStatusPayloadBase {
   status: 'sent' | 'delivered' | 'read';
   conversation_id?: string;
   peer_user_id?: string;
   scope?: MessageStatusScope;
   thread_root_id?: string | null;
+  /** Fallback timestamp used when status-specific timestamps are absent. */
   updated_at?: string;
+  /** Set when status is 'delivered'. */
   delivered_at?: string | null;
+  /** Set when status is 'read'. */
   read_at?: string | null;
   user_id?: string;
 }
+
+export type MessageStatusPayload =
+  | (MessageStatusPayloadBase & { message_id: string; message_ids?: never })
+  | (MessageStatusPayloadBase & { message_ids: string[]; message_id?: never });
 
 interface SocketState {
   socket: Socket | null;
@@ -50,41 +56,48 @@ export const useSocketStore = create<SocketState>((set) => ({
 
 // Sync socket events to store
 const setupSocketSync = () => {
+  // Track which socket instance has had its persistent listeners attached.
+  // If the same socket object reconnects, we skip re-registration to avoid
+  // stacking duplicate listeners. A new socket object (after reconnect()) gets
+  // its own listeners registered fresh.
+  let attachedToSocket: Socket | null = null;
+
   socketClient.onConnect((socket) => {
     const { setIsConnected, setOnlineUsers, setTypingUser, setSocket } = useSocketStore.getState();
-    
+
+    // Always update connection state — runs on every (re)connect.
     setSocket(socket);
     setIsConnected(true);
+
+    // Only register persistent event listeners once per socket instance.
+    if (attachedToSocket === socket) return;
+    attachedToSocket = socket;
 
     socket.on(EVENTS.DISCONNECT, () => {
       setIsConnected(false);
     });
 
+    // Use a Set for O(1) deduplication — idempotent if both PRESENCE_UPDATE
+    // and USER_ONLINE/USER_OFFLINE fire for the same event.
+    const updatePresence = (userId: string, online: boolean) => {
+      const currentSet = new Set(useSocketStore.getState().onlineUsers);
+      if (online) currentSet.add(userId);
+      else currentSet.delete(userId);
+      setOnlineUsers([...currentSet]);
+    };
+
     socket.on(EVENTS.PRESENCE_UPDATE, (payload: any) => {
-      // Assuming payload is { user_id: string, status: 'online' | 'offline' } or similar
-      // The prompt says "existing presence payload shape"
-      if (payload.status === 'online') {
-        const currentUsers = useSocketStore.getState().onlineUsers;
-        if (!currentUsers.includes(payload.user_id)) {
-          setOnlineUsers([...currentUsers, payload.user_id]);
-        }
-      } else if (payload.status === 'offline') {
-        const currentUsers = useSocketStore.getState().onlineUsers;
-        setOnlineUsers(currentUsers.filter((id) => id !== payload.user_id));
+      if (payload.user_id) {
+        updatePresence(payload.user_id, payload.status === 'online');
       }
     });
 
-    // Keep these if the backend still sends them separately, otherwise presence_update covers it
     socket.on(EVENTS.USER_ONLINE, ({ user_id }: { user_id: string }) => {
-      const currentUsers = useSocketStore.getState().onlineUsers;
-      if (!currentUsers.includes(user_id)) {
-        setOnlineUsers([...currentUsers, user_id]);
-      }
+      updatePresence(user_id, true);
     });
 
     socket.on(EVENTS.USER_OFFLINE, ({ user_id }: { user_id: string }) => {
-      const currentUsers = useSocketStore.getState().onlineUsers;
-      setOnlineUsers(currentUsers.filter((id) => id !== user_id));
+      updatePresence(user_id, false);
     });
 
     socket.on(EVENTS.SERVER_TYPING_START, (payload: any) => {
@@ -736,6 +749,8 @@ const extractThreadReplyEvent = (
       message: payload.message,
       summary: {
         thread_root_id: payload.thread_root_id,
+        conversation_id: payload.conversation_id,
+        is_thread_root: payload.is_thread_root,
         thread_reply_count: payload.thread_reply_count,
         last_thread_reply_at: payload.last_thread_reply_at,
       },
@@ -747,6 +762,8 @@ const extractThreadReplyEvent = (
     summary: payload.thread_root_id
       ? {
           thread_root_id: payload.thread_root_id,
+          conversation_id: payload.conversation_id,
+          is_thread_root: payload.is_thread_root,
           thread_reply_count: payload.thread_reply_count,
           last_thread_reply_at: payload.last_thread_reply_at,
         }
@@ -792,8 +809,6 @@ export const useRealtimeMessages = (
   const queryClient = useQueryClient();
   const { userId: currentUserId } = useAuthStore();
   const { socket } = useSocketStore();
-  const processedThreadReplyIdsRef = useRef<Set<string>>(new Set());
-
   useEffect(() => {
     if ('Notification' in window && Notification.permission === 'default') {
       Notification.requestPermission();
@@ -810,11 +825,9 @@ export const useRealtimeMessages = (
 
     const handleReceiveMessage = (message: MessageDoc) => {
       if (isThreadMessage(message)) {
-        if (processedThreadReplyIdsRef.current.has(message.id)) {
-          return;
-        }
-
-        processedThreadReplyIdsRef.current.add(message.id);
+        // Check cache before routing — reload-safe dedup for MESSAGE_DELIVERED.
+        // prependMessageToMessageCache handles duplicate cache insertions independently.
+        const alreadyCached = !!findCachedMessage(queryClient, message.id);
         routeIncomingThreadMessage(
           queryClient,
           message,
@@ -823,7 +836,7 @@ export const useRealtimeMessages = (
           selectedUser
         );
 
-        if (message.receiver_id === currentUserId) {
+        if (!alreadyCached && message.receiver_id === currentUserId) {
           socket.emit(EVENTS.MESSAGE_DELIVERED, { message_id: message.id });
         }
 
@@ -849,7 +862,16 @@ export const useRealtimeMessages = (
           }
           
           const title = senderName ? `New message from ${senderName}` : 'New Message';
-          const body = message.type === 'voice' ? '🎤 Voice message' : message.text || 'New message';
+          const presentedKind = getPresentedMessageKind(message.type, message.media?.kind);
+          const body =
+            message.text?.trim() ||
+            (presentedKind === 'audio' && message.media?.kind === 'voice'
+              ? '🎤 Voice message'
+              : presentedKind === 'audio' && message.media?.kind === 'audio'
+              ? '🎵 Audio'
+              : presentedKind === 'file'
+              ? '📎 File'
+              : getMessageTypeLabel(message.type, message.media?.kind));
           sendNotification(title, body);
         }
       }
@@ -887,10 +909,11 @@ export const useRealtimeMessages = (
 
     const handleThreadReplyCreated = (payload: MessageDoc | ({ message: MessageDoc } & ThreadSummary)) => {
       const { message, summary } = extractThreadReplyEvent(payload);
-      const alreadyProcessed = processedThreadReplyIdsRef.current.has(message.id);
-      processedThreadReplyIdsRef.current.add(message.id);
+      // Use cache presence for reload-safe dedup — avoids double delivery
+      // acknowledgment when both RECEIVE_MESSAGE and THREAD_REPLY_CREATED fire.
+      const alreadyCached = !!findCachedMessage(queryClient, message.id);
 
-      if (!alreadyProcessed && isThreadMessage(message)) {
+      if (!alreadyCached && isThreadMessage(message)) {
         routeIncomingThreadMessage(
           queryClient,
           message,
@@ -904,7 +927,7 @@ export const useRealtimeMessages = (
         updateThreadSummaryCaches(queryClient, summary);
       }
 
-      if (!alreadyProcessed && message.receiver_id === currentUserId) {
+      if (!alreadyCached && message.receiver_id === currentUserId) {
         socket.emit(EVENTS.MESSAGE_DELIVERED, { message_id: message.id });
       }
     };

@@ -3,6 +3,8 @@ import { create } from 'zustand';
 export interface ChatAudioQueueItem {
   id: string;
   src: string;
+  mediaKind?: 'voice' | 'audio';
+  title?: string | null;
   durationMs?: number | null;
   createdAt?: string | null;
   isRead?: boolean;
@@ -96,6 +98,8 @@ export const useChatAudioPlayerStore = create<ChatAudioPlayerState>((set, get) =
         !!nextActiveItem &&
         state.activeItem.id === nextActiveItem.id &&
         state.activeItem.src === nextActiveItem.src &&
+        state.activeItem.mediaKind === nextActiveItem.mediaKind &&
+        state.activeItem.title === nextActiveItem.title &&
         state.activeItem.durationMs === nextActiveItem.durationMs &&
         state.activeItem.createdAt === nextActiveItem.createdAt &&
         state.activeItem.isRead === nextActiveItem.isRead &&

@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { AlertCircle, FileText, ImagePlus, Loader2, Send, Video, X } from 'lucide-react';
+import { AlertCircle, FileText, ImagePlus, Loader2, Send, Video, Volume2, X } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -12,21 +12,22 @@ import { Button } from '@/components/ui/Button';
 import { cn } from '@/lib/utils';
 import {
   AttachmentMode,
+  AttachmentUploadKind,
   FILE_ATTACH_ACCEPT,
   MEDIA_ATTACH_ACCEPT,
   getAttachmentMessageType,
   validateAttachmentFile,
 } from '@/utils/fileUtils';
+import type { SendMediaInput } from '@/hooks/useChat';
 import { ComposerReplyTarget } from '../../types/message';
 
-type AttachmentUploadType = 'image' | 'video' | 'file';
 type PendingMediaStatus = 'pending' | 'uploading' | 'failed';
 const MAX_MEDIA_ITEMS = 10;
 
 interface PendingMediaItem {
   id: string;
   file: File;
-  type: AttachmentUploadType;
+  type: AttachmentUploadKind;
   previewUrl?: string;
   progress: number;
   status: PendingMediaStatus;
@@ -36,18 +37,7 @@ interface PendingMediaItem {
 
 interface MediaComposerProps {
   receiverId: string;
-  onSendMedia: (data: {
-    type: 'voice' | 'image' | 'sticker' | 'video' | 'file';
-    receiver_id: string;
-    file: File;
-    text?: string;
-    duration_ms?: number;
-    reply_mode?: ComposerReplyTarget['mode'] | null;
-    reply_to_message_id?: string;
-    client_batch_id?: string;
-    signal?: AbortSignal;
-    onUploadProgress?: (progress: number) => void;
-  }) => Promise<any>;
+  onSendMedia: (data: SendMediaInput) => Promise<any>;
   isUploading: boolean;
   replyTarget?: ComposerReplyTarget | null;
   onClearReplyTarget?: () => void;
@@ -160,7 +150,7 @@ export default function MediaComposer({
     }
 
     setAttachMode(mode);
-    const nextSelections: Array<{ file: File; type: AttachmentUploadType; previewUrl?: string }> = [];
+    const nextSelections: Array<{ file: File; type: AttachmentUploadKind; previewUrl?: string }> = [];
     const errors: string[] = [];
 
     files.forEach((file) => {
@@ -173,7 +163,7 @@ export default function MediaComposer({
       const type = getAttachmentMessageType(file, mode);
       if (!type) {
         errors.push(
-          `${file.name}: ${mode === 'media' ? 'only images and videos can be attached here' : 'unsupported file type'}`
+          `${file.name}: ${mode === 'media' ? 'only audio, images, and videos can be attached here' : 'unsupported file'}`
         );
         return;
       }
@@ -181,7 +171,10 @@ export default function MediaComposer({
       nextSelections.push({
         file,
         type,
-        previewUrl: type === 'image' || type === 'video' ? URL.createObjectURL(file) : undefined,
+        previewUrl:
+          type === 'image' || type === 'video' || type === 'audio'
+            ? URL.createObjectURL(file)
+            : undefined,
       });
     });
 
@@ -250,24 +243,36 @@ export default function MediaComposer({
         }));
 
         const attachCaptionToThisItem = !captionAttached && currentItem.id === captionTargetId;
+        const basePayload = {
+          receiver_id: receiverId,
+          file: currentItem.file,
+          text: attachCaptionToThisItem ? trimmedCaption : undefined,
+          reply_mode: capturedReplyTarget?.mode,
+          reply_to_message_id: capturedReplyTarget?.messageId,
+          client_batch_id: batchId,
+          signal: abortController.signal,
+          onUploadProgress: (progress: number) => {
+            updateItem(currentItem.id, (item) => ({
+              ...item,
+              progress,
+            }));
+          },
+        };
 
         try {
-          await onSendMedia({
-            type: currentItem.type,
-            receiver_id: receiverId,
-            file: currentItem.file,
-            text: attachCaptionToThisItem ? trimmedCaption : undefined,
-            reply_mode: capturedReplyTarget?.mode,
-            reply_to_message_id: capturedReplyTarget?.messageId,
-            client_batch_id: batchId,
-            signal: abortController.signal,
-            onUploadProgress: (progress) => {
-              updateItem(currentItem.id, (item) => ({
-                ...item,
-                progress,
-              }));
-            },
-          });
+          const payload: SendMediaInput =
+            currentItem.type === 'file'
+              ? {
+                  type: 'file' as const,
+                  ...basePayload,
+                }
+              : {
+                  type: 'media' as const,
+                  media_kind: currentItem.type,
+                  ...basePayload,
+                };
+
+          await onSendMedia(payload);
 
           sentAny = true;
           if (attachCaptionToThisItem) {
@@ -317,7 +322,7 @@ export default function MediaComposer({
   const canSend = items.some((item) => item.status === 'pending' || item.status === 'failed');
   const isModalOpen = items.length > 0;
   const canAddMore = items.length < MAX_MEDIA_ITEMS;
-  const isFileBatch = items.every((item) => item.type === 'file');
+  const isFileBatch = attachMode === 'file';
   const sendButtonLabel = isFileBatch
     ? items.length === 1
       ? 'Send file'
@@ -352,7 +357,7 @@ export default function MediaComposer({
   const batchMetaLabel = `${items.length}/${MAX_MEDIA_ITEMS} selected`;
   const batchContextLabel = replyTarget
     ? `Sending as ${replyTarget.mode === 'thread' ? 'thread reply' : 'reply'}`
-    : 'Sending as one media batch';
+    : `Sending as one ${isFileBatch ? 'file' : 'media'} batch`;
   const activeModeMetaLabel = attachMode === 'media' ? 'Media mode' : 'File mode';
   const canSwitchModes = !isBatchUploading && items.length === 0;
   const CurrentModeIcon = attachMode === 'media' ? ImagePlus : FileText;
@@ -448,9 +453,13 @@ export default function MediaComposer({
             <div className="shrink-0 border-b border-border/60 px-3 py-3 sm:px-4 sm:py-4 lg:px-5">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <DialogTitle className="text-sm font-semibold sm:text-base">Send media</DialogTitle>
+                  <DialogTitle className="text-sm font-semibold sm:text-base">
+                    {isFileBatch ? 'Send files' : 'Send media'}
+                  </DialogTitle>
                   <DialogDescription className="mt-1 text-xs text-muted-foreground">
-                    Preview the batch, add a caption, then send it as one flow.
+                    {isFileBatch
+                      ? 'Review the selected files, add an optional message, then send.'
+                      : 'Preview the batch, add a caption, then send it as one flow.'}
                   </DialogDescription>
                 </div>
                 <div className="flex items-center gap-2">
@@ -459,10 +468,16 @@ export default function MediaComposer({
                     variant="outline"
                     size="sm"
                     className="h-8 rounded-full px-3 text-xs sm:text-sm"
-                    onClick={() => fileInputRef.current?.click()}
+                    onClick={() =>
+                      (attachMode === 'media' ? mediaInputRef : fileInputRef).current?.click()
+                    }
                     disabled={isBatchUploading || !canAddMore}
                   >
-                    <ImagePlus className="mr-2 h-4 w-4" />
+                    {attachMode === 'media' ? (
+                      <ImagePlus className="mr-2 h-4 w-4" />
+                    ) : (
+                      <FileText className="mr-2 h-4 w-4" />
+                    )}
                     {canAddMore ? 'Add more' : 'Max reached'}
                   </Button>
                   <button
@@ -520,82 +535,106 @@ export default function MediaComposer({
                     </div>
                     <div className="text-xs text-muted-foreground">
                       {isFileBatch
-                        ? 'Files stay in a compact document list while the caption and send controls remain fixed.'
+                        ? 'Files stay in a compact list while the message and send controls remain fixed.'
                         : 'The preview stays scrollable while the caption and send controls remain fixed.'}
                     </div>
                   </div>
 
-                  <div className={cn('grid gap-2 sm:gap-2.5', previewGridClassName)}>
+                  <div
+                    className={cn(
+                      isFileBatch ? 'space-y-2' : 'grid gap-2 sm:gap-2.5',
+                      !isFileBatch && previewGridClassName
+                    )}
+                  >
                     {items.map((item) => (
                       <div
                         key={item.id}
                         className="overflow-hidden rounded-[18px] border border-border/60 bg-background/80"
                       >
-                        {item.type === 'file' ? (
-                          <div className="flex min-h-[6.5rem] items-center gap-3 bg-muted/35 px-3 py-3 sm:min-h-[7rem] sm:px-4">
-                            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-background text-muted-foreground shadow-sm">
-                              <FileText className="h-5 w-5" />
-                            </div>
-                            <div className="min-w-0 flex-1">
-                              <div className="truncate text-sm font-medium text-foreground">{item.file.name}</div>
-                              <div className="mt-1 text-xs text-muted-foreground">
-                                {item.file.type || 'Unknown file type'}
+                        <div
+                          className={cn(
+                            'relative overflow-hidden bg-muted',
+                            isFileBatch ? 'flex items-center gap-3 px-4 py-3' : previewAspectClass
+                          )}
+                        >
+                          {isFileBatch ? (
+                            <div className="flex min-w-0 flex-1 items-center gap-3 pr-8">
+                              <div className="rounded-2xl bg-primary/10 p-2 text-primary">
+                                <FileText className="h-5 w-5" />
                               </div>
-                              <div className="mt-1 text-xs text-muted-foreground">
-                                {(item.file.size / 1024 / 1024).toFixed(item.file.size >= 1024 * 1024 ? 1 : 2)} MB
+                              <div className="min-w-0">
+                                <div className="truncate text-sm font-medium text-foreground">
+                                  {item.file.name}
+                                </div>
+                                <div className="text-xs text-muted-foreground">
+                                  {item.file.type || 'Supported file'}
+                                </div>
                               </div>
                             </div>
-                            <button
-                              type="button"
-                              className="flex h-7 w-7 items-center justify-center rounded-full bg-black/55 text-white transition-colors hover:bg-black/70 sm:h-8 sm:w-8"
-                              onClick={() => removeItem(item.id)}
-                              aria-label={item.status === 'uploading' ? 'Cancel upload' : 'Remove selected file'}
-                              title={item.status === 'uploading' ? 'Cancel upload' : 'Remove'}
-                            >
-                              <X className="h-4 w-4" />
-                            </button>
-                          </div>
-                        ) : (
-                          <div className={cn('relative overflow-hidden bg-muted', previewAspectClass)}>
-                            {item.type === 'image' ? (
+                          ) : item.type === 'image' ? (
                             <img
                               src={item.previewUrl}
                               alt={item.file.name}
                               className="h-full w-full object-cover"
                             />
-                            ) : (
-                              <>
-                                <video
-                                  src={item.previewUrl}
-                                  className="h-full w-full object-cover"
-                                  muted
-                                  playsInline
-                                  preload="metadata"
-                                />
-                                <div className="absolute inset-0 flex items-center justify-center bg-black/20">
-                                  <div className="rounded-full bg-black/55 p-2 text-white">
-                                    <Video className="h-4 w-4" />
+                          ) : item.type === 'audio' ? (
+                            <div className="flex h-full flex-col justify-center gap-4 p-4">
+                              <div className="flex items-center gap-3 text-foreground">
+                                <div className="rounded-full bg-primary/10 p-2 text-primary">
+                                  <Volume2 className="h-4 w-4" />
+                                </div>
+                                <div className="min-w-0">
+                                  <div className="truncate text-sm font-medium">
+                                    {item.file.name}
+                                  </div>
+                                  <div className="text-xs text-muted-foreground">
+                                    Audio preview
                                   </div>
                                 </div>
-                              </>
-                            )}
-                            <div className="absolute left-2 top-2 rounded-full bg-black/55 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-white">
-                              {item.type}
+                              </div>
+                              <audio
+                                controls
+                                src={item.previewUrl}
+                                className="w-full"
+                                preload="metadata"
+                              />
                             </div>
-                            <button
-                              type="button"
-                              className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full bg-black/55 text-white transition-colors hover:bg-black/70 sm:h-8 sm:w-8"
-                              onClick={() => removeItem(item.id)}
-                              aria-label={item.status === 'uploading' ? 'Cancel upload' : 'Remove selected media'}
-                              title={item.status === 'uploading' ? 'Cancel upload' : 'Remove'}
-                            >
-                              <X className="h-4 w-4" />
-                            </button>
+                          ) : (
+                            <>
+                              <video
+                                src={item.previewUrl}
+                                className="h-full w-full object-cover"
+                                muted
+                                playsInline
+                                preload="metadata"
+                              />
+                              <div className="absolute inset-0 flex items-center justify-center bg-black/20">
+                                <div className="rounded-full bg-black/55 p-2 text-white">
+                                  <Video className="h-4 w-4" />
+                                </div>
+                              </div>
+                            </>
+                          )}
+                          <div className="absolute left-2 top-2 rounded-full bg-black/55 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-white">
+                            {item.type}
                           </div>
-                        )}
+                          <button
+                            type="button"
+                            className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full bg-black/55 text-white transition-colors hover:bg-black/70 sm:h-8 sm:w-8"
+                            onClick={() => removeItem(item.id)}
+                            aria-label={item.status === 'uploading' ? 'Cancel upload' : 'Remove selected media'}
+                            title={item.status === 'uploading' ? 'Cancel upload' : 'Remove'}
+                          >
+                            <X className="h-4 w-4" />
+                          </button>
+                        </div>
 
                         <div className="space-y-1.5 px-2.5 py-2 sm:px-3 sm:py-2.5">
-                          <div className="truncate text-[11px] font-medium text-foreground sm:text-xs">{item.file.name}</div>
+                          {isFileBatch ? null : (
+                            <div className="truncate text-[11px] font-medium text-foreground sm:text-xs">
+                              {item.file.name}
+                            </div>
+                          )}
                           <div className="space-y-1">
                             <div className="h-1.5 overflow-hidden rounded-full bg-muted">
                               <div
@@ -646,7 +685,7 @@ export default function MediaComposer({
                 <div className="text-xs text-muted-foreground">
                   {replyTarget
                     ? `Will send as ${replyTarget.mode === 'thread' ? 'thread reply' : 'reply'}.`
-                    : 'Will send as a media batch.'}
+                    : `Will send as a ${isFileBatch ? 'file' : 'media'} batch.`}
                 </div>
                 <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
                   <Button

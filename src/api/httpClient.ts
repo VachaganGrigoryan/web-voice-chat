@@ -2,7 +2,7 @@ import axios, { AxiosError, AxiosInstance, InternalAxiosRequestConfig } from 'ax
 import { APP_ROUTES, getAbsoluteAppUrl } from '@/app/routes';
 import { tokenStore } from '@/auth/tokenStore';
 
-export const API_URL = import.meta.env.VITE_API_URL || 'https://voice-chat.vachagan.dev';
+export const API_URL = import.meta.env.VITE_API_URL || 'https://voca-api.notallow.cc';
 
 // Callbacks for external coordination
 let onTokenUpdate: ((accessToken: string) => void) | null = null;

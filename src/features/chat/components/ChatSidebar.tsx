@@ -7,6 +7,7 @@ import { ProfileTriggerButton } from '@/features/chat/components/ProfileTriggerB
 import { UserSearch } from '@/features/discovery/UserSearch';
 import { cn } from '@/lib/utils';
 import { formatMessageDay, formatMessageTime, isSameLocalDay } from '@/utils/dateUtils';
+import { getPresentedMessageKind } from '../utils/messagePresentation';
 
 interface ChatSidebarProps {
   profile: User | null | undefined;
@@ -38,6 +39,26 @@ function formatConversationTimestamp(value: string | null) {
   }
 
   return isSameLocalDay(value, new Date()) ? formatMessageTime(value) : formatMessageDay(value);
+}
+
+function getConversationPreview(conversation: Conversation) {
+  const lastMessage = conversation.last_message;
+  if (!lastMessage) {
+    return 'Click to chat';
+  }
+
+  switch (getPresentedMessageKind(lastMessage.type, lastMessage.media?.kind)) {
+    case 'audio':
+      return lastMessage.media?.kind === 'audio' ? '🎵 Audio' : '🎤 Voice message';
+    case 'file':
+      return '📎 File';
+    case 'image':
+      return lastMessage.text?.trim() || '📷 Photo';
+    case 'video':
+      return lastMessage.text?.trim() || '🎬 Video';
+    default:
+      return shortenMessageText(lastMessage.text);
+  }
 }
 
 function ConversationListItem({
@@ -112,12 +133,8 @@ function ConversationListItem({
             >
               {isTyping ? (
                 <span className="animate-pulse font-medium text-primary">Typing...</span>
-              ) : conversation.last_message?.type === 'voice' ? (
-                '🎤 Voice message'
-              ) : conversation.last_message?.type === 'file' ? (
-                '📎 File'
               ) : (
-                shortenMessageText(conversation.last_message?.text)
+                getConversationPreview(conversation)
               )}
             </span>
             {conversation.unread_count > 0 ? (

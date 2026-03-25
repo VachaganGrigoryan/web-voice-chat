@@ -99,22 +99,23 @@ export default function AuthPage() {
     setError(null);
     try {
       // 1. Get options from server
-      const optionsRes = await authApi.passkeys.loginStart(data.email);
-      
-      // Extract publicKey from response based on API spec
-      const options = optionsRes.data.publicKey || optionsRes.data.data?.publicKey || optionsRes.data.data || optionsRes.data;
+      const optionsPayload = await authApi.passkeys.loginStart(data.email) as Record<string, any>;
+      const options = 'optionsJSON' in optionsPayload
+        ? { ...optionsPayload }
+        : { optionsJSON: optionsPayload };
 
-      // Ensure userVerification is preferred
-      options.userVerification = "preferred";
+      if (options.optionsJSON) {
+        options.optionsJSON.userVerification = 'preferred';
+      }
 
       // 2. Call browser API
-      const credential = await startAuthentication(options);
+      const credential = await startAuthentication(options as Parameters<typeof startAuthentication>[0]);
 
       // 3. Send credential to server
       const verifyRes = await authApi.passkeys.loginFinish({ email: data.email, credential });
       
       // 4. Handle success (extract tokens directly from response based on spec)
-      const { access_token, refresh_token } = (verifyRes.data.data || verifyRes.data) as any;
+      const { access_token, refresh_token } = verifyRes;
       setTokens(access_token, refresh_token);
       navigate(redirectUrl);
     } catch (err: any) {
@@ -134,7 +135,7 @@ export default function AuthPage() {
     setError(null);
     try {
       const response = await authApi.verify(email, code);
-      const { access_token, refresh_token } = response.data.data;
+      const { access_token, refresh_token } = response;
       setTokens(access_token, refresh_token);
       navigate(redirectUrl);
     } catch (err: any) {

@@ -14,7 +14,7 @@ export default function InvitePage() {
 
   const { data: user, isLoading, error } = useQuery({
     queryKey: ['invite', token],
-    queryFn: () => discoveryApi.resolveLink(token!).then((res) => res.data.data),
+    queryFn: () => discoveryApi.resolveLink(token!),
     enabled: !!token,
     retry: false,
   });

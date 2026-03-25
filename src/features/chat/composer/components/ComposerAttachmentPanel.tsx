@@ -30,7 +30,7 @@ export function ComposerAttachmentPanel({
             Gallery / Media
           </div>
           <div className="mt-1 text-xs text-muted-foreground">
-            Choose photos and videos using the current media picker flow.
+            Choose photos, videos, or audio clips using the current media picker flow.
           </div>
         </div>
       </div>
@@ -96,7 +96,7 @@ export function ComposerAttachmentPanel({
                   Gallery / Media
                 </div>
                 <div className="mt-1 text-xs text-muted-foreground">
-                  Choose photos and videos. Batch preview, caption, retry, and send keep the current working flow.
+                  Choose photos, videos, or audio clips. Batch preview, caption, retry, and send keep the current working flow.
                 </div>
               </div>
             </div>
@@ -126,7 +126,7 @@ export function ComposerAttachmentPanel({
             <div className="min-w-0 flex-1">
               <div className="text-sm font-semibold text-foreground">Files</div>
               <div className="mt-1 text-xs text-muted-foreground">
-                Attach documents, images, audio, and supported files using the existing validated upload flow.
+                Attach documents, archives, or other supported files up to 25MB.
               </div>
             </div>
           </div>

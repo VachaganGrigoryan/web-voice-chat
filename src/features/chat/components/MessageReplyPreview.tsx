@@ -1,7 +1,7 @@
 import React from 'react';
-import { MessageType } from '@/api/types';
 import { cn } from '@/lib/utils';
 import { ChatMessage } from '../types/message';
+import { getMessageTypeLabel } from '../utils/messagePresentation';
 
 interface MessageReplyPreviewProps {
   message: ChatMessage;
@@ -23,25 +23,6 @@ const shouldRenderReplyPreview = (message: ChatMessage) => {
   );
 };
 
-const getReplyTypeLabel = (type: MessageType) => {
-  switch (type) {
-    case 'image':
-      return 'Photo';
-    case 'video':
-      return 'Video';
-    case 'voice':
-      return 'Voice message';
-    case 'file':
-      return 'File';
-    case 'sticker':
-      return 'Sticker';
-    case 'emoji':
-      return 'Emoji';
-    default:
-      return 'Message';
-  }
-};
-
 const getReplyText = (message: ChatMessage) => {
   const preview = message.replyPreview;
   if (!preview || !shouldRenderReplyPreview(message)) return null;
@@ -50,7 +31,7 @@ const getReplyText = (message: ChatMessage) => {
   const trimmed = preview.text?.trim();
   if (trimmed) return trimmed;
 
-  return getReplyTypeLabel(preview.type);
+  return getMessageTypeLabel(preview.type, preview.media_kind);
 };
 
 export function MessageReplyPreview({ message }: MessageReplyPreviewProps) {

@@ -9,6 +9,9 @@
     "preview": "vite preview",
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit",
+    "sync:openapi": "curl -s http://0.0.0.0:8000/openapi.json -o openapi/openapi.json",
+    "generate:api-contract": "node scripts/generate-api-contract.mjs",
+    "test:api-contract": "node scripts/verify-openapi-contract.mjs",
     "generate:android-icons": "node scripts/generate-android-icons.mjs"
   },
   "dependencies": {

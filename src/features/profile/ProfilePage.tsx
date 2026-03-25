@@ -50,8 +50,7 @@ export default function ProfilePage() {
   } = useQuery({
     queryKey: ['user-profile', userId],
     queryFn: async () => {
-      const response = await usersApi.getUser(userId!);
-      return response.data.data;
+      return usersApi.getUser(userId!);
     },
     enabled: !!userId,
     staleTime: 5 * 60 * 1000,

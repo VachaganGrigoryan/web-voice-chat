@@ -2,19 +2,19 @@ import { useEffect, useRef, useState } from 'react';
 import type { SendMediaInput } from '@/hooks/useChat';
 import {
   AttachmentMode,
+  AttachmentUploadKind,
   getAttachmentMessageType,
   validateAttachmentFile,
 } from '@/utils/fileUtils';
 import { ComposerReplyTarget } from '../../types/message';
 
-type AttachmentUploadType = 'image' | 'video' | 'file';
 type PendingMediaStatus = 'pending' | 'uploading' | 'failed';
 const MAX_MEDIA_ITEMS = 10;
 
 export interface PendingMediaItem {
   id: string;
   file: File;
-  type: AttachmentUploadType;
+  type: AttachmentUploadKind;
   previewUrl?: string;
   progress: number;
   status: PendingMediaStatus;
@@ -134,7 +134,7 @@ export function useAttachmentComposerController({
     setAttachMode(mode);
     const nextSelections: Array<{
       file: File;
-      type: AttachmentUploadType;
+      type: AttachmentUploadKind;
       previewUrl?: string;
     }> = [];
     const errors: string[] = [];
@@ -151,8 +151,8 @@ export function useAttachmentComposerController({
         errors.push(
           `${file.name}: ${
             mode === 'media'
-              ? 'only images and videos can be attached here'
-              : 'unsupported file type'
+              ? 'only audio, images, and videos can be attached here'
+              : 'unsupported file'
           }`
         );
         return;
@@ -162,7 +162,9 @@ export function useAttachmentComposerController({
         file,
         type,
         previewUrl:
-          type === 'image' || type === 'video' ? URL.createObjectURL(file) : undefined,
+          type === 'image' || type === 'video' || type === 'audio'
+            ? URL.createObjectURL(file)
+            : undefined,
       });
     });
 
@@ -236,24 +238,36 @@ export function useAttachmentComposerController({
 
         const attachCaptionToThisItem =
           !captionAttached && currentItem.id === captionTargetId;
+        const basePayload = {
+          receiver_id: receiverId,
+          file: currentItem.file,
+          text: attachCaptionToThisItem ? trimmedCaption : undefined,
+          reply_mode: capturedReplyTarget?.mode,
+          reply_to_message_id: capturedReplyTarget?.messageId,
+          client_batch_id: batchId,
+          signal: abortController.signal,
+          onUploadProgress: (progress: number) => {
+            updateItem(currentItem.id, (item) => ({
+              ...item,
+              progress,
+            }));
+          },
+        };
 
         try {
-          await onSendMedia({
-            type: currentItem.type,
-            receiver_id: receiverId,
-            file: currentItem.file,
-            text: attachCaptionToThisItem ? trimmedCaption : undefined,
-            reply_mode: capturedReplyTarget?.mode,
-            reply_to_message_id: capturedReplyTarget?.messageId,
-            client_batch_id: batchId,
-            signal: abortController.signal,
-            onUploadProgress: (progress) => {
-              updateItem(currentItem.id, (item) => ({
-                ...item,
-                progress,
-              }));
-            },
-          });
+          const payload: SendMediaInput =
+            currentItem.type === 'file'
+              ? {
+                  type: 'file' as const,
+                  ...basePayload,
+                }
+              : {
+                  type: 'media' as const,
+                  media_kind: currentItem.type,
+                  ...basePayload,
+                };
+
+          await onSendMedia(payload);
 
           sentAny = true;
           if (attachCaptionToThisItem) {
