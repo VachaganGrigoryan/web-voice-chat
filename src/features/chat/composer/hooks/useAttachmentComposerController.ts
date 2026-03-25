@@ -151,7 +151,7 @@ export function useAttachmentComposerController({
         errors.push(
           `${file.name}: ${
             mode === 'media'
-              ? 'only images and videos can be attached here'
+              ? 'only audio, images, and videos can be attached here'
               : 'unsupported file'
           }`
         );
@@ -162,7 +162,9 @@ export function useAttachmentComposerController({
         file,
         type,
         previewUrl:
-          type === 'image' || type === 'video' ? URL.createObjectURL(file) : undefined,
+          type === 'image' || type === 'video' || type === 'audio'
+            ? URL.createObjectURL(file)
+            : undefined,
       });
     });
 

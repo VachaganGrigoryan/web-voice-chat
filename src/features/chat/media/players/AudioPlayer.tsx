@@ -9,6 +9,8 @@ import {
 
 interface AudioPlayerProps {
   src: string;
+  mediaKind?: 'voice' | 'audio';
+  title?: string;
   durationMs?: number | null;
   className?: string;
   messageId?: string;
@@ -21,6 +23,8 @@ interface AudioPlayerProps {
 
 export default function AudioPlayer({
   src,
+  mediaKind = 'voice',
+  title,
   durationMs,
   className,
   messageId,
@@ -52,6 +56,8 @@ export default function AudioPlayer({
     const item: ChatAudioQueueItem = {
       id: messageId,
       src,
+      mediaKind,
+      title,
       durationMs,
       createdAt,
       isRead,
@@ -114,7 +120,7 @@ export default function AudioPlayer({
               isMe ? "text-primary-foreground/70" : "text-muted-foreground"
             )}
           >
-            Voice
+            {title || (mediaKind === 'audio' ? 'Audio' : 'Voice')}
           </span>
           <span
             className={cn(

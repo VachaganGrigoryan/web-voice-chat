@@ -77,7 +77,9 @@ export function parseMessage(doc: MessageDoc, currentUserId?: string | null): Ch
         kind: 'audio',
         audioUrl: doc.media?.url || '',
         media: doc.media || undefined,
+        fileName: doc.media?.key?.split('/').pop(),
         durationSec: doc.media?.duration_ms ? doc.media.duration_ms / 1000 : undefined,
+        caption: doc.text || undefined,
       } satisfies AudioMessage;
     case 'file':
       return {

@@ -1,5 +1,5 @@
 import React from 'react';
-import { AlertCircle, FileText, ImagePlus, Loader2, Send, Video, X } from 'lucide-react';
+import { AlertCircle, FileText, ImagePlus, Loader2, Send, Video, Volume2, X } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -234,6 +234,28 @@ export function ComposerAttachmentBatchDialog({
                             alt={item.file.name}
                             className="h-full w-full object-cover"
                           />
+                        ) : item.type === 'audio' ? (
+                          <div className="flex h-full flex-col justify-center gap-4 p-4">
+                            <div className="flex items-center gap-3 text-foreground">
+                              <div className="rounded-full bg-primary/10 p-2 text-primary">
+                                <Volume2 className="h-4 w-4" />
+                              </div>
+                              <div className="min-w-0">
+                                <div className="truncate text-sm font-medium">
+                                  {item.file.name}
+                                </div>
+                                <div className="text-xs text-muted-foreground">
+                                  Audio preview
+                                </div>
+                              </div>
+                            </div>
+                            <audio
+                              controls
+                              src={item.previewUrl}
+                              className="w-full"
+                              preload="metadata"
+                            />
+                          </div>
                         ) : (
                           <>
                             <video

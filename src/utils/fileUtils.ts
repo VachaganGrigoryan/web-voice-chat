@@ -71,10 +71,10 @@ export const FILE_ATTACH_ACCEPT = [
   ...SUPPORTED_DOCUMENT_EXTENSIONS,
   ...SUPPORTED_ARCHIVE_EXTENSIONS,
 ].join(',');
-export const MEDIA_ATTACH_ACCEPT = 'image/*,video/*';
+export const MEDIA_ATTACH_ACCEPT = 'image/*,video/*,audio/*';
 
 export type AttachmentMode = 'media' | 'file';
-export type AttachmentUploadKind = 'image' | 'video' | 'file';
+export type AttachmentUploadKind = 'image' | 'video' | 'audio' | 'file';
 
 export const MAX_PREVIEW_MEDIA_BYTES = 10 * 1024 * 1024;
 export const MAX_GENERIC_FILE_BYTES = 25 * 1024 * 1024;
@@ -107,6 +107,7 @@ export const getAttachmentMessageType = (
   const normalizedMimeType = normalizeMimeType(file.type);
 
   if (mode === 'media') {
+    if (SUPPORTED_AUDIO_MIMES.includes(normalizedMimeType)) return 'audio';
     if (SUPPORTED_IMAGE_MIMES.includes(normalizedMimeType)) return 'image';
     if (isSupportedVideoMime(normalizedMimeType)) return 'video';
     return null;
@@ -144,7 +145,7 @@ export const validateAttachmentFile = (file: File, mode: AttachmentMode): string
   if (mode === 'media') {
     const attachmentType = getAttachmentMessageType(file, mode);
     if (!attachmentType) {
-      return 'Only images and videos can be attached in media mode';
+      return 'Only audio, images, and videos can be attached in media mode';
     }
 
     if (file.size > MAX_PREVIEW_MEDIA_BYTES) {

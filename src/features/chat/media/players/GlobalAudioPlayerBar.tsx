@@ -225,7 +225,17 @@ export function GlobalAudioPlayerBar() {
                 <div className="min-w-0 flex-1">
                   <div className="mb-1 flex items-center justify-between gap-2">
                     <div className="truncate text-xs font-medium text-foreground">
-                      {activeItem.isMe ? 'Your voice message' : 'Voice message'}
+                      {activeItem?.title
+                        ? activeItem.isMe
+                          ? `Your ${activeItem.title.toLowerCase()}`
+                          : activeItem.title
+                        : activeItem?.mediaKind === 'audio'
+                        ? activeItem.isMe
+                          ? 'Your audio file'
+                          : 'Audio file'
+                        : activeItem.isMe
+                        ? 'Your voice message'
+                        : 'Voice message'}
                     </div>
                     <div className="shrink-0 text-[11px] font-mono text-muted-foreground">
                       {formatDuration(currentTime * 1000)} / {formatDuration(visibleDuration * 1000)}
