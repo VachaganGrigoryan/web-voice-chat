@@ -3,7 +3,7 @@ import { Navigate, useNavigate, useParams } from 'react-router-dom';
 import { APP_ROUTES, isSettingsTab, SettingsTab } from '@/app/routes';
 import { useProfile } from '@/hooks/useProfile';
 import { useTheme } from '@/components/ThemeProvider';
-import { unlockAudioExplicit } from '@/utils/notificationSound';
+import { useNotificationSoundStore } from '@/utils/notificationSound';
 import { PanelPageLayout, PanelSection } from '@/components/panel/PanelPageLayout';
 import { Button } from '@/components/ui/Button';
 import { cn } from '@/lib/utils';
@@ -39,19 +39,25 @@ export default function SettingsPage() {
     isDeletingAvatar,
   } = useProfile();
   const { mode, setMode, theme, setTheme, fontSize, setFontSize, density, setDensity } = useTheme();
+  const soundEnabled = useNotificationSoundStore((state) => state.soundEnabled);
+  const soundCapability = useNotificationSoundStore((state) => state.soundCapability);
+  const browserNotificationState = useNotificationSoundStore((state) => state.browserNotificationState);
+  const isEnablingSound = useNotificationSoundStore((state) => state.isEnablingSound);
+  const isRequestingBrowserNotifications = useNotificationSoundStore(
+    (state) => state.isRequestingBrowserNotifications
+  );
+  const setSoundEnabled = useNotificationSoundStore((state) => state.setSoundEnabled);
+  const enableSoundFromUserGesture = useNotificationSoundStore((state) => state.enableSoundFromUserGesture);
+  const requestBrowserNotifications = useNotificationSoundStore((state) => state.requestBrowserNotifications);
+  const syncBrowserNotificationState = useNotificationSoundStore((state) => state.syncBrowserNotificationState);
   const [username, setUsername] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [bio, setBio] = useState('');
   const [isPrivate, setIsPrivate] = useState(false);
   const [discoveryEnabled, setDiscoveryEnabled] = useState(true);
-  const [soundEnabled, setSoundEnabled] = useState(() => localStorage.getItem('soundEnabled') !== 'false');
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-
-  useEffect(() => {
-    localStorage.setItem('soundEnabled', String(soundEnabled));
-  }, [soundEnabled]);
 
   useEffect(() => {
     if (!profile) {
@@ -64,6 +70,10 @@ export default function SettingsPage() {
     setIsPrivate(profile.is_private || false);
     setDiscoveryEnabled(profile.default_discovery_enabled ?? true);
   }, [profile]);
+
+  useEffect(() => {
+    syncBrowserNotificationState();
+  }, [syncBrowserNotificationState]);
 
   if (!routeTab) {
     return <Navigate to={APP_ROUTES.settingsTab('profile')} replace />;
@@ -178,7 +188,10 @@ export default function SettingsPage() {
   );
 
   const handleTestSound = async () => {
-    const successState = await unlockAudioExplicit();
+    setError(null);
+    setSuccess(null);
+
+    const successState = await enableSoundFromUserGesture();
     if (successState) {
       setSuccess('Sound enabled successfully.');
       window.setTimeout(() => setSuccess(null), 3000);
@@ -186,6 +199,27 @@ export default function SettingsPage() {
     }
 
     setError('Failed to enable sound. Please try again.');
+    window.setTimeout(() => setError(null), 3000);
+  };
+
+  const handleEnableBrowserNotifications = async () => {
+    setError(null);
+    setSuccess(null);
+
+    const permission = await requestBrowserNotifications();
+    if (permission === 'granted') {
+      setSuccess('Browser notifications enabled successfully.');
+      window.setTimeout(() => setSuccess(null), 3000);
+      return;
+    }
+
+    if (permission === 'unsupported') {
+      setError('This browser does not support system notifications.');
+      window.setTimeout(() => setError(null), 3000);
+      return;
+    }
+
+    setError('Browser notifications were not enabled.');
     window.setTimeout(() => setError(null), 3000);
   };
 
@@ -225,7 +259,12 @@ export default function SettingsPage() {
         <NotificationsSettingsTab
           soundEnabled={soundEnabled}
           setSoundEnabled={setSoundEnabled}
+          soundCapability={soundCapability}
+          browserNotificationState={browserNotificationState}
+          isEnablingSound={isEnablingSound}
+          isRequestingBrowserNotifications={isRequestingBrowserNotifications}
           onTestSound={handleTestSound}
+          onEnableBrowserNotifications={handleEnableBrowserNotifications}
         />
       ) : null}
 

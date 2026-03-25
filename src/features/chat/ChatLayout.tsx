@@ -24,6 +24,7 @@ import { useTypingIndicator, useSocketStore } from '@/socket/socket';
 import { useProfile } from '@/hooks/useProfile';
 import { useChatLayoutDerivedData } from './hooks/useChatLayoutDerivedData';
 import { useChatConversationView } from './hooks/useChatConversationView';
+import { NotificationSoundPrompt } from './components/NotificationSoundPrompt';
 import {
   closedMediaViewerState,
   useChatInteractionState,
@@ -31,6 +32,7 @@ import {
 import { useChatReadState } from './hooks/useChatReadState';
 import { useThreadPanelLayout } from './hooks/useThreadPanelLayout';
 import { startCall, useCallStore } from '@/features/calls/callController';
+import { useNotificationSoundStore } from '@/utils/notificationSound';
 
 export default function ChatLayout() {
   const { peerUserId, rootMessageId } = useParams<{
@@ -69,6 +71,12 @@ export default function ChatLayout() {
   const { profile } = useProfile();
   const { socket } = useSocketStore();
   const callPhase = useCallStore((state) => state.phase);
+  const soundEnabled = useNotificationSoundStore((state) => state.soundEnabled);
+  const soundCapability = useNotificationSoundStore((state) => state.soundCapability);
+  const soundPromptDismissed = useNotificationSoundStore((state) => state.soundPromptDismissed);
+  const isEnablingSound = useNotificationSoundStore((state) => state.isEnablingSound);
+  const enableSoundFromUserGesture = useNotificationSoundStore((state) => state.enableSoundFromUserGesture);
+  const dismissSoundPrompt = useNotificationSoundStore((state) => state.dismissSoundPrompt);
   const {
     incoming,
     outgoing,
@@ -235,6 +243,9 @@ export default function ChatLayout() {
     navigate(APP_ROUTES.chat);
   };
 
+  const showNotificationSoundPrompt =
+    soundEnabled && soundCapability === 'blocked' && !soundPromptDismissed;
+
   const closeThreadRoute = () => {
     if (!selectedUser) {
       navigate(APP_ROUTES.chat);
@@ -373,6 +384,16 @@ export default function ChatLayout() {
                 })
               }
             />
+
+            {isPingAccepted && showNotificationSoundPrompt ? (
+              <NotificationSoundPrompt
+                isEnabling={isEnablingSound}
+                onEnable={() => {
+                  void enableSoundFromUserGesture();
+                }}
+                onDismiss={dismissSoundPrompt}
+              />
+            ) : null}
 
             {isPingAccepted ? (
               <MainChatPane

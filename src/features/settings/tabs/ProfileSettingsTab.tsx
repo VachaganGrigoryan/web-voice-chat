@@ -96,10 +96,15 @@ export default function ProfileSettingsTab({
             <Label htmlFor="settings-username">Username</Label>
             <Input
               id="settings-username"
+              name="profile-username"
               value={username}
               onChange={(event) => setUsername(event.target.value)}
               placeholder="Choose a unique username"
               className="max-w-md"
+              autoComplete="off"
+              data-bwignore="true"
+              data-1p-ignore="true"
+              data-lpignore="true"
             />
           </div>
 
@@ -107,10 +112,15 @@ export default function ProfileSettingsTab({
             <Label htmlFor="settings-display-name">Display Name</Label>
             <Input
               id="settings-display-name"
+              name="profile-display-name"
               value={displayName}
               onChange={(event) => setDisplayName(event.target.value)}
               placeholder="How others see you"
               className="max-w-md"
+              autoComplete="off"
+              data-bwignore="true"
+              data-1p-ignore="true"
+              data-lpignore="true"
             />
           </div>
 
@@ -118,10 +128,15 @@ export default function ProfileSettingsTab({
             <Label htmlFor="settings-bio">Bio</Label>
             <textarea
               id="settings-bio"
+              name="profile-bio"
               value={bio}
               onChange={(event) => setBio(event.target.value)}
               placeholder="A little about yourself"
               className="flex min-h-[100px] w-full max-w-md resize-none rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              autoComplete="off"
+              data-bwignore="true"
+              data-1p-ignore="true"
+              data-lpignore="true"
             />
           </div>
         </div>

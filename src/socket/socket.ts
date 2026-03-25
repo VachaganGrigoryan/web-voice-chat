@@ -809,11 +809,6 @@ export const useRealtimeMessages = (
   const queryClient = useQueryClient();
   const { userId: currentUserId } = useAuthStore();
   const { socket } = useSocketStore();
-  useEffect(() => {
-    if ('Notification' in window && Notification.permission === 'default') {
-      Notification.requestPermission();
-    }
-  }, []);
 
   useEffect(() => {
     if (!openThreadRootId) return;
