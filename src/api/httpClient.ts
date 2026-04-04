@@ -103,7 +103,7 @@ apiClient.interceptors.response.use(
         if (onLogout) {
           onLogout();
         } else {
-          window.location.href = getAbsoluteAppUrl(APP_ROUTES.login);
+          window.location.href = getAbsoluteAppUrl(APP_ROUTES.auth);
         }
         
         return Promise.reject(err);

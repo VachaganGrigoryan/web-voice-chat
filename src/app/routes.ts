@@ -19,8 +19,8 @@ export const SETTINGS_TABS: SettingsTab[] = [
 
 export const APP_ROUTES = {
   root: '/',
-  login: '/login',
-  legacyAuth: '/auth',
+  auth: '/auth',
+  legacyLogin: '/login',
   chat: '/chat',
   chatPeer: (peerUserId: string) => `/chat/${peerUserId}`,
   chatThread: (peerUserId: string, rootMessageId: string) =>
@@ -72,7 +72,23 @@ export const getDefaultAuthedPath = () => getLastAppPath() || APP_ROUTES.chat;
 
 export const getAuthRedirectTarget = (path: string) => {
   const normalized = path.startsWith('/') ? path : APP_ROUTES.chat;
-  return `${APP_ROUTES.login}?redirect=${encodeURIComponent(normalized)}`;
+  return `${APP_ROUTES.auth}?redirect=${encodeURIComponent(normalized)}`;
+};
+
+export const normalizePostAuthRedirect = (redirect: string | null | undefined) => {
+  if (!redirect || !redirect.startsWith('/')) {
+    return getDefaultAuthedPath();
+  }
+
+  if (
+    redirect === APP_ROUTES.auth ||
+    redirect === APP_ROUTES.legacyLogin ||
+    redirect === '/welcome'
+  ) {
+    return getDefaultAuthedPath();
+  }
+
+  return redirect;
 };
 
 export const getAbsoluteAppUrl = (path: string) => {

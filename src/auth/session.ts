@@ -77,7 +77,7 @@ class SessionManager {
     this.notifyListeners(false);
     
     // Force reload to clear any in-memory state if needed, or just redirect
-    window.location.href = getAbsoluteAppUrl(APP_ROUTES.login);
+    window.location.href = getAbsoluteAppUrl(APP_ROUTES.auth);
   }
 
   isAuthenticated() {
