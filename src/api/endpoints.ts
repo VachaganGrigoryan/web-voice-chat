@@ -11,7 +11,7 @@ import {
   CreateInviteLinkResponse,
   DeleteMessageResponse,
   DiscoveredUser,
-  GenericCodeSentResponse,
+  AuthChallengeResponse,
   MessageDoc,
   MessageResponse,
   PaginatedResponse,
@@ -32,17 +32,13 @@ import {
 } from './types';
 
 export const authApi = {
-  register: (email: string) =>
+  start: (identifier: string) =>
     apiClient
-      .post<SuccessResponse<GenericCodeSentResponse>>('/auth/register', { email })
+      .post<SuccessResponse<AuthChallengeResponse>>('/auth/start', { method: 'email', identifier })
       .then((res) => extractResponseData(res.data)),
-  login: (email: string) =>
+  finish: (identifier: string, code: string) =>
     apiClient
-      .post<SuccessResponse<GenericCodeSentResponse>>('/auth/login', { email })
-      .then((res) => extractResponseData(res.data)),
-  verify: (email: string, code: string) =>
-    apiClient
-      .post<SuccessResponse<TokenPair>>('/auth/verify', { email, code })
+      .post<SuccessResponse<TokenPair>>('/auth/finish', { method: 'email', identifier, code })
       .then((res) => extractResponseData(res.data)),
   logout: (refresh_token: string) =>
     apiClient

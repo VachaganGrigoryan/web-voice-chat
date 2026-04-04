@@ -50,8 +50,9 @@ export interface TokenPair {
   token_type: string;
 }
 
-export interface GenericCodeSentResponse {
-  email: string;
+export interface AuthChallengeResponse {
+  method: 'email';
+  identifier: string;
   message: string;
 }
 

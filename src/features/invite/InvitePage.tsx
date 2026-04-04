@@ -97,7 +97,7 @@ export default function InvitePage() {
           ) : (
             <Button
               onClick={() =>
-                navigate(`${APP_ROUTES.login}?redirect=${encodeURIComponent(APP_ROUTES.chatPeer(user.id))}`)
+                navigate(`${APP_ROUTES.auth}?redirect=${encodeURIComponent(APP_ROUTES.chatPeer(user.id))}`)
               }
               className="h-12 w-full text-base"
             >

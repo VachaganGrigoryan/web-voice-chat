@@ -55,7 +55,13 @@ export const OtpInput = React.forwardRef<HTMLInputElement, OtpInputProps>(
           maxLength={maxLength}
           className="absolute inset-0 h-full w-full opacity-0 cursor-text"
           type="tel" // Better keyboard on mobile
+          name="one-time-code"
+          inputMode="numeric"
           autoComplete="one-time-code"
+          autoCapitalize="none"
+          autoCorrect="off"
+          spellCheck={false}
+          aria-label="Verification code"
           {...props}
         />
       </div>

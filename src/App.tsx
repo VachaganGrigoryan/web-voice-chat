@@ -40,7 +40,7 @@ function RootRedirect() {
 
   return (
     <Navigate
-      to={isAuthenticated ? getDefaultAuthedPath() : APP_ROUTES.login}
+      to={isAuthenticated ? getDefaultAuthedPath() : APP_ROUTES.auth}
       replace
     />
   );
@@ -54,8 +54,8 @@ export default function App() {
           <CallRoot />
           <Routes>
             <Route element={<PublicRoute />}>
-              <Route path={APP_ROUTES.login} element={<AuthPage />} />
-              <Route path={APP_ROUTES.legacyAuth} element={<Navigate to={APP_ROUTES.login} replace />} />
+              <Route path={APP_ROUTES.auth} element={<AuthPage />} />
+              <Route path={APP_ROUTES.legacyLogin} element={<Navigate to={APP_ROUTES.auth} replace />} />
             </Route>
 
             <Route element={<ProtectedRoute />}>

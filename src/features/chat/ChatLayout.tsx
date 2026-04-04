@@ -235,7 +235,7 @@ export default function ChatLayout() {
       }
     } finally {
       logout();
-      navigate(APP_ROUTES.login);
+      navigate(APP_ROUTES.auth);
     }
   };
 
