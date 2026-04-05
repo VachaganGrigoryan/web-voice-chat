@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { useCallStore } from '@/features/calls/callController';
 import { FILE_ATTACH_ACCEPT, MEDIA_ATTACH_ACCEPT } from '@/utils/fileUtils';
 import { cn } from '@/lib/utils';
 import { MOBILE_BREAKPOINT } from '../utils/chatLayoutUtils';
@@ -25,6 +26,7 @@ export default function ChatComposer({
   const [isMobileViewport, setIsMobileViewport] = useState(
     () => typeof window !== 'undefined' && window.innerWidth < MOBILE_BREAKPOINT
   );
+  const callPhase = useCallStore((state) => state.phase);
   const desktopPanelRef = useRef<HTMLDivElement | null>(null);
   const composerShellRef = useRef<HTMLDivElement | null>(null);
 
@@ -111,6 +113,7 @@ export default function ChatComposer({
     isUploading ||
     textInput.isSendingText ||
     attachmentComposer.isBatchUploading;
+  const isCallActive = callPhase !== 'idle';
   const isEmojiPanel = activePanel === 'emoji';
   const isAttachmentsPanel = activePanel === 'attachments';
   const isMobileEmojiPanelOpen = isMobileViewport && isEmojiPanel;
@@ -266,7 +269,7 @@ export default function ChatComposer({
             onSendMedia={onSendMedia}
             replyTarget={replyTarget}
             onClearReplyTarget={onClearReplyTarget}
-            disabled={isBusy}
+            disabled={isBusy || isCallActive}
             onEngage={closePanels}
             renderIdleRow={(recorderTrigger) => (
               <ComposerInputRow
