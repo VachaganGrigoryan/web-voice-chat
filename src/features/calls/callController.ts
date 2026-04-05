@@ -87,6 +87,22 @@ export type RecoverySource =
   | 'manual'
   | 'recovery-available';
 type LocalTerminalAction = 'reject' | 'end' | null;
+export type CallPresentationMode = 'expanded' | 'minimized';
+
+export type CallMediaDeviceKind = 'audioinput' | 'videoinput';
+
+export interface CallMediaDevice {
+  id: string;
+  kind: CallMediaDeviceKind;
+  label: string;
+}
+
+export interface CallAudioRoute {
+  id: string;
+  kind: 'browser-output';
+  label: string;
+  source: 'browser';
+}
 
 interface StartCallInput {
   peerUserId: string;
@@ -99,8 +115,25 @@ interface MediaPreferences {
   cameraEnabled: boolean;
 }
 
+interface CallDeviceState {
+  availableMicrophones: CallMediaDevice[];
+  availableCameras: CallMediaDevice[];
+  availableAudioRoutes: CallAudioRoute[];
+  selectedMicrophoneId: string | null;
+  selectedCameraId: string | null;
+  selectedAudioRouteId: string | null;
+  browserAudioOutputSupported: boolean;
+}
+
+export interface MinimizedCallPosition {
+  x: number;
+  y: number;
+}
+
 interface CallControllerState {
   phase: CallPhase;
+  callPresentationMode: CallPresentationMode;
+  minimizedCallPosition: MinimizedCallPosition | null;
   role: CallRole;
   call: CallDoc | null;
   peerUser: CallPeerUserSummary | null;
@@ -112,6 +145,13 @@ interface CallControllerState {
   pendingRemoteAnswer: RTCSessionDescriptionInit | null;
   pendingIceCandidates: RTCIceCandidateInit[];
   mediaPreferences: MediaPreferences;
+  availableMicrophones: CallMediaDevice[];
+  availableCameras: CallMediaDevice[];
+  availableAudioRoutes: CallAudioRoute[];
+  selectedMicrophoneId: string | null;
+  selectedCameraId: string | null;
+  selectedAudioRouteId: string | null;
+  browserAudioOutputSupported: boolean;
   isMicMuted: boolean;
   isCameraEnabled: boolean;
   isStarting: boolean;
@@ -136,8 +176,28 @@ const initialMediaPreferences: MediaPreferences = {
   cameraEnabled: false,
 };
 
+type HTMLAudioElementWithSinkId = HTMLAudioElement & {
+  setSinkId?: (sinkId: string) => Promise<void>;
+};
+
+const supportsBrowserAudioOutputSelection = () =>
+  typeof HTMLMediaElement !== 'undefined' &&
+  typeof (HTMLMediaElement.prototype as HTMLAudioElementWithSinkId).setSinkId === 'function';
+
+const initialDeviceState: CallDeviceState = {
+  availableMicrophones: [],
+  availableCameras: [],
+  availableAudioRoutes: [],
+  selectedMicrophoneId: null,
+  selectedCameraId: null,
+  selectedAudioRouteId: null,
+  browserAudioOutputSupported: supportsBrowserAudioOutputSelection(),
+};
+
 const initialCallState: CallControllerState = {
   phase: 'idle',
+  callPresentationMode: 'expanded',
+  minimizedCallPosition: null,
   role: null,
   call: null,
   peerUser: null,
@@ -149,6 +209,7 @@ const initialCallState: CallControllerState = {
   pendingRemoteAnswer: null,
   pendingIceCandidates: [],
   mediaPreferences: initialMediaPreferences,
+  ...initialDeviceState,
   isMicMuted: false,
   isCameraEnabled: false,
   isStarting: false,
@@ -171,6 +232,7 @@ const initialCallState: CallControllerState = {
 
 let nextTerminalActionId = 0;
 const backgroundRejectFallbackTimeouts = new Map<string, number>();
+let remoteAudioElement: HTMLAudioElementWithSinkId | null = null;
 
 export const useCallStore = create<CallControllerState>(() => initialCallState);
 
@@ -189,6 +251,9 @@ const isRecoverableStatus = (status: CallDoc['status']) =>
 
 const isRecoverableCall = (call: CallDoc | null | undefined) =>
   !!call && isRecoverableStatus(call.status);
+
+const isMinimizableCallPhase = (phase: CallPhase) =>
+  phase === 'connecting' || phase === 'active';
 
 const isTerminalStatus = (status: CallDoc['status']) =>
   status === 'rejected' ||
@@ -254,6 +319,91 @@ const buildPeerUserSummary = (
   avatar: (peerUser?.avatar as Record<string, any> | null | undefined) ?? null,
   is_online: peerUser?.is_online ?? false,
 });
+
+const getTrackDeviceId = (track: MediaStreamTrack | null | undefined) => {
+  const deviceId = track?.getSettings?.().deviceId;
+  return typeof deviceId === 'string' && deviceId ? deviceId : null;
+};
+
+const isExactDeviceConstraintError = (error: unknown) =>
+  error instanceof DOMException &&
+  (error.name === 'NotFoundError' || error.name === 'OverconstrainedError');
+
+const sortByLabel = <T extends { label: string; id: string }>(items: T[]) =>
+  [...items].sort((left, right) => {
+    const leftDefault = left.id === 'default' ? 0 : 1;
+    const rightDefault = right.id === 'default' ? 0 : 1;
+
+    if (leftDefault !== rightDefault) {
+      return leftDefault - rightDefault;
+    }
+
+    return left.label.localeCompare(right.label, undefined, { sensitivity: 'base' });
+  });
+
+const toCallMediaDevices = (
+  devices: MediaDeviceInfo[],
+  kind: CallMediaDeviceKind
+): CallMediaDevice[] => {
+  const matchingDevices = devices.filter((device) => device.kind === kind);
+
+  return sortByLabel(
+    matchingDevices.map((device, index) => ({
+      id: device.deviceId,
+      kind,
+      label:
+        device.label ||
+        (kind === 'audioinput'
+          ? `Microphone ${index + 1}`
+          : `Camera ${index + 1}`),
+    }))
+  );
+};
+
+const toBrowserAudioRoutes = (devices: MediaDeviceInfo[]): CallAudioRoute[] =>
+  sortByLabel(
+    devices
+      .filter((device) => device.kind === 'audiooutput')
+      .map((device, index) => ({
+        id: device.deviceId,
+        kind: 'browser-output' as const,
+        label: device.label || (device.deviceId === 'default' ? 'System default' : `Speaker ${index + 1}`),
+        source: 'browser' as const,
+      }))
+  );
+
+const getPreferredItemId = <T extends { id: string }>(
+  items: T[],
+  preferredIds: Array<string | null | undefined>
+) => {
+  for (const preferredId of preferredIds) {
+    if (!preferredId) {
+      continue;
+    }
+
+    const match = items.find((item) => item.id === preferredId);
+    if (match) {
+      return match.id;
+    }
+  }
+
+  return items[0]?.id || null;
+};
+
+const getSelectedMicrophoneIdFromState = (state: CallControllerState) =>
+  getPreferredItemId(state.availableMicrophones, [
+    state.selectedMicrophoneId,
+    getTrackDeviceId(state.localStream?.getAudioTracks()[0]),
+  ]);
+
+const getSelectedCameraIdFromState = (state: CallControllerState) =>
+  getPreferredItemId(state.availableCameras, [
+    state.selectedCameraId,
+    getTrackDeviceId(state.localStream?.getVideoTracks()[0]),
+  ]);
+
+const getSelectedAudioRouteIdFromState = (state: CallControllerState) =>
+  getPreferredItemId(state.availableAudioRoutes, [state.selectedAudioRouteId, 'default']);
 
 const emitCallEvent = (event: string, payload: unknown) => {
   getSocket()?.emit(event, payload);
@@ -365,6 +515,8 @@ const prepareRecoveryReset = () => {
 
   setCallState({
     phase: 'reconnecting',
+    callPresentationMode: 'expanded',
+    minimizedCallPosition: null,
     call: {
       ...state.call,
       status: 'reconnecting',
@@ -478,6 +630,8 @@ const showTerminalCallScreen = (
 
   setCallState({
     phase: 'ended',
+    callPresentationMode: 'expanded',
+    minimizedCallPosition: null,
     call: callDoc,
     peerUser,
     isStarting: false,
@@ -510,6 +664,8 @@ const beginEndingCall = (
 
   setCallState({
     phase: 'ending',
+    callPresentationMode: 'expanded',
+    minimizedCallPosition: null,
     isEnding: true,
     isStarting: false,
     isAccepting: false,
@@ -640,6 +796,106 @@ const toRtcIceServers = (iceServers: IceServer[]): RTCIceServer[] =>
     credential: server.credential || undefined,
   }));
 
+const getVideoConstraints = (deviceId?: string | null): MediaTrackConstraints =>
+  deviceId
+    ? {
+        deviceId: { exact: deviceId },
+        width: { ideal: 1280 },
+        height: { ideal: 720 },
+      }
+    : {
+        facingMode: 'user',
+        width: { ideal: 1280 },
+        height: { ideal: 720 },
+      };
+
+const getLocalStreamConstraints = (
+  callType: CallType,
+  state: Pick<CallControllerState, 'selectedMicrophoneId' | 'selectedCameraId'>
+): MediaStreamConstraints => ({
+  audio: state.selectedMicrophoneId ? { deviceId: { exact: state.selectedMicrophoneId } } : true,
+  video: callType === 'video' ? getVideoConstraints(state.selectedCameraId) : false,
+});
+
+const applyBrowserAudioOutputToElement = async (
+  routeId: string | null,
+  options: { showToast?: boolean } = {}
+) => {
+  if (!routeId || !remoteAudioElement || !supportsBrowserAudioOutputSelection()) {
+    return;
+  }
+
+  try {
+    await remoteAudioElement.setSinkId?.(routeId);
+  } catch (error) {
+    if (options.showToast) {
+      toast.error('This browser could not switch the audio output.');
+    }
+
+    throw error;
+  }
+};
+
+const syncAvailableCallDevices = (devices: MediaDeviceInfo[]) => {
+  const state = getCallState();
+  const availableMicrophones = toCallMediaDevices(devices, 'audioinput');
+  const availableCameras = toCallMediaDevices(devices, 'videoinput');
+  const availableAudioRoutes = supportsBrowserAudioOutputSelection()
+    ? toBrowserAudioRoutes(devices)
+    : [];
+  const selectedMicrophoneId = getPreferredItemId(availableMicrophones, [
+    state.selectedMicrophoneId,
+    getTrackDeviceId(state.localStream?.getAudioTracks()[0]),
+  ]);
+  const selectedCameraId = getPreferredItemId(availableCameras, [
+    state.selectedCameraId,
+    getTrackDeviceId(state.localStream?.getVideoTracks()[0]),
+  ]);
+  const selectedAudioRouteId = getPreferredItemId(availableAudioRoutes, [
+    state.selectedAudioRouteId,
+    'default',
+  ]);
+
+  setCallState({
+    availableMicrophones,
+    availableCameras,
+    availableAudioRoutes,
+    selectedMicrophoneId,
+    selectedCameraId,
+    selectedAudioRouteId,
+    browserAudioOutputSupported: supportsBrowserAudioOutputSelection(),
+  });
+
+  if (selectedAudioRouteId) {
+    void applyBrowserAudioOutputToElement(selectedAudioRouteId).catch(() => {});
+  }
+};
+
+export const refreshCallDevices = async () => {
+  if (typeof navigator === 'undefined' || !navigator.mediaDevices?.enumerateDevices) {
+    setCallState({
+      ...initialDeviceState,
+      browserAudioOutputSupported: supportsBrowserAudioOutputSelection(),
+    });
+    return;
+  }
+
+  try {
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    syncAvailableCallDevices(devices);
+  } catch (error) {
+    console.error('Failed to enumerate call devices:', error);
+  }
+};
+
+export const registerCallRemoteAudioElement = (node: HTMLAudioElement | null) => {
+  remoteAudioElement = node as HTMLAudioElementWithSinkId | null;
+
+  if (remoteAudioElement) {
+    void applyBrowserAudioOutputToElement(getCallState().selectedAudioRouteId).catch(() => {});
+  }
+};
+
 const syncMediaPreferenceState = (callType: CallType, preferences: MediaPreferences) => {
   setCallState({
     mediaPreferences: {
@@ -679,6 +935,30 @@ const hasReusableLocalStream = (stream: MediaStream | null, callType: CallType) 
   return hasAudio && hasVideo;
 };
 
+const requestLocalStream = async (callType: CallType, state: CallControllerState) => {
+  const constraints = getLocalStreamConstraints(callType, state);
+
+  try {
+    return await navigator.mediaDevices.getUserMedia(constraints);
+  } catch (error) {
+    const selectedDeviceRequested = !!state.selectedMicrophoneId || !!state.selectedCameraId;
+    if (!selectedDeviceRequested || !isExactDeviceConstraintError(error)) {
+      throw error;
+    }
+
+    setCallState({
+      selectedMicrophoneId: null,
+      selectedCameraId: null,
+    });
+
+    return navigator.mediaDevices.getUserMedia(
+      callType === 'video'
+        ? { audio: true, video: getVideoConstraints() }
+        : { audio: true, video: false }
+    );
+  }
+};
+
 const acquireLocalStream = async (
   callType: CallType,
   options: { reuseExisting: boolean } = { reuseExisting: true }
@@ -689,6 +969,7 @@ const acquireLocalStream = async (
   if (options.reuseExisting && hasReusableLocalStream(state.localStream, callType)) {
     applyMediaPreferencesToStream(state.localStream!, callType, preferences);
     syncMediaPreferenceState(callType, preferences);
+    await refreshCallDevices();
     return state.localStream!;
   }
 
@@ -701,17 +982,104 @@ const acquireLocalStream = async (
     throw new Error('Media devices are not available in this browser.');
   }
 
-  const stream = await navigator.mediaDevices.getUserMedia(
-    callType === 'video'
-      ? { audio: true, video: { facingMode: 'user' } }
-      : { audio: true, video: false }
-  );
+  const stream = await requestLocalStream(callType, state);
 
   applyMediaPreferencesToStream(stream, callType, preferences);
-  setCallState({ localStream: stream });
+  setCallState({
+    localStream: stream,
+    selectedMicrophoneId: getTrackDeviceId(stream.getAudioTracks()[0]),
+    selectedCameraId: callType === 'video' ? getTrackDeviceId(stream.getVideoTracks()[0]) : null,
+  });
   syncMediaPreferenceState(callType, preferences);
+  await refreshCallDevices();
 
   return stream;
+};
+
+const requestReplacementTrack = async (
+  kind: 'audio' | 'video',
+  deviceId: string
+): Promise<MediaStreamTrack> => {
+  if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
+    throw new Error('Media devices are not available in this browser.');
+  }
+
+  const constraints: MediaStreamConstraints =
+    kind === 'audio'
+      ? { audio: { deviceId: { exact: deviceId } }, video: false }
+      : { audio: false, video: getVideoConstraints(deviceId) };
+
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia(constraints);
+    const track = kind === 'audio' ? stream.getAudioTracks()[0] : stream.getVideoTracks()[0];
+    if (!track) {
+      stopStreamTracks(stream);
+      throw new Error(`The selected ${kind === 'audio' ? 'microphone' : 'camera'} did not provide a track.`);
+    }
+
+    return track;
+  } catch (error) {
+    if (!isExactDeviceConstraintError(error)) {
+      throw error;
+    }
+
+    const fallbackStream = await navigator.mediaDevices.getUserMedia(
+      kind === 'audio'
+        ? { audio: true, video: false }
+        : { audio: false, video: getVideoConstraints() }
+    );
+    const fallbackTrack = kind === 'audio'
+      ? fallbackStream.getAudioTracks()[0]
+      : fallbackStream.getVideoTracks()[0];
+
+    if (!fallbackTrack) {
+      stopStreamTracks(fallbackStream);
+      throw new Error(`The browser could not access a fallback ${kind === 'audio' ? 'microphone' : 'camera'}.`);
+    }
+
+    return fallbackTrack;
+  }
+};
+
+const replaceLocalTrack = async (kind: 'audio' | 'video', deviceId: string) => {
+  const state = getCallState();
+  const { localStream, mediaPreferences, peerConnection } = state;
+  if (!localStream) {
+    return;
+  }
+
+  const nextTrack = await requestReplacementTrack(kind, deviceId);
+  const previousTrack =
+    kind === 'audio'
+      ? localStream.getAudioTracks()[0] || null
+      : localStream.getVideoTracks()[0] || null;
+  const nextStream = new MediaStream([
+    ...localStream.getTracks().filter((track) => track.kind !== kind),
+    nextTrack,
+  ]);
+  const sender = peerConnection?.getSenders().find((candidate) => candidate.track?.kind === kind) || null;
+
+  if (sender) {
+    await sender.replaceTrack(nextTrack);
+  } else if (peerConnection) {
+    peerConnection.addTrack(nextTrack, nextStream);
+  }
+
+  applyMediaPreferencesToStream(nextStream, state.call?.type || 'audio', mediaPreferences);
+  setCallState({
+    localStream: nextStream,
+    selectedMicrophoneId:
+      kind === 'audio'
+        ? getTrackDeviceId(nextTrack) || deviceId
+        : state.selectedMicrophoneId,
+    selectedCameraId:
+      kind === 'video'
+        ? getTrackDeviceId(nextTrack) || deviceId
+        : state.selectedCameraId,
+  });
+
+  previousTrack?.stop();
+  await refreshCallDevices();
 };
 
 const addLocalTracks = (peerConnection: RTCPeerConnection, localStream: MediaStream) => {
@@ -831,6 +1199,8 @@ const transitionToReconnecting = (options: {
 
   setCallState({
     phase: 'reconnecting',
+    callPresentationMode: 'expanded',
+    minimizedCallPosition: null,
     role: nextRole,
     call: {
       ...sourceCall,
@@ -1175,9 +1545,12 @@ export const startCall = async ({ peerUserId, type, peerUser }: StartCallInput) 
   const mediaPreferences = defaultMediaPreferencesForCall(type);
   setCallState({
     phase: 'outgoing-ringing',
+    callPresentationMode: 'expanded',
+    minimizedCallPosition: null,
     role: 'caller',
     peerUser: buildPeerUserSummary(peerUserId, peerUser),
     mediaPreferences,
+    ...initialDeviceState,
     isMicMuted: mediaPreferences.micMuted,
     isCameraEnabled: mediaPreferences.cameraEnabled,
     isStarting: true,
@@ -1228,8 +1601,11 @@ export const acceptIncomingCall = async () => {
   const mediaPreferences = defaultMediaPreferencesForCall(state.call.type);
   setCallState({
     isAccepting: true,
+    callPresentationMode: 'expanded',
+    minimizedCallPosition: null,
     role: 'callee',
     mediaPreferences,
+    ...initialDeviceState,
     isMicMuted: mediaPreferences.micMuted,
     isCameraEnabled: mediaPreferences.cameraEnabled,
     error: null,
@@ -1289,6 +1665,26 @@ export const endCurrentCall = async () => {
   await performSocketPrimaryTerminalAction('end', EVENTS.CALL_HANGUP);
 };
 
+export const setBrowserAudioOutput = async (routeId: string) => {
+  const state = getCallState();
+  const route = state.availableAudioRoutes.find((candidate) => candidate.id === routeId);
+  if (!route) {
+    return;
+  }
+
+  const previousRouteId = state.selectedAudioRouteId;
+  setCallState({ selectedAudioRouteId: routeId });
+
+  try {
+    await applyBrowserAudioOutputToElement(routeId, { showToast: true });
+  } catch {
+    setCallState({ selectedAudioRouteId: previousRouteId });
+    return;
+  }
+
+  await refreshCallDevices();
+};
+
 export const toggleMicrophone = () => {
   const { localStream, mediaPreferences } = getCallState();
   if (!localStream) {
@@ -1301,6 +1697,15 @@ export const toggleMicrophone = () => {
   };
   applyMediaPreferencesToStream(localStream, getCallState().call?.type || 'audio', nextPreferences);
   syncMediaPreferenceState(getCallState().call?.type || 'audio', nextPreferences);
+};
+
+export const switchMicrophone = async (deviceId: string) => {
+  const state = getCallState();
+  if (!state.localStream) {
+    return;
+  }
+
+  await replaceLocalTrack('audio', deviceId);
 };
 
 export const toggleCamera = () => {
@@ -1317,6 +1722,15 @@ export const toggleCamera = () => {
   syncMediaPreferenceState(call.type, nextPreferences);
 };
 
+export const switchCamera = async (deviceId: string) => {
+  const state = getCallState();
+  if (!state.localStream || state.call?.type !== 'video') {
+    return;
+  }
+
+  await replaceLocalTrack('video', deviceId);
+};
+
 export const hydrateRecoverableCall = (session: CallSession) => {
   const state = getCallState();
   const sameCall = state.call?.id === session.call.id;
@@ -1329,6 +1743,17 @@ export const hydrateRecoverableCall = (session: CallSession) => {
   const mediaPreferences = sameCall
     ? state.mediaPreferences
     : defaultMediaPreferencesForCall(session.call.type);
+  const nextDeviceState = sameCall
+    ? {
+        availableMicrophones: state.availableMicrophones,
+        availableCameras: state.availableCameras,
+        availableAudioRoutes: state.availableAudioRoutes,
+        selectedMicrophoneId: state.selectedMicrophoneId,
+        selectedCameraId: state.selectedCameraId,
+        selectedAudioRouteId: state.selectedAudioRouteId,
+        browserAudioOutputSupported: state.browserAudioOutputSupported,
+      }
+    : initialDeviceState;
 
   setCallState({
     phase: isRecoverableCall(session.call)
@@ -1336,11 +1761,14 @@ export const hydrateRecoverableCall = (session: CallSession) => {
       : role === 'caller'
         ? 'outgoing-ringing'
         : 'incoming-ringing',
+    callPresentationMode: 'expanded',
+    minimizedCallPosition: null,
     role,
     call: session.call,
     peerUser: session.peer_user,
     iceServers: session.ice_servers,
     mediaPreferences,
+    ...nextDeviceState,
     isMicMuted: mediaPreferences.micMuted,
     isCameraEnabled: session.call.type === 'video' ? mediaPreferences.cameraEnabled : false,
     isResuming: sameCall ? state.isResuming : false,
@@ -1382,6 +1810,8 @@ export const resumeRecoveredCall = async (source: RecoverySource) => {
 
   setCallState({
     phase: 'reconnecting',
+    callPresentationMode: 'expanded',
+    minimizedCallPosition: null,
     isResuming: true,
     resumeSource: source,
     error: null,
@@ -1445,11 +1875,14 @@ export const handleIncomingSession = async (session: CallSession) => {
   const mediaPreferences = defaultMediaPreferencesForCall(session.call.type);
   setCallState({
     phase: 'incoming-ringing',
+    callPresentationMode: 'expanded',
+    minimizedCallPosition: null,
     role: 'callee',
     call: session.call,
     peerUser: session.peer_user,
     iceServers: session.ice_servers,
     mediaPreferences,
+    ...initialDeviceState,
     isMicMuted: mediaPreferences.micMuted,
     isCameraEnabled: mediaPreferences.cameraEnabled,
     error: null,
@@ -1709,4 +2142,37 @@ export const handleRecoveryExpired = (
 
 export const resetCallController = () => {
   resetCallState();
+};
+
+export const minimizeCallView = () => {
+  const state = getCallState();
+  if (!state.call || !isMinimizableCallPhase(state.phase)) {
+    return;
+  }
+
+  setCallState({ callPresentationMode: 'minimized' });
+};
+
+export const expandCallView = () => {
+  if (getCallState().phase === 'idle') {
+    return;
+  }
+
+  setCallState({ callPresentationMode: 'expanded' });
+};
+
+export const setMinimizedCallPosition = (position: MinimizedCallPosition) => {
+  const state = getCallState();
+  if (!state.call || state.callPresentationMode !== 'minimized') {
+    return;
+  }
+
+  setCallState({ minimizedCallPosition: position });
+};
+
+export const resetCallPresentation = () => {
+  setCallState({
+    callPresentationMode: 'expanded',
+    minimizedCallPosition: null,
+  });
 };
