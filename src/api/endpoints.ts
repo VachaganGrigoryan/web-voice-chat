@@ -6,10 +6,13 @@ import {
   CallDoc,
   CallHistoryItem,
   CallSession,
+  ClearConversationResponse,
   Conversation,
   ConversationReadUpdate,
   CreateCallRequest,
   CreateInviteLinkResponse,
+  DeleteCallHistoryResponse,
+  DeleteConversationResponse,
   DeleteMessageResponse,
   DiscoveredUser,
   AuthChallengeResponse,
@@ -205,6 +208,14 @@ export const messagesApi = {
     apiClient
       .post<SuccessResponse<ConversationReadUpdate>>(`/messages/conversations/${userId}/read`)
       .then((res) => extractResponseData(res.data)),
+  clearConversation: (userId: string) =>
+    apiClient
+      .delete<SuccessResponse<ClearConversationResponse>>(`/messages/conversations/${userId}/messages`)
+      .then((res) => extractResponseData(res.data)),
+  deleteConversation: (userId: string) =>
+    apiClient
+      .delete<SuccessResponse<DeleteConversationResponse>>(`/messages/conversations/${userId}`)
+      .then((res) => extractResponseData(res.data)),
 };
 
 export const conversationsApi = {
@@ -321,6 +332,12 @@ export const callsApi = {
         params: { limit, cursor, peer_user_id },
       })
       .then((res) => res.data),
+  deleteHistory: (peer_user_id?: string) =>
+    apiClient
+      .delete<SuccessResponse<DeleteCallHistoryResponse>>('/calls/history', {
+        params: peer_user_id ? { peer_user_id } : undefined,
+      })
+      .then((res) => extractResponseData(res.data)),
 };
 
 export const healthApi = {

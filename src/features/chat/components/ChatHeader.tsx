@@ -17,6 +17,7 @@ interface ChatHeaderProps {
   selectedConversationUserAvatarUrl?: string;
   isTyping: boolean;
   isOnline: boolean;
+  isGhost?: boolean;
   isPingAccepted: boolean;
   pingStatus: string;
   isSendingPing: boolean;
@@ -36,6 +37,7 @@ export function ChatHeader({
   selectedConversationUserAvatarUrl,
   isTyping,
   isOnline,
+  isGhost = false,
   isPingAccepted,
   pingStatus,
   isSendingPing,
@@ -64,6 +66,8 @@ export function ChatHeader({
           subtitle={
             isTyping ? (
               <span className="text-primary font-medium animate-pulse">Typing...</span>
+            ) : isGhost ? (
+              'Reconnect required'
             ) : isOnline ? (
               'Online'
             ) : (
@@ -73,8 +77,8 @@ export function ChatHeader({
           avatarUrl={selectedConversationUserAvatarUrl}
           fallback={(displaySelectedUser || '?')[0].toUpperCase()}
           onClick={onOpenProfile}
-          disabled={!selectedUser}
-          online={isOnline}
+          disabled={!selectedUser || isGhost}
+          online={!isGhost && isOnline}
           avatarClassName="h-9 w-9 border"
           className="max-w-full"
         />

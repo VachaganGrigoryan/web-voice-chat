@@ -15,6 +15,7 @@ import { getPresentedMessageKind } from './messagePresentation';
 function createBaseMessage(doc: MessageDoc, currentUserId?: string | null) {
   return {
     id: doc.id,
+    raw: doc,
     chatId: doc.conversation_id,
     senderId: doc.sender_id,
     receiverId: doc.receiver_id,

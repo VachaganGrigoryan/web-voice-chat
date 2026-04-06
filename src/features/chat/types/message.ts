@@ -24,6 +24,7 @@ export type MessageStatus = MessageDoc['status'] | 'sending' | 'failed';
 
 export interface BaseMessage {
   id: string;
+  raw: MessageDoc;
   chatId: string;
   senderId: string;
   receiverId: string;

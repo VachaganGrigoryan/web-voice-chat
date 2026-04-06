@@ -15,6 +15,18 @@ function createAcceptedPingConversation(
   };
 }
 
+function getPeerDisplayName(peerUser?: Conversation['peer_user'] | null) {
+  if (!peerUser) {
+    return null;
+  }
+
+  if (peerUser.is_ghost) {
+    return 'Ghost chat';
+  }
+
+  return peerUser.display_name || peerUser.username || peerUser.id;
+}
+
 interface UseChatLayoutDerivedDataParams {
   conversations: Conversation[];
   incoming: PingItem[];
@@ -97,8 +109,8 @@ export function useChatLayoutDerivedData({
     [contacts, selectedUser]
   );
 
-  const displaySelectedUser =
-    selectedConversationUser?.display_name || selectedConversationUser?.username || selectedUser;
+  const displaySelectedUser = getPeerDisplayName(selectedConversationUser) || selectedUser;
+  const isSelectedConversationGhost = !!selectedConversationUser?.is_ghost;
 
   return {
     pendingIncomingCount,
@@ -109,5 +121,6 @@ export function useChatLayoutDerivedData({
     isPingAccepted,
     selectedConversationUser,
     displaySelectedUser,
+    isSelectedConversationGhost,
   };
 }

@@ -4,6 +4,8 @@ import { messagesApi, realtimeApi, conversationsApi } from '@/api/endpoints';
 import { toSinglePageResponse } from '@/api/utils';
 import { applyMessageDeletedEventToCaches, useSocket, usePresence, useRealtimeMessages, useSocketStore } from '@/socket/socket';
 import {
+  ClearConversationResponse,
+  DeleteConversationResponse,
   MessageDoc,
   MessageReactionGroup,
   MessageReactionsUpdate,
@@ -100,6 +102,29 @@ const prependThreadMessageToCache = (
       ...old,
       pages: newPages,
     };
+  });
+};
+
+const createEmptyInfiniteData = () => ({
+  pages: [{ data: [], meta: { next_cursor: null, limit: 20, total: 0 }, success: true }],
+  pageParams: [undefined],
+});
+
+const clearConversationMessageCaches = (
+  queryClient: ReturnType<typeof useQueryClient>,
+  peerUserId: string,
+  conversationId: string
+) => {
+  queryClient.setQueryData(['messages', peerUserId], () => createEmptyInfiniteData());
+
+  queryClient.setQueriesData({ queryKey: ['threadMessages'] }, (old: any) => {
+    if (!old?.pages) return old;
+
+    const belongsToConversation = old.pages.some((page: any) =>
+      (page.data || []).some((message: MessageDoc) => message.conversation_id === conversationId)
+    );
+
+    return belongsToConversation ? createEmptyInfiniteData() : old;
   });
 };
 
@@ -432,6 +457,56 @@ export const useChat = (selectedUser: string | null = null, openThreadRootId: st
     },
   });
 
+  const clearConversationMutation = useMutation({
+    mutationFn: (userId: string) => messagesApi.clearConversation(userId),
+    onSuccess: (result, userId) => {
+      clearConversationMessageCaches(queryClient, userId, result.conversation_id);
+
+      queryClient.setQueryData(['conversations'], (old: any) => {
+        if (!old?.pages) return old;
+
+        return {
+          ...old,
+          pages: old.pages.map((page: any) => ({
+            ...page,
+            data: page.data.map((conversation: any) =>
+              conversation.conversation_id === result.conversation_id ||
+              conversation.peer_user?.id === userId
+                ? { ...conversation, last_message: null, last_message_at: null, unread_count: 0 }
+                : conversation
+            ),
+          })),
+        };
+      });
+    },
+  });
+
+  const deleteConversationMutation = useMutation({
+    mutationFn: (userId: string) => messagesApi.deleteConversation(userId),
+    onSuccess: (result, userId) => {
+      clearConversationMessageCaches(queryClient, userId, result.conversation_id);
+
+      queryClient.setQueryData(['conversations'], (old: any) => {
+        if (!old?.pages) return old;
+
+        return {
+          ...old,
+          pages: old.pages.map((page: any) => ({
+            ...page,
+            data: page.data.filter(
+              (conversation: any) =>
+                conversation.conversation_id !== result.conversation_id &&
+                conversation.peer_user?.id !== userId
+            ),
+          })),
+        };
+      });
+
+      queryClient.invalidateQueries({ queryKey: ['pings', 'incoming'] });
+      queryClient.invalidateQueries({ queryKey: ['pings', 'outgoing'] });
+    },
+  });
+
   const toggleReactionMutation = useMutation({
     mutationFn: ({ messageId, emoji }: { messageId: string; emoji: string }) =>
       messagesApi.toggleReaction(messageId, emoji),
@@ -496,10 +571,14 @@ export const useChat = (selectedUser: string | null = null, openThreadRootId: st
     sendText: sendTextMutation.mutateAsync as (data: SendTextInput) => Promise<any>,
     editMessage: editMessageMutation.mutateAsync as (data: { messageId: string; text: string }) => Promise<any>,
     deleteMessage: deleteMessageMutation.mutateAsync as (messageId: string) => Promise<any>,
+    clearConversation: clearConversationMutation.mutateAsync as (userId: string) => Promise<ClearConversationResponse>,
+    deleteConversation: deleteConversationMutation.mutateAsync as (userId: string) => Promise<DeleteConversationResponse>,
     toggleReaction: toggleReactionMutation.mutateAsync as (data: { messageId: string; emoji: string }) => Promise<any>,
     isSending: sendMessageMutation.isPending || sendTextMutation.isPending,
     isEditingMessage: editMessageMutation.isPending,
     isDeletingMessage: deleteMessageMutation.isPending,
+    isClearingConversation: clearConversationMutation.isPending,
+    isDeletingConversation: deleteConversationMutation.isPending,
     isTogglingReaction: toggleReactionMutation.isPending,
   };
 };

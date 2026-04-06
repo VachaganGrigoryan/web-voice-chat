@@ -1,15 +1,19 @@
-import { useEffect, useMemo, useState } from 'react';
+import { type MouseEvent as ReactMouseEvent, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { useChat, useConversations, useThreadMessages } from '@/hooks/useChat';
 import { useCallHistory } from '@/hooks/useCallHistory';
 import { usePings } from '@/hooks/usePings';
 import { APP_ROUTES } from '@/app/routes';
+import { extractApiError } from '@/api/errors';
 import { useAuthStore } from '@/store/authStore';
 import { authApi } from '@/api/endpoints';
+import { toast } from 'sonner';
 import ChatComposer from './composer';
 import { useChatAudioPlayerStore } from './media/players/audioPlayerStore';
 import { MediaViewer } from './media/MediaViewer';
+import { CallHistoryActionsMenu, CallHistoryMenuState } from './components/CallHistoryActionsMenu';
+import { ConfirmDestructiveActionDialog } from './components/ConfirmDestructiveActionDialog';
 import { MessageActionsDialog } from './components/MessageActionsDialog';
 import { ThreadPanel } from './components/ThreadPanel';
 import { ChatSidebar } from './components/ChatSidebar';
@@ -35,6 +39,16 @@ import { useThreadPanelLayout } from './hooks/useThreadPanelLayout';
 import { startCall, useCallStore } from '@/features/calls/callController';
 import { useNotificationSoundStore } from '@/utils/notificationSound';
 
+type SidebarDestructiveAction =
+  | { kind: 'clearConversation'; peerUserId: string; label: string }
+  | { kind: 'deleteConversation'; peerUserId: string; label: string }
+  | { kind: 'clearCallHistoryPeer'; peerUserId: string; label: string }
+  | { kind: 'clearCallHistoryAll' };
+
+function formatCount(count: number, singular: string, plural = `${singular}s`) {
+  return `${count} ${count === 1 ? singular : plural}`;
+}
+
 export default function ChatLayout() {
   const { peerUserId, rootMessageId } = useParams<{
     peerUserId?: string;
@@ -45,6 +59,8 @@ export default function ChatLayout() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [sidebarView, setSidebarView] = useState<'chats' | 'calls'>('chats');
+  const [callHistoryMenu, setCallHistoryMenu] = useState<CallHistoryMenuState | null>(null);
+  const [pendingDestructiveAction, setPendingDestructiveAction] = useState<SidebarDestructiveAction | null>(null);
 
   const {
     onlineUsers,
@@ -56,10 +72,14 @@ export default function ChatLayout() {
     sendText,
     editMessage,
     deleteMessage,
+    clearConversation,
+    deleteConversation,
     toggleReaction,
     isSending,
     isEditingMessage,
     isDeletingMessage,
+    isClearingConversation,
+    isDeletingConversation,
     isTogglingReaction,
   } = useChat(selectedUser, selectedThreadRootId);
 
@@ -74,6 +94,8 @@ export default function ChatLayout() {
     hasNextPage: hasNextCallHistoryPage,
     isFetchingNextPage: isFetchingNextCallHistoryPage,
     isLoading: isLoadingCallHistory,
+    deleteHistory,
+    isDeletingHistory,
   } = useCallHistory({
     enabled: sidebarView === 'calls',
   });
@@ -111,6 +133,7 @@ export default function ChatLayout() {
     isPingAccepted,
     selectedConversationUser,
     displaySelectedUser,
+    isSelectedConversationGhost,
   } = useChatLayoutDerivedData({
     conversations,
     incoming,
@@ -271,6 +294,187 @@ export default function ChatLayout() {
     await handleMarkConversationAsRead(peerUserId);
   };
 
+  const getConversationLabel = (peerUserId: string) => {
+    const conversation = contacts.find((item) => item.peer_user.id === peerUserId);
+    if (conversation?.peer_user.is_ghost) {
+      return 'Ghost chat';
+    }
+
+    return conversation?.peer_user.display_name || conversation?.peer_user.username || peerUserId;
+  };
+
+  const getCallHistoryLabel = (peerUserId: string) => {
+    const historyItem = callHistory.find((item) => item.peer_user.id === peerUserId);
+    return historyItem?.peer_user.display_name || historyItem?.peer_user.username || peerUserId;
+  };
+
+  const openCallHistoryMenu = (event: ReactMouseEvent<HTMLElement>, peerUserId: string) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    setCallHistoryMenu({
+      peerUserId,
+      rect: {
+        top: rect.top,
+        right: rect.right,
+        bottom: rect.bottom,
+        left: rect.left,
+      },
+    });
+  };
+
+  const openCallHistoryMenuAtPoint = (event: ReactMouseEvent<HTMLElement>, peerUserId: string) => {
+    setCallHistoryMenu({
+      peerUserId,
+      rect: {
+        top: event.clientY,
+        right: event.clientX,
+        bottom: event.clientY,
+        left: event.clientX,
+      },
+    });
+  };
+
+  const handleRequestClearConversation = (peerUserId: string) => {
+    setConversationMenu(null);
+    setPendingDestructiveAction({
+      kind: 'clearConversation',
+      peerUserId,
+      label: getConversationLabel(peerUserId),
+    });
+  };
+
+  const handleRequestDeleteConversation = (peerUserId: string) => {
+    setConversationMenu(null);
+    setPendingDestructiveAction({
+      kind: 'deleteConversation',
+      peerUserId,
+      label: getConversationLabel(peerUserId),
+    });
+  };
+
+  const handleRequestClearCallHistoryPeer = (peerUserId: string) => {
+    setCallHistoryMenu(null);
+    setPendingDestructiveAction({
+      kind: 'clearCallHistoryPeer',
+      peerUserId,
+      label: getCallHistoryLabel(peerUserId),
+    });
+  };
+
+  const handleRequestClearAllCallHistory = () => {
+    setPendingDestructiveAction({ kind: 'clearCallHistoryAll' });
+  };
+
+  const isPendingDestructiveActionRunning =
+    pendingDestructiveAction?.kind === 'clearConversation'
+      ? isClearingConversation
+      : pendingDestructiveAction?.kind === 'deleteConversation'
+        ? isDeletingConversation
+        : pendingDestructiveAction?.kind === 'clearCallHistoryPeer' ||
+            pendingDestructiveAction?.kind === 'clearCallHistoryAll'
+          ? isDeletingHistory
+          : false;
+
+  const destructiveDialogTitle =
+    pendingDestructiveAction?.kind === 'clearConversation'
+      ? `Clear chat with ${pendingDestructiveAction.label}`
+      : pendingDestructiveAction?.kind === 'deleteConversation'
+        ? `Delete chat with ${pendingDestructiveAction.label}`
+        : pendingDestructiveAction?.kind === 'clearCallHistoryPeer'
+          ? `Clear call history with ${pendingDestructiveAction.label}`
+          : pendingDestructiveAction?.kind === 'clearCallHistoryAll'
+            ? 'Clear all call history'
+            : '';
+
+  const destructiveDialogDescription =
+    pendingDestructiveAction?.kind === 'clearConversation'
+      ? 'This removes your messages from this chat, but keeps the conversation available.'
+      : pendingDestructiveAction?.kind === 'deleteConversation'
+        ? 'This removes the chat, clears its messages, and deletes the ping between both users.'
+        : pendingDestructiveAction?.kind === 'clearCallHistoryPeer'
+          ? 'This removes call history entries for this contact from your sidebar.'
+          : pendingDestructiveAction?.kind === 'clearCallHistoryAll'
+            ? 'This removes all call history entries from your sidebar.'
+            : '';
+
+  const destructiveDialogActionLabel =
+    pendingDestructiveAction?.kind === 'deleteConversation'
+      ? 'Delete chat'
+      : pendingDestructiveAction?.kind === 'clearConversation'
+        ? 'Clear chat'
+        : 'Clear history';
+
+  const handleConfirmDestructiveAction = async () => {
+    if (!pendingDestructiveAction) {
+      return;
+    }
+
+    try {
+      switch (pendingDestructiveAction.kind) {
+        case 'clearConversation': {
+          const result = await clearConversation(pendingDestructiveAction.peerUserId);
+
+          if (selectedUser === pendingDestructiveAction.peerUserId && selectedThreadRootId) {
+            navigate(APP_ROUTES.chatPeer(pendingDestructiveAction.peerUserId));
+          }
+
+          toast.success(
+            result.cleared_count > 0
+              ? `Cleared ${formatCount(result.cleared_count, 'message')} from ${pendingDestructiveAction.label}.`
+              : `Chat history with ${pendingDestructiveAction.label} is already empty.`
+          );
+          break;
+        }
+        case 'deleteConversation': {
+          const result = await deleteConversation(pendingDestructiveAction.peerUserId);
+
+          if (selectedUser === pendingDestructiveAction.peerUserId) {
+            navigate(APP_ROUTES.chat);
+          }
+
+          toast.success(
+            result.cleared_count > 0
+              ? `Deleted chat with ${pendingDestructiveAction.label}. ${formatCount(result.cleared_count, 'message')} cleared${result.ping_deleted ? ', ping removed.' : '.'}`
+              : `Deleted chat with ${pendingDestructiveAction.label}${result.ping_deleted ? ' and removed the ping.' : '.'}`
+          );
+          break;
+        }
+        case 'clearCallHistoryPeer': {
+          const result = await deleteHistory(pendingDestructiveAction.peerUserId);
+          const clearedCount = result.deleted_count + result.hidden_count;
+
+          toast.success(
+            clearedCount > 0
+              ? `Cleared ${formatCount(clearedCount, 'call entry')} with ${pendingDestructiveAction.label}.`
+              : `Call history with ${pendingDestructiveAction.label} is already empty.`
+          );
+          break;
+        }
+        case 'clearCallHistoryAll': {
+          const result = await deleteHistory();
+          const clearedCount = result.deleted_count + result.hidden_count;
+
+          toast.success(
+            clearedCount > 0
+              ? `Cleared ${formatCount(clearedCount, 'call entry')} from call history.`
+              : 'Call history is already empty.'
+          );
+          break;
+        }
+      }
+
+      setPendingDestructiveAction(null);
+    } catch (error) {
+      const fallback =
+        pendingDestructiveAction.kind === 'deleteConversation'
+          ? 'Failed to delete chat'
+          : pendingDestructiveAction.kind === 'clearConversation'
+            ? 'Failed to clear chat'
+            : 'Failed to clear call history';
+
+      toast.error(extractApiError(error, fallback));
+    }
+  };
+
   return (
     <div className="flex h-[100dvh] bg-background overflow-hidden">
       <MediaViewer
@@ -300,12 +504,42 @@ export default function ChatLayout() {
         menu={conversationMenu}
         isMobile={isMobileViewport}
         isMarkingRead={false}
+        isClearingConversation={isClearingConversation}
+        isDeletingConversation={isDeletingConversation}
         onOpenChange={(open) => {
           if (!open) {
             setConversationMenu(null);
           }
         }}
         onMarkAsRead={handleConversationMenuMarkAsRead}
+        onClearConversation={handleRequestClearConversation}
+        onDeleteConversation={handleRequestDeleteConversation}
+      />
+
+      <CallHistoryActionsMenu
+        menu={callHistoryMenu}
+        isMobile={isMobileViewport}
+        isClearingHistory={isDeletingHistory}
+        onOpenChange={(open) => {
+          if (!open) {
+            setCallHistoryMenu(null);
+          }
+        }}
+        onClearHistory={handleRequestClearCallHistoryPeer}
+      />
+
+      <ConfirmDestructiveActionDialog
+        open={!!pendingDestructiveAction}
+        title={destructiveDialogTitle}
+        description={destructiveDialogDescription}
+        actionLabel={destructiveDialogActionLabel}
+        isPending={isPendingDestructiveActionRunning}
+        onOpenChange={(open) => {
+          if (!open && !isPendingDestructiveActionRunning) {
+            setPendingDestructiveAction(null);
+          }
+        }}
+        onConfirm={handleConfirmDestructiveAction}
       />
 
       <ChatSidebar
@@ -319,14 +553,17 @@ export default function ChatLayout() {
         selectedUser={selectedUser}
         typingUsers={typingUsers}
         activeConversationMenuPeerUserId={conversationMenu?.peerUserId || null}
+        activeCallHistoryMenuPeerUserId={callHistoryMenu?.peerUserId || null}
         isLoadingCallHistory={isLoadingCallHistory}
         hasMoreCallHistory={hasNextCallHistoryPage}
         isFetchingMoreCallHistory={isFetchingNextCallHistoryPage}
+        isClearingCallHistory={isDeletingHistory}
         onOpenSettings={() => navigate(APP_ROUTES.settingsTab('profile'))}
         onOpenPings={() => navigate(APP_ROUTES.pingsTab('incoming'))}
         onLogout={handleLogout}
         onSidebarViewChange={setSidebarView}
         onLoadMoreCallHistory={() => void fetchNextCallHistoryPage()}
+        onClearAllCallHistory={handleRequestClearAllCallHistory}
         onSelectSearchUser={(id) => navigate(APP_ROUTES.chatPeer(id))}
         onSelectConversation={(peerUserId) => {
           navigate(APP_ROUTES.chatPeer(peerUserId));
@@ -338,6 +575,8 @@ export default function ChatLayout() {
         }}
         onOpenConversationMenu={openConversationMenu}
         onOpenConversationMenuAtPoint={openConversationMenuAtPoint}
+        onOpenCallHistoryMenu={openCallHistoryMenu}
+        onOpenCallHistoryMenuAtPoint={openCallHistoryMenuAtPoint}
       />
 
       <div
@@ -354,6 +593,7 @@ export default function ChatLayout() {
               selectedConversationUserAvatarUrl={selectedConversationUser?.avatar?.url}
               isTyping={isTyping}
               isOnline={onlineUsers?.includes(selectedUser) || false}
+              isGhost={isSelectedConversationGhost}
               isPingAccepted={isPingAccepted}
               pingStatus={pingStatus}
               isSendingPing={isSendingPing}
@@ -516,6 +756,7 @@ export default function ChatLayout() {
               <ConversationAccessState
                 pingStatus={pingStatus}
                 displaySelectedUser={displaySelectedUser}
+                isGhost={isSelectedConversationGhost}
                 incomingPingId={incomingPing?.id || null}
                 isAcceptingPing={isAcceptingPing}
                 isDecliningPing={isDecliningPing}

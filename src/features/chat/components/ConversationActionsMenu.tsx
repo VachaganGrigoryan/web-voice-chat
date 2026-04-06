@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { CheckCheck } from 'lucide-react';
+import { CheckCheck, Info, Loader2, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface ConversationMenuRect {
@@ -20,14 +20,29 @@ interface ConversationActionsMenuProps {
   menu: ConversationMenuState | null;
   isMobile: boolean;
   isMarkingRead: boolean;
+  isClearingConversation: boolean;
+  isDeletingConversation: boolean;
   onOpenChange: (open: boolean) => void;
   onMarkAsRead: (peerUserId: string) => void | Promise<void>;
+  onClearConversation: (peerUserId: string) => void | Promise<void>;
+  onDeleteConversation: (peerUserId: string) => void | Promise<void>;
 }
 
 const MENU_WIDTH = 236;
-const MENU_HEIGHT = 96;
+const MENU_HEIGHT = 180;
 const VIEWPORT_PADDING = 12;
 const DESKTOP_GAP = 10;
+
+function MenuInfoHint() {
+  return (
+    <span
+      aria-hidden="true"
+      className="ml-auto inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-muted-foreground/80 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
+    >
+      <Info className="h-3.5 w-3.5" />
+    </span>
+  );
+}
 
 function getMenuStyle(menu: ConversationMenuState, isMobile: boolean) {
   if (typeof window === 'undefined') {
@@ -68,8 +83,12 @@ export function ConversationActionsMenu({
   menu,
   isMobile,
   isMarkingRead,
+  isClearingConversation,
+  isDeletingConversation,
   onOpenChange,
   onMarkAsRead,
+  onClearConversation,
+  onDeleteConversation,
 }: ConversationActionsMenuProps) {
   const panelRef = useRef<HTMLDivElement | null>(null);
 
@@ -108,6 +127,16 @@ export function ConversationActionsMenu({
   }
 
   const markAsReadDisabled = isMarkingRead || menu.unreadCount === 0;
+  const clearConversationDisabled = isClearingConversation || isDeletingConversation;
+  const deleteConversationDisabled = isDeletingConversation || isClearingConversation;
+  const markAsReadInfo =
+    menu.unreadCount > 0
+      ? `Mark ${menu.unreadCount} unread message${menu.unreadCount === 1 ? '' : 's'} as read.`
+      : 'This chat is already up to date.';
+  const clearChatInfo =
+    'Remove your message history in this chat, but keep the conversation available.';
+  const deleteChatInfo =
+    'Remove this chat and delete the ping between both users. The other side may still see a ghost chat until they ping again.';
 
   return createPortal(
     <div className="fixed inset-0 z-50">
@@ -118,31 +147,73 @@ export function ConversationActionsMenu({
       <div
         ref={panelRef}
         role="menu"
-        className="absolute overflow-hidden rounded-2xl border border-border/70 bg-background/98 p-2 shadow-2xl backdrop-blur"
+        className="absolute rounded-2xl border border-border/70 bg-background/98 p-2 shadow-2xl backdrop-blur"
         style={menuStyle}
       >
-        <button
-          type="button"
-          role="menuitem"
-          disabled={markAsReadDisabled}
-          className={cn(
-            'flex w-full items-start gap-3 rounded-xl px-3 py-3 text-left transition-colors',
-            markAsReadDisabled ? 'cursor-not-allowed opacity-60' : 'hover:bg-muted/80'
-          )}
-          onClick={() => {
-            void onMarkAsRead(menu.peerUserId);
-          }}
-        >
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-muted/80">
-            <CheckCheck className="h-4 w-4" />
-          </span>
-          <span className="min-w-0">
-            <span className="block text-sm font-medium text-foreground">Mark conversation as read</span>
-            <span className="block text-xs text-muted-foreground">
-              {menu.unreadCount > 0 ? `${menu.unreadCount} unread message${menu.unreadCount === 1 ? '' : 's'}` : 'Already up to date'}
+        <div className="group" title={markAsReadInfo}>
+          <button
+            type="button"
+            role="menuitem"
+            disabled={markAsReadDisabled}
+            className={cn(
+              'flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition-colors',
+              markAsReadDisabled ? 'cursor-not-allowed opacity-60' : 'hover:bg-muted/80'
+            )}
+            onClick={() => {
+              void onMarkAsRead(menu.peerUserId);
+            }}
+          >
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-muted/80">
+              <CheckCheck className="h-4 w-4" />
             </span>
-          </span>
-        </button>
+            <span className="min-w-0 flex-1 text-sm font-medium text-foreground">Mark as read</span>
+            <MenuInfoHint />
+          </button>
+        </div>
+
+        <div className="group" title={clearChatInfo}>
+          <button
+            type="button"
+            role="menuitem"
+            disabled={clearConversationDisabled}
+            className={cn(
+              'flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition-colors',
+              clearConversationDisabled ? 'cursor-not-allowed opacity-60' : 'hover:bg-muted/80'
+            )}
+            onClick={() => {
+              void onClearConversation(menu.peerUserId);
+            }}
+          >
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-muted/80">
+              {isClearingConversation ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+            </span>
+            <span className="min-w-0 flex-1 text-sm font-medium text-foreground">Clear chat</span>
+            <MenuInfoHint />
+          </button>
+        </div>
+
+        <div className="group" title={deleteChatInfo}>
+          <button
+            type="button"
+            role="menuitem"
+            disabled={deleteConversationDisabled}
+            className={cn(
+              'flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition-colors',
+              deleteConversationDisabled
+                ? 'cursor-not-allowed opacity-60'
+                : 'text-destructive hover:bg-destructive/10'
+            )}
+            onClick={() => {
+              void onDeleteConversation(menu.peerUserId);
+            }}
+          >
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-destructive/10 text-destructive">
+              {isDeletingConversation ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+            </span>
+            <span className="min-w-0 flex-1 text-sm font-medium">Delete chat</span>
+            <MenuInfoHint />
+          </button>
+        </div>
       </div>
     </div>,
     document.body

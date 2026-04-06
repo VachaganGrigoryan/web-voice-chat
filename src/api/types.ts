@@ -225,10 +225,27 @@ export interface UserSummary {
   username: string | null;
   display_name: string | null;
   avatar: AvatarMeta | null;
-  is_online: boolean;
+  is_online: boolean | null;
   can_ping?: boolean;
   chat_allowed?: boolean;
   ping_status?: PingStatus;
+  is_ghost?: boolean;
+}
+
+export interface ClearConversationResponse {
+  conversation_id: string;
+  cleared_count: number;
+}
+
+export interface DeleteConversationResponse {
+  conversation_id: string;
+  cleared_count: number;
+  ping_deleted: boolean;
+}
+
+export interface DeleteCallHistoryResponse {
+  deleted_count: number;
+  hidden_count: number;
 }
 
 export interface Conversation {

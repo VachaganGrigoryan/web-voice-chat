@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/Button';
 interface ConversationAccessStateProps {
   pingStatus: string;
   displaySelectedUser: string | null;
+  isGhost?: boolean;
   incomingPingId: string | null;
   isAcceptingPing: boolean;
   isDecliningPing: boolean;
@@ -17,6 +18,7 @@ interface ConversationAccessStateProps {
 export function ConversationAccessState({
   pingStatus,
   displaySelectedUser,
+  isGhost = false,
   incomingPingId,
   isAcceptingPing,
   isDecliningPing,
@@ -76,9 +78,13 @@ export function ConversationAccessState({
       <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-primary/10">
         <UserPlus className="h-8 w-8 text-primary" />
       </div>
-      <h3 className="mb-2 text-xl font-bold text-foreground">Start Chatting</h3>
+      <h3 className="mb-2 text-xl font-bold text-foreground">
+        {isGhost ? 'Reconnect to Chat' : 'Start Chatting'}
+      </h3>
       <p className="mb-6 max-w-xs text-sm text-muted-foreground">
-        Send a ping to {displaySelectedUser} to start a conversation.
+        {isGhost
+          ? 'Send a ping to reconnect this chat.'
+          : `Send a ping to ${displaySelectedUser} to start a conversation.`}
       </p>
       <Button onClick={onSendPing} disabled={!canSendPing}>
         {isSendingPing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <UserPlus className="mr-2 h-4 w-4" />}
