@@ -2,6 +2,7 @@ import { useEffect, useState, type MouseEvent as ReactMouseEvent } from 'react';
 import type { SendMediaInput, SendTextInput } from '@/hooks/useChat';
 import { ConversationMenuState } from '../components/ConversationActionsMenu';
 import { MessageMenuAnchor } from '../components/MessageShell';
+import { getCallSummaryText } from '../utils/callPresentation';
 import {
   ChatMessage,
   ComposerReplyTarget,
@@ -80,6 +81,14 @@ const getMessagePreviewText = (message: ChatMessage) => {
   if (message.kind === 'file') return message.caption || message.fileName || 'File';
   if (message.kind === 'audio') {
     return message.media?.kind === 'audio' ? 'Audio' : 'Voice message';
+  }
+  if (message.kind === 'call') {
+    return getCallSummaryText({
+      direction: message.callDirection,
+      type: message.call.type,
+      status: message.call.status,
+      durationMs: message.call.duration_ms,
+    });
   }
   if (message.kind === 'sticker') return 'Sticker';
   if (message.kind === 'system') return message.text;

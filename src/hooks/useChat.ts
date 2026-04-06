@@ -152,6 +152,7 @@ const updateConversationPreview = (
               type: message.type,
               text: message.is_deleted ? 'Message deleted' : message.text,
               media: message.is_deleted ? null : message.media,
+              call: message.is_deleted ? null : message.call,
               status: message.status,
               created_at: message.created_at,
             },

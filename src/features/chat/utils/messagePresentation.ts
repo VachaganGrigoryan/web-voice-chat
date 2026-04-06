@@ -1,6 +1,13 @@
 import type { MediaKind, MessageType } from '@/api/types';
 
-export type PresentedMessageKind = 'text' | 'audio' | 'image' | 'video' | 'file' | 'unknown';
+export type PresentedMessageKind =
+  | 'text'
+  | 'audio'
+  | 'image'
+  | 'video'
+  | 'file'
+  | 'call'
+  | 'unknown';
 
 export const getPresentedMessageKind = (
   type: MessageType,
@@ -8,6 +15,10 @@ export const getPresentedMessageKind = (
 ): PresentedMessageKind => {
   if (type === 'text') {
     return 'text';
+  }
+
+  if (type === 'call') {
+    return 'call';
   }
 
   if (type === 'file' || mediaKind === 'file') {
@@ -37,6 +48,10 @@ export const getMessageTypeLabel = (
 ) => {
   if (type === 'text') {
     return 'Message';
+  }
+
+  if (type === 'call') {
+    return 'Call';
   }
 
   if (type === 'file' || mediaKind === 'file') {

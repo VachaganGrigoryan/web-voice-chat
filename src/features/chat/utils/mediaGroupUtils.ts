@@ -36,6 +36,7 @@ export const isMediaCollageMessage = (message: ChatMessage): message is MediaCol
 export const shouldGroupMessages = (current: ChatMessage, adjacent?: ChatMessage) => {
   if (!adjacent) return false;
   if (current.kind === 'system' || adjacent.kind === 'system') return false;
+  if (current.kind === 'call' || adjacent.kind === 'call') return false;
   if (current.senderId !== adjacent.senderId) return false;
   if (!isSameLocalDay(current.createdAt, adjacent.createdAt)) return false;
 

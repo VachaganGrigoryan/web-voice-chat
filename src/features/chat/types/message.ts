@@ -1,4 +1,12 @@
-import { MediaMeta, MessageDoc, MessageReactionGroup, ReplyMode, ReplyPreview } from '@/api/types';
+import {
+  CallDirection,
+  CallMeta,
+  MediaMeta,
+  MessageDoc,
+  MessageReactionGroup,
+  ReplyMode,
+  ReplyPreview,
+} from '@/api/types';
 
 export type MessageKind =
   | 'text'
@@ -6,6 +14,7 @@ export type MessageKind =
   | 'video'
   | 'file'
   | 'audio'
+  | 'call'
   | 'system'
   | 'emoji'
   | 'sticker'
@@ -85,6 +94,12 @@ export interface FileMessage extends BaseMessage {
   caption?: string;
 }
 
+export interface CallMessage extends BaseMessage {
+  kind: 'call';
+  call: CallMeta;
+  callDirection: CallDirection;
+}
+
 export interface SystemMessage extends BaseMessage {
   kind: 'system';
   text: string;
@@ -115,6 +130,7 @@ export type ChatMessage =
   | VideoMessage
   | FileMessage
   | AudioMessage
+  | CallMessage
   | SystemMessage
   | EmojiMessage
   | StickerMessage

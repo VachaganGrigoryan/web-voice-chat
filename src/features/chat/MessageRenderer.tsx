@@ -1,6 +1,7 @@
 import React from 'react';
 import { ChatMessage, MediaClickPayload } from './types/message';
 import { AudioMessageRenderer } from './renderers/AudioMessageRenderer';
+import { CallMessageRenderer } from './renderers/CallMessageRenderer';
 import { EmojiMessageRenderer } from './renderers/EmojiMessageRenderer';
 import { FileMessageRenderer } from './renderers/FileMessageRenderer';
 import { ImageMessageRenderer } from './renderers/ImageMessageRenderer';
@@ -65,6 +66,8 @@ export const MessageRenderer: React.FC<MessageRendererProps> = ({
       return <FileMessageRenderer message={message} highlighted={highlighted} groupedWithAbove={groupedWithAbove} groupedWithBelow={groupedWithBelow} bubbleFooter={bubbleFooter} />;
     case 'audio':
       return <AudioMessageRenderer message={message} highlighted={highlighted} groupedWithAbove={groupedWithAbove} groupedWithBelow={groupedWithBelow} bubbleFooter={bubbleFooter} audioQueueKey={audioQueueKey} audioQueue={audioQueue} />;
+    case 'call':
+      return <CallMessageRenderer message={message} highlighted={highlighted} groupedWithAbove={groupedWithAbove} groupedWithBelow={groupedWithBelow} bubbleFooter={bubbleFooter} />;
     case 'system':
       return <SystemMessageRenderer message={message} />;
     case 'emoji':

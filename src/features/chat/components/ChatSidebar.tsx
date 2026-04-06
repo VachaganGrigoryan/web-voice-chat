@@ -1,13 +1,20 @@
 import { type MouseEvent as ReactMouseEvent } from 'react';
-import { Bell, LogOut, MoreVertical } from 'lucide-react';
-import { Conversation, User } from '@/api/types';
+import { Bell, Loader2, LogOut, MoreVertical, Phone, Video } from 'lucide-react';
+import { CallHistoryItem, Conversation, User } from '@/api/types';
 import { Button } from '@/components/ui/Button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/Avatar';
 import { ProfileTriggerButton } from '@/features/chat/components/ProfileTriggerButton';
 import { UserSearch } from '@/features/discovery/UserSearch';
 import { cn } from '@/lib/utils';
-import { formatMessageDay, formatMessageTime, isSameLocalDay } from '@/utils/dateUtils';
+import { formatDuration, formatMessageDay, formatMessageTime, isSameLocalDay } from '@/utils/dateUtils';
+import {
+  getCallDirectionFromMeta,
+  getCallStatusDetail,
+  getCallSummaryText,
+} from '../utils/callPresentation';
 import { getPresentedMessageKind } from '../utils/messagePresentation';
+
+type SidebarView = 'chats' | 'calls';
 
 interface ChatSidebarProps {
   profile: User | null | undefined;
@@ -15,14 +22,22 @@ interface ChatSidebarProps {
   currentUserId: string | null;
   pendingIncomingCount: number;
   contacts: Conversation[];
+  callHistory: CallHistoryItem[];
+  sidebarView: SidebarView;
   selectedUser: string | null;
   typingUsers: Record<string, boolean>;
   activeConversationMenuPeerUserId: string | null;
+  isLoadingCallHistory: boolean;
+  hasMoreCallHistory: boolean;
+  isFetchingMoreCallHistory: boolean;
   onOpenSettings: () => void;
   onOpenPings: () => void;
   onLogout: () => void;
+  onSidebarViewChange: (view: SidebarView) => void;
+  onLoadMoreCallHistory: () => void;
   onSelectSearchUser: (peerUserId: string) => void;
   onSelectConversation: (peerUserId: string) => void;
+  onSelectCallHistoryPeer: (peerUserId: string) => void;
   onOpenConversationMenu: (event: ReactMouseEvent<HTMLElement>, peerUserId: string, unreadCount: number) => void;
   onOpenConversationMenuAtPoint: (event: ReactMouseEvent<HTMLElement>, peerUserId: string, unreadCount: number) => void;
 }
@@ -41,10 +56,19 @@ function formatConversationTimestamp(value: string | null) {
   return isSameLocalDay(value, new Date()) ? formatMessageTime(value) : formatMessageDay(value);
 }
 
-function getConversationPreview(conversation: Conversation) {
+function getConversationPreview(conversation: Conversation, currentUserId: string | null) {
   const lastMessage = conversation.last_message;
   if (!lastMessage) {
     return 'Click to chat';
+  }
+
+  if (lastMessage.type === 'call' && lastMessage.call) {
+    return getCallSummaryText({
+      direction: getCallDirectionFromMeta(lastMessage.call, currentUserId),
+      type: lastMessage.call.type,
+      status: lastMessage.call.status,
+      durationMs: lastMessage.call.duration_ms,
+    });
   }
 
   switch (getPresentedMessageKind(lastMessage.type, lastMessage.media?.kind)) {
@@ -61,10 +85,78 @@ function getConversationPreview(conversation: Conversation) {
   }
 }
 
+function CallHistoryListItem({
+  item,
+  isSelected,
+  onSelect,
+}: {
+  item: CallHistoryItem;
+  isSelected: boolean;
+  onSelect: () => void;
+}) {
+  const preview = getCallSummaryText({
+    direction: item.direction,
+    type: item.type,
+    status: item.status,
+    durationMs: item.duration_ms,
+  });
+  const detail = getCallStatusDetail({
+    direction: item.direction,
+    type: item.type,
+    status: item.status,
+    durationMs: item.duration_ms,
+  });
+  const timestamp = formatConversationTimestamp(item.ended_at || item.started_at);
+  const secondaryLabel = detail
+    ? detail
+    : item.duration_ms > 0
+      ? formatDuration(item.duration_ms)
+      : item.type === 'video'
+        ? 'Video call'
+        : 'Audio call';
+  const CallTypeIcon = item.type === 'video' ? Video : Phone;
+
+  return (
+    <button
+      type="button"
+      className={cn(
+        'group flex w-full min-w-0 items-center gap-3 rounded-2xl border px-3 py-3 text-left transition-all',
+        isSelected
+          ? 'border-primary/20 bg-background/95 shadow-sm ring-1 ring-primary/10'
+          : 'border-border/60 bg-background/75 shadow-[0_1px_2px_rgba(15,23,42,0.04)] hover:border-border/80 hover:bg-background/95 hover:shadow-sm'
+      )}
+      onClick={onSelect}
+    >
+      <div className="relative shrink-0">
+        <Avatar className="h-10 w-10 border border-border/60 bg-background">
+          {item.peer_user.avatar ? <AvatarImage src={item.peer_user.avatar.url} /> : null}
+          <AvatarFallback>
+            {(item.peer_user.display_name || item.peer_user.username || item.peer_user.id)[0].toUpperCase()}
+          </AvatarFallback>
+        </Avatar>
+        <span className="absolute -bottom-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full border border-background bg-muted text-muted-foreground">
+          <CallTypeIcon className="h-3 w-3" />
+        </span>
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="flex min-w-0 items-start justify-between gap-2">
+          <span className="truncate pr-1 text-left text-sm font-medium text-foreground/90">
+            {item.peer_user.display_name || item.peer_user.username || item.peer_user.id}
+          </span>
+          <span className="shrink-0 text-[11px] text-muted-foreground">{timestamp}</span>
+        </div>
+        <div className="mt-1 truncate text-xs font-medium text-foreground">{preview}</div>
+        <div className="mt-1 truncate text-[11px] text-muted-foreground">{secondaryLabel}</div>
+      </div>
+    </button>
+  );
+}
+
 function ConversationListItem({
   conversation,
   isSelected,
   isCurrentUserConversation,
+  currentUserId,
   isTyping,
   isMenuOpen,
   onSelect,
@@ -74,6 +166,7 @@ function ConversationListItem({
   conversation: Conversation;
   isSelected: boolean;
   isCurrentUserConversation: boolean;
+  currentUserId: string | null;
   isTyping: boolean;
   isMenuOpen: boolean;
   onSelect: () => void;
@@ -134,7 +227,7 @@ function ConversationListItem({
               {isTyping ? (
                 <span className="animate-pulse font-medium text-primary">Typing...</span>
               ) : (
-                getConversationPreview(conversation)
+                getConversationPreview(conversation, currentUserId)
               )}
             </span>
             {conversation.unread_count > 0 ? (
@@ -172,14 +265,22 @@ export function ChatSidebar({
   currentUserId,
   pendingIncomingCount,
   contacts,
+  callHistory,
+  sidebarView,
   selectedUser,
   typingUsers,
   activeConversationMenuPeerUserId,
+  isLoadingCallHistory,
+  hasMoreCallHistory,
+  isFetchingMoreCallHistory,
   onOpenSettings,
   onOpenPings,
   onLogout,
+  onSidebarViewChange,
+  onLoadMoreCallHistory,
   onSelectSearchUser,
   onSelectConversation,
+  onSelectCallHistoryPeer,
   onOpenConversationMenu,
   onOpenConversationMenuAtPoint,
 }: ChatSidebarProps) {
@@ -217,11 +318,32 @@ export function ChatSidebar({
           <div className="shrink-0 px-4 pt-4">
             <UserSearch onSelectUser={onSelectSearchUser} />
 
+            <div className="mb-3 mt-4 flex items-center rounded-full bg-muted p-1">
+              {([
+                { value: 'chats', label: 'Chats' },
+                { value: 'calls', label: 'Calls' },
+              ] as const).map((item) => (
+                <button
+                  key={item.value}
+                  type="button"
+                  onClick={() => onSidebarViewChange(item.value)}
+                  className={cn(
+                    'flex-1 rounded-full px-3 py-2 text-sm font-medium transition-colors',
+                    sidebarView === item.value
+                      ? 'bg-background text-foreground shadow-sm'
+                      : 'text-muted-foreground hover:text-foreground'
+                  )}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
+
             <div className="mb-2 flex items-center justify-between px-0.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              <span>Chats</span>
-              {contacts.length > 0 ? (
+              <span>{sidebarView === 'calls' ? 'Calls' : 'Chats'}</span>
+              {(sidebarView === 'calls' ? callHistory.length : contacts.length) > 0 ? (
                 <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">
-                  {contacts.length}
+                  {sidebarView === 'calls' ? callHistory.length : contacts.length}
                 </span>
               ) : null}
             </div>
@@ -229,23 +351,65 @@ export function ChatSidebar({
 
           <div className="scrollbar-hidden min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-4">
             <div className="space-y-2 pb-4 pr-1">
-              {contacts.map((conversation) => (
-                <ConversationListItem
-                  key={conversation.conversation_id}
-                  conversation={conversation}
-                  isSelected={selectedUser === conversation.peer_user.id}
-                  isCurrentUserConversation={conversation.peer_user.id === currentUserId}
-                  isTyping={!!typingUsers[conversation.peer_user.id]}
-                  isMenuOpen={activeConversationMenuPeerUserId === conversation.peer_user.id}
-                  onSelect={() => onSelectConversation(conversation.peer_user.id)}
-                  onOpenMenu={(event) => onOpenConversationMenu(event, conversation.peer_user.id, conversation.unread_count ?? 0)}
-                  onOpenMenuAtPoint={(event) =>
-                    onOpenConversationMenuAtPoint(event, conversation.peer_user.id, conversation.unread_count ?? 0)
-                  }
-                />
-              ))}
+              {sidebarView === 'calls'
+                ? callHistory.map((item) => (
+                    <CallHistoryListItem
+                      key={item.id}
+                      item={item}
+                      isSelected={selectedUser === item.peer_user.id}
+                      onSelect={() => onSelectCallHistoryPeer(item.peer_user.id)}
+                    />
+                  ))
+                : contacts.map((conversation) => (
+                    <ConversationListItem
+                      key={conversation.conversation_id}
+                      conversation={conversation}
+                      isSelected={selectedUser === conversation.peer_user.id}
+                      isCurrentUserConversation={conversation.peer_user.id === currentUserId}
+                      currentUserId={currentUserId}
+                      isTyping={!!typingUsers[conversation.peer_user.id]}
+                      isMenuOpen={activeConversationMenuPeerUserId === conversation.peer_user.id}
+                      onSelect={() => onSelectConversation(conversation.peer_user.id)}
+                      onOpenMenu={(event) => onOpenConversationMenu(event, conversation.peer_user.id, conversation.unread_count ?? 0)}
+                      onOpenMenuAtPoint={(event) =>
+                        onOpenConversationMenuAtPoint(event, conversation.peer_user.id, conversation.unread_count ?? 0)
+                      }
+                    />
+                  ))}
 
-              {contacts.length === 0 ? (
+              {sidebarView === 'calls' && isLoadingCallHistory ? (
+                <div className="flex items-center justify-center py-10 text-sm text-muted-foreground">
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Loading call history…
+                </div>
+              ) : null}
+
+              {sidebarView === 'calls' && hasMoreCallHistory ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full rounded-2xl"
+                  onClick={onLoadMoreCallHistory}
+                  disabled={isFetchingMoreCallHistory}
+                >
+                  {isFetchingMoreCallHistory ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Loading…
+                    </>
+                  ) : (
+                    'Load more calls'
+                  )}
+                </Button>
+              ) : null}
+
+              {sidebarView === 'calls' && !isLoadingCallHistory && callHistory.length === 0 ? (
+                <div className="m-1 rounded-lg border border-dashed bg-muted/30 p-4 text-center text-sm text-muted-foreground">
+                  No recent calls
+                </div>
+              ) : null}
+
+              {sidebarView === 'chats' && contacts.length === 0 ? (
                 <div className="m-1 rounded-lg border border-dashed bg-muted/30 p-4 text-center text-sm text-muted-foreground">
                   No recent conversations
                 </div>

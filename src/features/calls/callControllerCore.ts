@@ -181,7 +181,7 @@ const buildPeerUserSummary = (
   id: peerUserId,
   username: peerUser?.username || '',
   display_name: peerUser?.display_name ?? null,
-  avatar: (peerUser?.avatar as Record<string, any> | null | undefined) ?? null,
+  avatar: (peerUser?.avatar as CallPeerUserSummary['avatar'] | undefined) ?? null,
   is_online: peerUser?.is_online ?? false,
 });
 

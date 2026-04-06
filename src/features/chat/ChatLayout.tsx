@@ -1,7 +1,8 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { useChat, useConversations, useThreadMessages } from '@/hooks/useChat';
+import { useCallHistory } from '@/hooks/useCallHistory';
 import { usePings } from '@/hooks/usePings';
 import { APP_ROUTES } from '@/app/routes';
 import { useAuthStore } from '@/store/authStore';
@@ -43,6 +44,7 @@ export default function ChatLayout() {
   const selectedThreadRootId = rootMessageId || null;
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const [sidebarView, setSidebarView] = useState<'chats' | 'calls'>('chats');
 
   const {
     onlineUsers,
@@ -66,6 +68,15 @@ export default function ChatLayout() {
     () => conversationsData?.pages.flatMap((page) => page.data || []).filter(Boolean) || [],
     [conversationsData]
   );
+  const {
+    history: callHistory,
+    fetchNextPage: fetchNextCallHistoryPage,
+    hasNextPage: hasNextCallHistoryPage,
+    isFetchingNextPage: isFetchingNextCallHistoryPage,
+    isLoading: isLoadingCallHistory,
+  } = useCallHistory({
+    enabled: sidebarView === 'calls',
+  });
 
   const { userEmail, userId, logout, refreshToken } = useAuthStore();
   const { profile } = useProfile();
@@ -303,14 +314,25 @@ export default function ChatLayout() {
         currentUserId={userId}
         pendingIncomingCount={pendingIncomingCount}
         contacts={contacts}
+        callHistory={callHistory}
+        sidebarView={sidebarView}
         selectedUser={selectedUser}
         typingUsers={typingUsers}
         activeConversationMenuPeerUserId={conversationMenu?.peerUserId || null}
+        isLoadingCallHistory={isLoadingCallHistory}
+        hasMoreCallHistory={hasNextCallHistoryPage}
+        isFetchingMoreCallHistory={isFetchingNextCallHistoryPage}
         onOpenSettings={() => navigate(APP_ROUTES.settingsTab('profile'))}
         onOpenPings={() => navigate(APP_ROUTES.pingsTab('incoming'))}
         onLogout={handleLogout}
+        onSidebarViewChange={setSidebarView}
+        onLoadMoreCallHistory={() => void fetchNextCallHistoryPage()}
         onSelectSearchUser={(id) => navigate(APP_ROUTES.chatPeer(id))}
         onSelectConversation={(peerUserId) => {
+          navigate(APP_ROUTES.chatPeer(peerUserId));
+          resetConversationUnreadCount(peerUserId);
+        }}
+        onSelectCallHistoryPeer={(peerUserId) => {
           navigate(APP_ROUTES.chatPeer(peerUserId));
           resetConversationUnreadCount(peerUserId);
         }}

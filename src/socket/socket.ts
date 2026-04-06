@@ -1,6 +1,7 @@
 import { Socket } from 'socket.io-client';
 import { create } from 'zustand';
 import { EVENTS } from './events';
+import { getCallDirectionFromMeta, getCallSummaryText } from '@/features/chat/utils/callPresentation';
 import { getMessageTypeLabel, getPresentedMessageKind } from '@/features/chat/utils/messagePresentation';
 import { useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
@@ -265,6 +266,7 @@ const updateConversationLastMessage = (
         type: message.type,
         text: message.text,
         media: message.media,
+        call: message.call,
         status: message.status,
         created_at: message.created_at,
       },
@@ -362,6 +364,7 @@ const updateConversationPreview = (
               type: message.type,
               text: message.is_deleted ? 'Message deleted' : message.text,
               media: message.is_deleted ? null : message.media,
+              call: message.is_deleted ? null : message.call,
               status: message.status,
               created_at: message.created_at,
             },
@@ -406,6 +409,7 @@ const rebuildConversationPreview = (
                 type: latestVisibleMessage.type,
                 text: latestVisibleMessage.is_deleted ? 'Message deleted' : latestVisibleMessage.text,
                 media: latestVisibleMessage.is_deleted ? null : latestVisibleMessage.media,
+                call: latestVisibleMessage.is_deleted ? null : latestVisibleMessage.call,
                 status: latestVisibleMessage.status,
                 created_at: latestVisibleMessage.created_at,
               }
@@ -859,14 +863,21 @@ export const useRealtimeMessages = (
           const title = senderName ? `New message from ${senderName}` : 'New Message';
           const presentedKind = getPresentedMessageKind(message.type, message.media?.kind);
           const body =
-            message.text?.trim() ||
-            (presentedKind === 'audio' && message.media?.kind === 'voice'
-              ? '🎤 Voice message'
-              : presentedKind === 'audio' && message.media?.kind === 'audio'
-              ? '🎵 Audio'
-              : presentedKind === 'file'
-              ? '📎 File'
-              : getMessageTypeLabel(message.type, message.media?.kind));
+            message.type === 'call' && message.call
+              ? getCallSummaryText({
+                  direction: getCallDirectionFromMeta(message.call, currentUserId),
+                  type: message.call.type,
+                  status: message.call.status,
+                  durationMs: message.call.duration_ms,
+                })
+              : message.text?.trim() ||
+                (presentedKind === 'audio' && message.media?.kind === 'voice'
+                  ? '🎤 Voice message'
+                  : presentedKind === 'audio' && message.media?.kind === 'audio'
+                    ? '🎵 Audio'
+                    : presentedKind === 'file'
+                      ? '📎 File'
+                      : getMessageTypeLabel(message.type, message.media?.kind));
           sendNotification(title, body);
         }
       }

@@ -120,6 +120,19 @@ export type MediaKind = OpenApiMediaKind;
 export type MediaUploadType = OpenApiMediaUploadType;
 export type PreviewMediaKind = OpenApiPreviewMediaKind;
 export type ReplyMode = OpenApiReplyMode;
+export type CallDirection = 'incoming' | 'outgoing';
+
+export interface CallMeta {
+  call_id: string;
+  type: OpenApiCallType;
+  status: Extract<OpenApiCallStatus, 'rejected' | 'cancelled' | 'expired' | 'ended'>;
+  caller_user_id: string;
+  callee_user_id: string;
+  started_at: string;
+  answered_at: string | null;
+  ended_at: string | null;
+  duration_ms: number;
+}
 
 export interface ReplyPreview {
   message_id: string;
@@ -153,6 +166,7 @@ export interface MessageDoc {
   type: MessageType;
   text: string | null;
   media: MediaMeta | null;
+  call: CallMeta | null;
   reply_mode: ReplyMode | null;
   reply_to_message_id: string | null;
   thread_root_id: string | null;
@@ -225,6 +239,7 @@ export interface Conversation {
     type: MessageType;
     text: string | null;
     media: MediaMeta | null;
+    call: CallMeta | null;
     status: OpenApiMessageStatus;
     created_at: string;
   } | null;
@@ -267,7 +282,7 @@ export interface CallPeerUserSummary {
   id: string;
   username: string;
   display_name: string | null;
-  avatar: Record<string, any> | null;
+  avatar: AvatarMeta | null;
   is_online: boolean;
 }
 
@@ -326,6 +341,19 @@ export interface CallAnswerPayload extends CallActionPayload {
 
 export interface CallIceCandidatePayload extends CallActionPayload {
   candidate: any;
+}
+
+export interface CallHistoryItem {
+  id: string;
+  peer_user: CallPeerUserSummary;
+  direction: CallDirection;
+  type: CallType;
+  status: Extract<CallStatus, 'rejected' | 'cancelled' | 'expired' | 'ended'>;
+  started_at: string;
+  answered_at: string | null;
+  ended_at: string | null;
+  duration_ms: number;
+  message_id: string | null;
 }
 
 export interface PaginatedResponse<T> {

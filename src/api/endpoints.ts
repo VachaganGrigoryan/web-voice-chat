@@ -4,6 +4,7 @@ import { extractResponseData } from './utils';
 import {
   AcceptCallRequest,
   CallDoc,
+  CallHistoryItem,
   CallSession,
   Conversation,
   ConversationReadUpdate,
@@ -314,6 +315,12 @@ export const callsApi = {
     apiClient
       .post<SuccessResponse<CallDoc>>(`/calls/${callId}/end`)
       .then((res) => extractResponseData(res.data)),
+  getHistory: (limit = 20, cursor?: string, peer_user_id?: string) =>
+    apiClient
+      .get<PaginatedResponse<CallHistoryItem>>('/calls/history', {
+        params: { limit, cursor, peer_user_id },
+      })
+      .then((res) => res.data),
 };
 
 export const healthApi = {

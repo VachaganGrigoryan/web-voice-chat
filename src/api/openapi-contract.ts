@@ -1,5 +1,5 @@
 // Generated from openapi/openapi.json. Do not edit manually.
-export const OPENAPI_MESSAGE_TYPES = ["text", "media", "file"] as const;
+export const OPENAPI_MESSAGE_TYPES = ["text", "media", "file", "call"] as const;
 export type OpenApiMessageType = (typeof OPENAPI_MESSAGE_TYPES)[number];
 
 export const OPENAPI_MEDIA_UPLOAD_TYPES = ["media", "file"] as const;

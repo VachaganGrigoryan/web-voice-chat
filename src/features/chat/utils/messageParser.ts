@@ -1,6 +1,7 @@
 import { MessageDoc } from '@/api/types';
 import {
   AudioMessage,
+  CallMessage,
   ChatMessage,
   FileMessage,
   ImageMessage,
@@ -8,6 +9,7 @@ import {
   TextMessage,
   VideoMessage,
 } from '../types/message';
+import { getCallDirectionFromMeta } from './callPresentation';
 import { getPresentedMessageKind } from './messagePresentation';
 
 function createBaseMessage(doc: MessageDoc, currentUserId?: string | null) {
@@ -92,6 +94,22 @@ export function parseMessage(doc: MessageDoc, currentUserId?: string | null): Ch
         mimeType: doc.media?.mime,
         caption: doc.text || undefined,
       } satisfies FileMessage;
+    case 'call':
+      if (!doc.call) {
+        return {
+          ...base,
+          kind: 'unknown',
+          originalType: doc.type,
+          text: doc.text || undefined,
+        };
+      }
+
+      return {
+        ...base,
+        kind: 'call',
+        call: doc.call,
+        callDirection: getCallDirectionFromMeta(doc.call, currentUserId),
+      } satisfies CallMessage;
     default:
       return {
         ...base,
