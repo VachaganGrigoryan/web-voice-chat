@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 980 360" fill="none">
+  <defs>
+    <style>
+      .wm {
+        font-family: 'Inter', 'Manrope', 'DM Sans', system-ui, -apple-system, 'Helvetica Neue', Arial, sans-serif;
+        font-size: 268px;
+        font-weight: 800;
+        letter-spacing: -14px;
+      }
+    </style>
+    <linearGradient id="vogiWordmarkCoreLight" x1="64" y1="26" x2="64" y2="92" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FF6B6B" />
+      <stop offset="1" stop-color="#D90429" />
+    </linearGradient>
+  </defs>
+
+  <text x="36" y="272" class="wm" fill="#ffffff">V</text>
+
+  <g transform="translate(210 40) scale(2.015625)">
+    <circle cx="64" cy="64" r="52" stroke="#D90429" stroke-width="8" />
+    <path
+      d="
+        M64 26
+        C48 26 36 39 36 56
+        V77
+        C36 84 39 89 44 92
+        C48 89 52 87 56 87
+        C59 87 62 89 64 91
+        C66 89 69 87 72 87
+        C76 87 80 89 84 92
+        C89 89 92 84 92 77
+        V56
+        C92 39 80 26 64 26
+        Z
+      "
+      fill="url(#vogiWordmarkCoreLight)"
+    />
+  </g>
+
+  <text x="514" y="272" class="wm" fill="#ffffff">gi</text>
+</svg>

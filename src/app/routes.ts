@@ -5,7 +5,8 @@ export type SettingsTab =
   | 'notifications'
   | 'privacy'
   | 'passkeys'
-  | 'discovery';
+  | 'discovery'
+  | 'about';
 
 export const PINGS_TABS: PingsTab[] = ['incoming', 'outgoing'];
 export const SETTINGS_TABS: SettingsTab[] = [
@@ -15,6 +16,7 @@ export const SETTINGS_TABS: SettingsTab[] = [
   'privacy',
   'passkeys',
   'discovery',
+  'about',
 ];
 
 export const APP_ROUTES = {

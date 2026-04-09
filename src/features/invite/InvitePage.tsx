@@ -5,6 +5,9 @@ import { APP_ROUTES } from '@/app/routes';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/Avatar';
 import { Button } from '@/components/ui/Button';
 import { useAuthStore } from '@/store/authStore';
+import { BRAND } from '@/shared/branding/brand';
+import { Logo } from '@/shared/branding/Logo';
+import { LogoSymbol } from '@/shared/branding/LogoSymbol';
 import { AlertTriangle, Bell, Loader2, MessageSquare, UserPlus } from 'lucide-react';
 
 export default function InvitePage() {
@@ -22,7 +25,15 @@ export default function InvitePage() {
   if (isLoading) {
     return (
       <div className="flex h-[100dvh] items-center justify-center bg-background">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        <div className="flex flex-col items-center gap-4">
+          <div className="flex h-16 w-16 items-center justify-center rounded-full bg-black text-white dark:bg-white dark:text-black">
+            <LogoSymbol size="md" className="animate-[pulse_3.4s_ease-in-out_infinite]" />
+          </div>
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Loading {BRAND.shortName} invite…
+          </div>
+        </div>
       </div>
     );
   }
@@ -49,6 +60,9 @@ export default function InvitePage() {
   return (
     <div className="flex h-[100dvh] items-center justify-center bg-background p-4">
       <div className="w-full max-w-md space-y-6 rounded-xl border bg-card p-8 text-center shadow-sm">
+        <div className="flex justify-center">
+          <Logo variant="wordmark" size="md" />
+        </div>
         <div className="space-y-4">
           <Avatar className="mx-auto h-24 w-24 border-4 border-background shadow-sm">
             {user.avatar ? <AvatarImage src={user.avatar.url} className="object-cover" /> : null}
@@ -63,7 +77,7 @@ export default function InvitePage() {
           </div>
         </div>
 
-        <p className="text-sm text-muted-foreground">You've been invited to chat.</p>
+        <p className="text-sm text-muted-foreground">You’ve been invited to connect on {BRAND.name}.</p>
 
         <div className="pt-4">
           {isAuthenticated ? (
@@ -101,7 +115,7 @@ export default function InvitePage() {
               }
               className="h-12 w-full text-base"
             >
-              Sign in to Chat
+              Sign in to {BRAND.name}
             </Button>
           )}
         </div>

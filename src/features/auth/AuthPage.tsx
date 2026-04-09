@@ -28,6 +28,9 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { BRAND } from '@/shared/branding/brand';
+import { Logo } from '@/shared/branding/Logo';
+import { PwaInstallCard } from '@/shared/branding/PwaInstallCard';
 
 const emailSchema = z.object({
   email: z.string().email('Enter a valid email address'),
@@ -253,17 +256,21 @@ export default function AuthPage() {
           initial={{ opacity: 0, y: 18 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.3, ease: 'easeOut', delay: 0.05 }}
-          className="w-full"
+          className="w-full space-y-4"
         >
           <Card className="overflow-hidden rounded-[30px] border border-border/70 bg-card/95 text-card-foreground shadow-[0_20px_70px_rgba(15,23,42,0.10)] backdrop-blur">
             <CardHeader className="space-y-5 border-b border-border/70 bg-background/70 px-6 pb-6 pt-7 sm:px-8">
-              <div className="flex items-center justify-between gap-4">
-                <div className="inline-flex items-center gap-2 rounded-full border border-border/70 bg-background/80 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.24em] text-foreground shadow-sm">
-                  <div className="h-2 w-2 rounded-full bg-primary" />
-                  Voca
+              <motion.div
+                initial={{ opacity: 0, scale: 0.96 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ duration: 0.28, ease: 'easeOut', delay: 0.1 }}
+                className="flex flex-col items-center gap-3 text-center"
+              >
+                <Logo variant="wordmark" size="lg" />
+                <div className="inline-flex items-center rounded-full border border-border/70 bg-background/80 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.24em] text-muted-foreground shadow-sm">
+                  Secure sign in
                 </div>
-                <div className="text-xs font-medium text-muted-foreground">Secure sign in</div>
-              </div>
+              </motion.div>
 
               <div className="flex gap-2">
                 {AUTH_STEPS.map((item, index) => {
@@ -309,7 +316,7 @@ export default function AuthPage() {
                       Continue
                     </CardTitle>
                     <CardDescription className="max-w-md text-sm leading-6 text-muted-foreground">
-                      Enter your email to get a verification code.
+                      {BRAND.description}
                     </CardDescription>
                   </motion.div>
                 ) : (
@@ -518,6 +525,7 @@ export default function AuthPage() {
               </AnimatePresence>
             </CardContent>
           </Card>
+          <PwaInstallCard className="bg-card/90" />
         </motion.div>
       </div>
     </div>
