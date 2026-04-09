@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { Loader2, Mic, MicOff, PhoneOff, Video, VideoOff, Volume2 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { cn } from '@/lib/utils';
+import { CALL_BRAND_PRIMARY, getCallBrandColor } from '../callBrand';
 
 function CallControlButton({
   label,
@@ -18,6 +19,13 @@ function CallControlButton({
   onClick: () => void;
   children: ReactNode;
 }) {
+  const activeStyle = active
+    ? {
+        backgroundColor: CALL_BRAND_PRIMARY,
+        boxShadow: `0 0 0 1px ${getCallBrandColor(0.28)} inset`,
+      }
+    : undefined;
+
   return (
     <div className="flex flex-col items-center gap-2">
       <Button
@@ -29,9 +37,10 @@ function CallControlButton({
           destructive
             ? 'border-red-400/25 bg-red-500 text-white hover:bg-red-600'
             : active
-              ? 'bg-sky-500 text-white hover:bg-sky-600'
+              ? 'text-white hover:opacity-95'
               : 'bg-white/10 text-white hover:bg-white/15'
         )}
+        style={destructive ? undefined : activeStyle}
         onClick={onClick}
         disabled={disabled}
       >

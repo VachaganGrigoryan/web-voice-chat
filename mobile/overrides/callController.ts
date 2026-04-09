@@ -6,11 +6,18 @@ import {
   setCallState,
   useCallStore,
   type CallAudioRoute,
+  type CallMediaDevice,
 } from '@/features/calls/callStore';
 import {
   readCallDevicePreferences,
   writeCallDevicePreferences,
 } from '@/features/calls/callDevicePreferences';
+import {
+  getCameraFacingFromDeviceId,
+  getCameraFacingFromTrack,
+  MOBILE_BACK_CAMERA_ID,
+  MOBILE_FRONT_CAMERA_ID,
+} from '@/features/calls/callDevices';
 import {
   androidAudioRoute,
   type AndroidAudioRouteId,
@@ -26,6 +33,18 @@ const ACTIVE_NATIVE_AUDIO_PHASES = new Set([
   'active',
   'reconnecting',
 ]);
+const NATIVE_ANDROID_CAMERAS: CallMediaDevice[] = [
+  {
+    id: MOBILE_FRONT_CAMERA_ID,
+    kind: 'videoinput',
+    label: 'Front camera',
+  },
+  {
+    id: MOBILE_BACK_CAMERA_ID,
+    kind: 'videoinput',
+    label: 'Back camera',
+  },
+];
 
 const toCallAudioRoute = (route: AndroidAudioRouteOption): CallAudioRoute => ({
   id: route.id,
@@ -39,6 +58,51 @@ const clearNativeAudioState = () => {
     availableAudioRoutes: [],
     selectedAudioRouteId: null,
     browserAudioOutputSupported: true,
+  });
+};
+
+const getNativeAndroidCameraId = (facing: 'front' | 'back') =>
+  facing === 'back' ? MOBILE_BACK_CAMERA_ID : MOBILE_FRONT_CAMERA_ID;
+
+const resolveNativeAndroidCameraFacing = () => {
+  const state = getCallState();
+  const trackFacing = getCameraFacingFromTrack(state.localStream?.getVideoTracks()[0]);
+  if (trackFacing !== 'unknown') {
+    return trackFacing;
+  }
+
+  const selectedFacing = getCameraFacingFromDeviceId(state.selectedCameraId);
+  if (selectedFacing !== 'unknown') {
+    return selectedFacing;
+  }
+
+  const preferredFacing = getCameraFacingFromDeviceId(state.preferredCameraId);
+  if (preferredFacing !== 'unknown') {
+    return preferredFacing;
+  }
+
+  return 'front';
+};
+
+const syncNativeCameraState = () => {
+  if (!isNativeAndroid) {
+    return;
+  }
+
+  const state = getCallState();
+  if (state.call?.type !== 'video') {
+    return;
+  }
+
+  const selectedCameraId = getNativeAndroidCameraId(resolveNativeAndroidCameraFacing());
+  const nextPreferences = writeCallDevicePreferences({
+    cameraId: selectedCameraId,
+  });
+
+  setCallState({
+    availableCameras: NATIVE_ANDROID_CAMERAS,
+    selectedCameraId,
+    preferredCameraId: nextPreferences.cameraId,
   });
 };
 
@@ -171,6 +235,7 @@ export const toggleMicrophone = rootCallController.toggleMicrophone;
 
 export const refreshCallDevices = async () => {
   await rootCallController.refreshCallDevices();
+  syncNativeCameraState();
   await syncNativeCallState();
 };
 
@@ -194,12 +259,14 @@ export const startCall = async (
   input: Parameters<typeof rootCallController.startCall>[0],
 ) => {
   await rootCallController.startCall(input);
+  syncNativeCameraState();
   await syncNativeCallState(input.type);
 };
 
 export const acceptIncomingCall = async () => {
   const callType = getCallState().call?.type;
   await rootCallController.acceptIncomingCall();
+  syncNativeCameraState();
   await syncNativeCallState(callType || 'audio');
 };
 
@@ -207,6 +274,7 @@ export const handleAcceptedSession = async (
   session: Parameters<typeof rootCallController.handleAcceptedSession>[0],
 ) => {
   await rootCallController.handleAcceptedSession(session);
+  syncNativeCameraState();
   await syncNativeCallState(session.call.type);
 };
 
@@ -214,6 +282,7 @@ export const handleConnectedSignal = async (
   payload: Parameters<typeof rootCallController.handleConnectedSignal>[0],
 ) => {
   rootCallController.handleConnectedSignal(payload);
+  syncNativeCameraState();
   await syncNativeCallState();
 };
 
@@ -221,6 +290,7 @@ export const handleResumedSession = async (
   session: Parameters<typeof rootCallController.handleResumedSession>[0],
 ) => {
   await rootCallController.handleResumedSession(session);
+  syncNativeCameraState();
   await syncNativeCallState(session.call.type);
 };
 
@@ -228,6 +298,7 @@ export const attemptCallRecovery = async (
   source: Parameters<typeof rootCallController.attemptCallRecovery>[0],
 ) => {
   await rootCallController.attemptCallRecovery(source);
+  syncNativeCameraState();
   await syncNativeCallState();
 };
 
@@ -235,11 +306,13 @@ export const resumeRecoveredCall = async (
   source: Parameters<typeof rootCallController.resumeRecoveredCall>[0],
 ) => {
   await rootCallController.resumeRecoveredCall(source);
+  syncNativeCameraState();
   await syncNativeCallState();
 };
 
 export const switchCamera = async (deviceId: string) => {
   await rootCallController.switchCamera(deviceId);
+  syncNativeCameraState();
   await syncNativeRoutes(getCallState().call?.type || 'video');
 };
 

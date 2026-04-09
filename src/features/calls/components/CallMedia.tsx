@@ -2,6 +2,7 @@ import { useEffect, useState, type CSSProperties, type ReactNode } from 'react';
 import { VideoOff } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { registerCallRemoteAudioElement } from '../callController';
+import { CALL_BRAND_BLACK, getCallBrandColor } from '../callBrand';
 import type { CallVideoGeometry } from '../callStore';
 import { useCallVideoGeometry } from '../hooks/useCallVideoGeometry';
 
@@ -136,9 +137,15 @@ export function CallMediaSurface({
 }) {
   const { geometry, setVideoNode } = useCallVideoGeometry(stream);
   const hasVideo = hasVideoTrack(stream);
+  const overlayStyle = {
+    background: `radial-gradient(circle at top, ${getCallBrandColor(0.18)}, transparent 48%), linear-gradient(180deg, rgba(10, 10, 10, 0.18), rgba(10, 10, 10, 0.88))`,
+  };
 
   return (
-    <div className={cn('relative overflow-hidden bg-slate-950', className)}>
+    <div
+      className={cn('relative overflow-hidden', className)}
+      style={{ backgroundColor: CALL_BRAND_BLACK }}
+    >
       {hasVideo ? (
         <>
           <CallBoundVideo
@@ -147,7 +154,7 @@ export function CallMediaSurface({
             mirrored={mirrored}
             className="absolute inset-0 h-full w-full scale-110 object-cover opacity-40 blur-2xl"
           />
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(14,165,233,0.16),_transparent_48%),linear-gradient(180deg,_rgba(2,6,23,0.18),_rgba(2,6,23,0.88))]" />
+          <div className="absolute inset-0" style={overlayStyle} />
           <div
             className={cn(
               'absolute inset-0 flex items-center justify-center p-4 sm:p-6',
@@ -205,10 +212,14 @@ export function CallFloatingSelfPreview({
   return (
     <div
       className={cn(
-        'relative overflow-hidden rounded-[26px] border border-white/10 bg-slate-950/92 shadow-2xl backdrop-blur-xl',
+        'relative overflow-hidden rounded-[26px] border border-white/10 bg-black/92 shadow-2xl backdrop-blur-xl',
         className
       )}
-      style={{ width, height }}
+      style={{
+        width,
+        height,
+        boxShadow: `0 24px 60px ${getCallBrandColor(0.22)}`,
+      }}
     >
       {stream && isCameraEnabled && hasVideoTrack(stream) ? (
         <>
@@ -218,7 +229,12 @@ export function CallFloatingSelfPreview({
             mirrored
             className="absolute inset-0 h-full w-full scale-110 object-cover opacity-50 blur-xl"
           />
-          <div className="absolute inset-0 bg-[linear-gradient(180deg,_rgba(2,6,23,0.08),_rgba(2,6,23,0.58))]" />
+          <div
+            className="absolute inset-0"
+            style={{
+              background: `linear-gradient(180deg, rgba(10, 10, 10, 0.04), rgba(10, 10, 10, 0.62))`,
+            }}
+          />
           <div className="absolute inset-0 flex items-center justify-center p-2">
             <div
               className={cn(
@@ -236,9 +252,18 @@ export function CallFloatingSelfPreview({
               />
             </div>
           </div>
+          <div
+            className="absolute inset-x-0 top-0 h-12"
+            style={{
+              background: `linear-gradient(180deg, ${getCallBrandColor(0.18)}, transparent)`,
+            }}
+          />
         </>
       ) : (
-        <div className="flex h-full w-full items-center justify-center bg-slate-950 text-white/70">
+        <div
+          className="flex h-full w-full items-center justify-center text-white/70"
+          style={{ backgroundColor: CALL_BRAND_BLACK }}
+        >
           <VideoOff className={cn(variant === 'pip' ? 'h-4 w-4' : 'h-6 w-6')} />
         </div>
       )}
