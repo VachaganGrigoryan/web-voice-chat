@@ -8,6 +8,7 @@ import { PanelPageLayout, PanelSection } from '@/components/panel/PanelPageLayou
 import { usePings } from '@/hooks/usePings';
 import { PingItem } from '@/api/types';
 import { cn } from '@/lib/utils';
+import { useAppNavigation } from '@/navigation/appNavigation';
 import {
   Bell,
   Check,
@@ -166,6 +167,7 @@ function EmptyState({
 
 export default function PingsPage() {
   const navigate = useNavigate();
+  const { goBack, goTo } = useAppNavigation();
   const { tab } = useParams<{ tab?: string }>();
   const routeTab = isPingsTab(tab) ? tab : null;
   const {
@@ -192,20 +194,13 @@ export default function PingsPage() {
   const outgoingHistory = outgoing.filter((item) => item.ping.status !== 'pending');
 
   const handleClose = () => {
-    navigate(APP_ROUTES.chat);
+    goTo(APP_ROUTES.chat);
   };
   const handleBack = () => {
-    if (typeof window !== 'undefined' && window.history.length > 1) {
-      navigate(-1);
-      return;
-    }
-
-    if (routeTab !== 'incoming') {
-      navigate(APP_ROUTES.pingsTab('incoming'));
-      return;
-    }
-
-    navigate(APP_ROUTES.chat);
+    goBack({
+      fallback:
+        routeTab !== 'incoming' ? APP_ROUTES.pingsTab('incoming') : APP_ROUTES.chat,
+    });
   };
 
   const handleTabChange = (value: PingsTab) => {

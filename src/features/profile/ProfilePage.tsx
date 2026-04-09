@@ -1,11 +1,12 @@
 import { useQuery } from '@tanstack/react-query';
-import { Navigate, useNavigate, useParams } from 'react-router-dom';
+import { Navigate, useParams } from 'react-router-dom';
 import { usersApi } from '@/api/endpoints';
 import { User, UserSummary } from '@/api/types';
 import { APP_ROUTES } from '@/app/routes';
 import { PanelPageLayout, PanelSection } from '@/components/panel/PanelPageLayout';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/Avatar';
 import { Loader2, Lock, User as UserIcon } from 'lucide-react';
+import { useAppNavigation } from '@/navigation/appNavigation';
 
 function getDisplayName(
   user?:
@@ -39,7 +40,7 @@ function ProfileInfoItem({ label, value, mono = false }: ProfileInfoItemProps) {
 }
 
 export default function ProfilePage() {
-  const navigate = useNavigate();
+  const { goBack, goTo } = useAppNavigation();
   const { userId } = useParams<{ userId?: string }>();
 
   const {
@@ -75,15 +76,8 @@ export default function ProfilePage() {
     <PanelPageLayout
       title="User Profile"
       description="Public profile details and identity information for this conversation partner."
-      onBack={() => {
-        if (typeof window !== 'undefined' && window.history.length > 1) {
-          navigate(-1);
-          return;
-        }
-
-        navigate(APP_ROUTES.chat);
-      }}
-      onClose={() => navigate(APP_ROUTES.chat)}
+      onBack={() => goBack({ fallback: APP_ROUTES.chat })}
+      onClose={() => goTo(APP_ROUTES.chat)}
       contentClassName="scrollbar-hidden space-y-4"
     >
       <PanelSection title="Overview" description="Core public details visible from chat and direct links.">
