@@ -1,9 +1,12 @@
 node_modules/
 build/
 dist/
+mobile/dist/
 coverage/
 .DS_Store
 *.log
 .env*
 !.env.example
 openapi/
+.idea
+rn-app
