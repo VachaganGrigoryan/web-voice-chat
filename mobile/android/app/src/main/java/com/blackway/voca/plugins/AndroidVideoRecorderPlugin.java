@@ -63,6 +63,18 @@ public class AndroidVideoRecorderPlugin extends Plugin {
             NativeVideoRecorderActivity.EXTRA_PREFERRED_CAMERA,
             call.getString("preferredCamera", "front")
         );
+        String replyMode = call.getString("replyMode");
+        String replySenderLabel = call.getString("replySenderLabel");
+        String replyPreviewText = call.getString("replyPreviewText");
+        if (replyMode != null && !replyMode.trim().isEmpty()) {
+            intent.putExtra(NativeVideoRecorderActivity.EXTRA_REPLY_MODE, replyMode);
+        }
+        if (replySenderLabel != null && !replySenderLabel.trim().isEmpty()) {
+            intent.putExtra(NativeVideoRecorderActivity.EXTRA_REPLY_SENDER_LABEL, replySenderLabel);
+        }
+        if (replyPreviewText != null && !replyPreviewText.trim().isEmpty()) {
+            intent.putExtra(NativeVideoRecorderActivity.EXTRA_REPLY_PREVIEW_TEXT, replyPreviewText);
+        }
 
         startActivityForResult(call, intent, "handleRecordResult");
     }

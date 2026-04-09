@@ -19,6 +19,9 @@ interface NativeAndroidVideoRecorderPlugin {
     maxDurationMs: number;
     maxFileSizeBytes: number;
     preferredCamera: 'front' | 'back';
+    replyMode?: 'quote' | 'thread';
+    replySenderLabel?: string;
+    replyPreviewText?: string;
   }): Promise<AndroidVideoRecording>;
 }
 
@@ -52,6 +55,9 @@ export const androidVideoRecorder = {
     maxDurationMs: number;
     maxFileSizeBytes: number;
     preferredCamera: 'front' | 'back';
+    replyMode?: 'quote' | 'thread';
+    replySenderLabel?: string;
+    replyPreviewText?: string;
   }): Promise<AndroidVideoRecording> {
     if (!isNativeAndroid) {
       throw new Error('Native Android video recording is not available on this platform.');

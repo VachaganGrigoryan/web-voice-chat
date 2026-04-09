@@ -125,20 +125,79 @@ export default function MobileVideoRecorderModal(props: VideoRecorderModalProps)
     [recordedVideo],
   );
 
+  const resetModalState = () => {
+    setError(null);
+    setRecordedVideo(null);
+    setIsLaunchingRecorder(false);
+    setIsSending(false);
+  };
+
   const closeModal = () => {
     if (isSending) {
       return;
     }
 
-    setError(null);
-    setRecordedVideo(null);
-    setIsLaunchingRecorder(false);
+    launchTokenRef.current += 1;
+    resetModalState();
     onOpenChange(false);
+  };
+
+  const sendRecording = async (
+    recording: AndroidVideoRecording,
+    token: number,
+    options: { keepPreviewOnFailure: boolean },
+  ) => {
+    setIsSending(true);
+    setError(null);
+
+    try {
+      const blob = await readRecordedVideoBlob(recording);
+      const mimeType = getSupportedVideoMime(recording.mimeType) || 'video/mp4';
+      const file = new File(
+        [blob],
+        `video-message.${getExtensionFromMimeType(mimeType)}`,
+        { type: mimeType },
+      );
+
+      await onSendVideo({
+        type: 'media',
+        media_kind: 'video',
+        receiver_id: receiverId,
+        file,
+        duration_ms: Math.max(1_000, recording.durationMs),
+        reply_mode: replyTarget?.mode,
+        reply_to_message_id: replyTarget?.messageId,
+      });
+
+      if (token !== launchTokenRef.current) {
+        return;
+      }
+
+      onClearReplyTarget?.();
+      resetModalState();
+      onOpenChange(false);
+    } catch (caughtError) {
+      console.error('Failed to send native recorded video:', caughtError);
+
+      if (token !== launchTokenRef.current) {
+        return;
+      }
+
+      if (options.keepPreviewOnFailure) {
+        setRecordedVideo(recording);
+      }
+      setError('The recorded video could not be uploaded. Review it here and try again.');
+    } finally {
+      if (token === launchTokenRef.current) {
+        setIsSending(false);
+      }
+    }
   };
 
   const launchRecorder = async () => {
     setIsLaunchingRecorder(true);
     setError(null);
+    setRecordedVideo(null);
     const token = ++launchTokenRef.current;
 
     try {
@@ -156,6 +215,9 @@ export default function MobileVideoRecorderModal(props: VideoRecorderModalProps)
         maxDurationMs: MAX_DURATION_MS,
         maxFileSizeBytes: HARD_MAX_VIDEO_SIZE_BYTES,
         preferredCamera: 'front',
+        replyMode: replyTarget?.mode,
+        replySenderLabel: replyTarget?.senderLabel,
+        replyPreviewText: replyTarget?.previewText,
       });
 
       if (token !== launchTokenRef.current) {
@@ -167,7 +229,7 @@ export default function MobileVideoRecorderModal(props: VideoRecorderModalProps)
         return;
       }
 
-      setRecordedVideo(recording);
+      await sendRecording(recording, token, { keepPreviewOnFailure: true });
     } catch (caughtError) {
       if (token !== launchTokenRef.current) {
         return;
@@ -195,51 +257,20 @@ export default function MobileVideoRecorderModal(props: VideoRecorderModalProps)
       return;
     }
 
-    setIsSending(true);
-    setError(null);
-
-    try {
-      const blob = await readRecordedVideoBlob(recordedVideo);
-      const mimeType = getSupportedVideoMime(recordedVideo.mimeType) || 'video/mp4';
-      const file = new File(
-        [blob],
-        `video-message.${getExtensionFromMimeType(mimeType)}`,
-        { type: mimeType },
-      );
-
-      await onSendVideo({
-        type: 'media',
-        media_kind: 'video',
-        receiver_id: receiverId,
-        file,
-        duration_ms: Math.max(1_000, recordedVideo.durationMs),
-        reply_mode: replyTarget?.mode,
-        reply_to_message_id: replyTarget?.messageId,
-      });
-
-      onClearReplyTarget?.();
-      closeModal();
-    } catch (caughtError) {
-      console.error('Failed to send native recorded video:', caughtError);
-      setError('The recorded video could not be prepared for upload.');
-    } finally {
-      setIsSending(false);
-    }
+    await sendRecording(recordedVideo, launchTokenRef.current, { keepPreviewOnFailure: true });
   };
 
   useEffect(() => {
     if (!open) {
       launchTokenRef.current += 1;
-      setRecordedVideo(null);
-      setError(null);
-      setIsLaunchingRecorder(false);
+      resetModalState();
       return;
     }
 
-    if (!recordedVideo && !isLaunchingRecorder) {
+    if (!recordedVideo && !isLaunchingRecorder && !isSending) {
       void launchRecorder();
     }
-  }, [open]);
+  }, [open, recordedVideo, isLaunchingRecorder, isSending]);
 
   return (
     <Dialog
@@ -288,8 +319,20 @@ export default function MobileVideoRecorderModal(props: VideoRecorderModalProps)
                 <div>
                   <div className="text-lg font-medium">Opening native recorder</div>
                   <div className="mt-2 max-w-md text-sm text-white/60">
-                    The Android camera opens in a separate screen. Record the clip there,
-                    then return here to review and send it.
+                    The Android camera opens in a separate screen with live capture, review,
+                    and retake. When you confirm the clip there, the app will finish uploading it here.
+                  </div>
+                </div>
+              </div>
+            ) : isSending && !recordedVideo ? (
+              <div className="flex flex-1 flex-col items-center justify-center gap-4 px-6 text-center text-white">
+                <div className="flex h-16 w-16 items-center justify-center rounded-full bg-white/8">
+                  <Loader2 className="h-8 w-8 animate-spin text-white/80" />
+                </div>
+                <div>
+                  <div className="text-lg font-medium">Sending video</div>
+                  <div className="mt-2 max-w-md text-sm text-white/60">
+                    Finalizing the native recording and uploading it to the chat.
                   </div>
                 </div>
               </div>
@@ -311,6 +354,9 @@ export default function MobileVideoRecorderModal(props: VideoRecorderModalProps)
                       {formatDuration(recordedVideo.durationMs)} ·{' '}
                       {formatFileSize(recordedVideo.sizeBytes)}
                     </div>
+                    {error ? (
+                      <div className="mt-2 text-sm text-amber-300">{error}</div>
+                    ) : null}
                   </div>
                   <div className="flex items-center gap-2">
                     <Button
@@ -356,7 +402,7 @@ export default function MobileVideoRecorderModal(props: VideoRecorderModalProps)
                   <div className="mt-2 text-sm text-white/60">
                     {error
                       ? error
-                      : 'Use the Android recorder for a front-camera video message, then review it here before sending.'}
+                      : 'Use the Android recorder for a front-camera video message with native review, retake, and send controls.'}
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
