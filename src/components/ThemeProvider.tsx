@@ -21,6 +21,7 @@ interface ThemeProviderProps {
 
 interface ThemeProviderState {
   mode: ThemeMode;
+  resolvedMode: 'light' | 'dark';
   theme: ThemeColor;
   fontSize: FontSizePreference;
   density: LayoutDensity;
@@ -32,6 +33,7 @@ interface ThemeProviderState {
 
 const initialState: ThemeProviderState = {
   mode: 'system',
+  resolvedMode: 'light',
   theme: 'default',
   fontSize: 'medium',
   density: 'compact',
@@ -68,6 +70,7 @@ export function ThemeProvider({
   const [mode, setMode] = useState<ThemeMode>(
     () => getStoredPreference(`${storageKey}-mode`, defaultMode, THEME_MODES)
   );
+  const [resolvedMode, setResolvedMode] = useState<'light' | 'dark'>('light');
 
   const [theme, setTheme] = useState<ThemeColor>(
     () => getStoredPreference(`${storageKey}-color`, defaultTheme, THEME_COLORS)
@@ -84,6 +87,7 @@ export function ThemeProvider({
   useEffect(() => {
     const root = window.document.documentElement;
     const applyMode = (nextMode: 'light' | 'dark') => {
+      setResolvedMode(nextMode);
       root.classList.remove('light', 'dark');
       root.classList.add(nextMode);
     };
@@ -128,6 +132,7 @@ export function ThemeProvider({
 
   const value = {
     mode,
+    resolvedMode,
     theme,
     fontSize,
     density,

@@ -2,6 +2,7 @@ import { Loader2, Phone, PhoneIncoming, PhoneMissed, PhoneOff, RotateCcw } from 
 import { useAuthStore } from '@/store/authStore';
 import { useSocketStore } from '@/socket/socket';
 import { Button } from '@/components/ui/Button';
+import { Logo } from '@/shared/branding/Logo';
 import {
   acceptIncomingCall,
   endCurrentCall,
@@ -28,12 +29,16 @@ function StatusScreenShell({
   footer?: React.ReactNode;
 }) {
   return (
-    <div className="fixed inset-0 z-[80] overflow-hidden bg-[radial-gradient(circle_at_top,_rgba(14,165,233,0.18),_rgba(2,6,23,0.98)_72%)] text-white">
-      <div className="absolute inset-x-0 top-0 h-64 bg-[radial-gradient(circle_at_top,_rgba(56,189,248,0.24),_transparent_62%)]" />
-      <div className={badgeTone === 'danger' ? 'absolute bottom-[-8rem] right-[-4rem] h-72 w-72 rounded-full bg-red-500/10 blur-3xl' : 'absolute bottom-[-8rem] right-[-4rem] h-72 w-72 rounded-full bg-sky-500/10 blur-3xl'} />
-      <div className="absolute left-[-6rem] top-1/3 h-72 w-72 rounded-full bg-cyan-400/10 blur-3xl" />
+    <div className="fixed inset-0 z-[80] overflow-hidden bg-[radial-gradient(circle_at_top,_rgba(239,68,68,0.18),_rgba(10,10,10,0.98)_72%)] text-white">
+      <div className="absolute inset-x-0 top-0 h-64 bg-[radial-gradient(circle_at_top,_rgba(239,68,68,0.24),_transparent_62%)]" />
+      <div className={badgeTone === 'danger' ? 'absolute bottom-[-8rem] right-[-4rem] h-72 w-72 rounded-full bg-red-500/10 blur-3xl' : 'absolute bottom-[-8rem] right-[-4rem] h-72 w-72 rounded-full bg-red-500/10 blur-3xl'} />
+      <div className="absolute left-[-6rem] top-1/3 h-72 w-72 rounded-full bg-red-500/10 blur-3xl" />
 
       <div className="relative flex h-full flex-col px-4 pb-6 pt-5 sm:px-6">
+        <div className="mb-5 flex justify-center">
+          <Logo variant="wordmark" size="sm" theme="dark" />
+        </div>
+
         <div className="flex justify-center">
           <div className={badgeTone === 'danger' ? 'inline-flex items-center gap-2 rounded-full border border-red-400/20 bg-red-500/10 px-4 py-2 text-xs font-medium uppercase tracking-[0.22em] text-red-100' : 'inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/6 px-4 py-2 text-xs font-medium uppercase tracking-[0.22em] text-white/72'}>
             {badge}

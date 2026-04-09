@@ -1,6 +1,6 @@
 import { FontSizePreference, LayoutDensity } from '@/components/ThemeProvider';
 import { SettingsTab } from '@/app/routes';
-import { Bell, KeyRound, Palette, Shield, User } from 'lucide-react';
+import { Bell, Info, KeyRound, Palette, Shield, User } from 'lucide-react';
 
 export const SETTINGS_NAV_ITEMS: Array<{
   id: SettingsTab;
@@ -14,6 +14,7 @@ export const SETTINGS_NAV_ITEMS: Array<{
   { id: 'privacy', label: 'Privacy', icon: Shield, description: 'Discovery and account access' },
   { id: 'passkeys', label: 'Passkeys', icon: KeyRound, description: 'Passwordless sign-in methods' },
   { id: 'discovery', label: 'Discovery', icon: User, description: 'Codes and invite links' },
+  { id: 'about', label: 'About', icon: Info, description: 'Branding, version, and install status' },
 ];
 
 export const FONT_SIZE_OPTIONS: Array<{

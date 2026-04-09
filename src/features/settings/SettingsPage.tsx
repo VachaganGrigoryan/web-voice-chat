@@ -20,6 +20,7 @@ import NotificationsSettingsTab from './tabs/NotificationsSettingsTab';
 import PasskeysSettingsTab from './tabs/PasskeysSettingsTab';
 import PrivacySettingsTab from './tabs/PrivacySettingsTab';
 import ProfileSettingsTab from './tabs/ProfileSettingsTab';
+import AboutSettingsTab from './tabs/AboutSettingsTab';
 
 export default function SettingsPage() {
   const navigate = useNavigate();
@@ -280,6 +281,8 @@ export default function SettingsPage() {
       {activeTab === 'passkeys' ? <PasskeysSettingsTab /> : null}
 
       {activeTab === 'discovery' ? <DiscoverySettingsTab /> : null}
+
+      {activeTab === 'about' ? <AboutSettingsTab /> : null}
     </>
   );
 

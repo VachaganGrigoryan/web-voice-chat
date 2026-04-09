@@ -9,6 +9,7 @@ import {
   Video,
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
+import { Logo } from '@/shared/branding/Logo';
 import { ProfileTriggerButton } from './ProfileTriggerButton';
 
 interface ChatHeaderProps {
@@ -61,6 +62,7 @@ export function ChatHeader({
         >
           <ArrowLeft className="h-5 w-5" />
         </Button>
+        <Logo variant="symbol" size="sm" className="md:hidden" aria-label="Vogi" />
         <ProfileTriggerButton
           title={displaySelectedUser}
           subtitle={
