@@ -1,8 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
+import { Capacitor } from '@capacitor/core';
+import { VoiceRecorder as CapacitorVoiceRecorder } from 'capacitor-voice-recorder';
+import { useAudioRecorderController as useBrowserAudioRecorderController } from '@/features/chat/media/recorders/useAudioRecorderController';
 import type { SendMediaInput } from '@/hooks/useChat';
 import { getSocket } from '@/socket/socket';
 import { EVENTS } from '@/socket/events';
-import type { ComposerReplyTarget } from '../../types/message';
+import type { ComposerReplyTarget } from '@/features/chat/types/message';
 
 interface UseAudioRecorderControllerParams {
   receiverId: string;
@@ -11,12 +14,17 @@ interface UseAudioRecorderControllerParams {
   onClearReplyTarget?: () => void;
 }
 
-export function useAudioRecorderController({
-  receiverId,
-  onSendMedia,
-  replyTarget,
-  onClearReplyTarget,
-}: UseAudioRecorderControllerParams) {
+const isNativeAndroid =
+  Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android';
+
+export function useAudioRecorderController(params: UseAudioRecorderControllerParams) {
+  const browserController = useBrowserAudioRecorderController(params);
+
+  if (!isNativeAndroid) {
+    return browserController;
+  }
+
+  const { receiverId, onSendMedia, replyTarget, onClearReplyTarget } = params;
   const [isRecording, setIsRecording] = useState(false);
   const [isRecordingPaused, setIsRecordingPaused] = useState(false);
   const [isSendingAudio, setIsSendingAudio] = useState(false);
@@ -27,8 +35,6 @@ export function useAudioRecorderController({
   const [audioFileName, setAudioFileName] = useState('voice.webm');
   const [isPlayingPreview, setIsPlayingPreview] = useState(false);
   const [previewProgress, setPreviewProgress] = useState(0);
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const chunksRef = useRef<Blob[]>([]);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const isRecordingPausedRef = useRef(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -75,6 +81,12 @@ export function useAudioRecorderController({
     return 'webm';
   };
 
+  const blobFromBase64 = (base64: string, mimeType: string) => {
+    const binary = atob(base64);
+    const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
+    return new Blob([bytes], { type: mimeType });
+  };
+
   const startTimer = () => {
     if (timerRef.current) {
       clearInterval(timerRef.current);
@@ -93,33 +105,26 @@ export function useAudioRecorderController({
 
   const startAudioRecording = async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mediaRecorder = new MediaRecorder(stream);
-      mediaRecorderRef.current = mediaRecorder;
-      chunksRef.current = [];
+      const permission = await CapacitorVoiceRecorder.requestAudioRecordingPermission();
+      if (!permission.value) {
+        alert('Microphone permission is required to record voice messages.');
+        return;
+      }
 
-      mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          chunksRef.current.push(event.data);
-        }
-      };
+      const canRecord = await CapacitorVoiceRecorder.canDeviceVoiceRecord();
+      if (!canRecord.value) {
+        alert('This Android device cannot record audio.');
+        return;
+      }
 
-      mediaRecorder.onstop = () => {
-        const mimeType = mediaRecorder.mimeType || 'audio/webm';
-        const blob = new Blob(chunksRef.current, { type: mimeType });
-        setAudioBlob(blob);
-        setAudioMimeType(mimeType);
-        setAudioFileName(`voice.${getFileExtension(mimeType)}`);
-        emitTypingStop();
-        stream.getTracks().forEach((track) => track.stop());
-      };
-
-      mediaRecorder.start();
+      await CapacitorVoiceRecorder.startRecording();
+      setAudioBlob(null);
+      setAudioMimeType('audio/aac');
+      setAudioFileName('voice.m4a');
       setIsRecording(true);
       setIsRecordingPaused(false);
       isRecordingPausedRef.current = false;
       setDurationSec(0);
-      setAudioBlob(null);
       startTimer();
       emitTypingStart();
     } catch (error) {
@@ -132,12 +137,7 @@ export function useAudioRecorderController({
     if (!isRecording || isRecordingPaused) return;
 
     try {
-      if (mediaRecorderRef.current) {
-        mediaRecorderRef.current.pause();
-      } else {
-        return;
-      }
-
+      await CapacitorVoiceRecorder.pauseRecording();
       setIsRecordingPaused(true);
       isRecordingPausedRef.current = true;
       stopTimer();
@@ -150,12 +150,7 @@ export function useAudioRecorderController({
     if (!isRecording || !isRecordingPaused) return;
 
     try {
-      if (mediaRecorderRef.current) {
-        mediaRecorderRef.current.resume();
-      } else {
-        return;
-      }
-
+      await CapacitorVoiceRecorder.resumeRecording();
       setIsRecordingPaused(false);
       isRecordingPausedRef.current = false;
       startTimer();
@@ -168,9 +163,14 @@ export function useAudioRecorderController({
     if (!isRecording) return;
 
     try {
-      if (mediaRecorderRef.current) {
-        mediaRecorderRef.current.stop();
+      const { value } = await CapacitorVoiceRecorder.stopRecording();
+      if (value.recordDataBase64) {
+        setAudioBlob(blobFromBase64(value.recordDataBase64, value.mimeType));
       }
+      setAudioMimeType(value.mimeType);
+      setAudioFileName(`voice.${getFileExtension(value.mimeType)}`);
+      setDurationSec(Math.max(1, Math.round(value.msDuration / 1000)));
+      emitTypingStop();
     } catch (error) {
       console.error('Error stopping recording:', error);
       alert('Failed to finish recording.');

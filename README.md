@@ -137,7 +137,6 @@ frontend/
 Run locally:
 
 ```
-cd frontend
 npm install
 npm run dev
 ```
@@ -146,6 +145,16 @@ Frontend runs at:
 
 ```
 http://localhost:5173
+```
+
+Mobile companion setup:
+
+```
+cd mobile
+npm install
+cd ..
+npm run build:mobile
+npm run sync:mobile:android
 ```
 
 ---
