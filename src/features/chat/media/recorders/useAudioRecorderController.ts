@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { SendMediaInput } from '@/hooks/useChat';
 import { getSocket } from '@/socket/socket';
 import { EVENTS } from '@/socket/events';
+import { getSupportedAudioMime, normalizeMimeType } from '@/utils/fileUtils';
 import type { ComposerReplyTarget } from '../../types/message';
 
 interface UseAudioRecorderControllerParams {
@@ -105,7 +106,10 @@ export function useAudioRecorderController({
       };
 
       mediaRecorder.onstop = () => {
-        const mimeType = mediaRecorder.mimeType || 'audio/webm';
+        const mimeType =
+          getSupportedAudioMime(mediaRecorder.mimeType) ||
+          normalizeMimeType(mediaRecorder.mimeType) ||
+          'audio/webm';
         const blob = new Blob(chunksRef.current, { type: mimeType });
         setAudioBlob(blob);
         setAudioMimeType(mimeType);

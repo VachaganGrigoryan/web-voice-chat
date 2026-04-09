@@ -79,7 +79,12 @@ export type AttachmentUploadKind = 'image' | 'video' | 'audio' | 'file';
 export const MAX_PREVIEW_MEDIA_BYTES = 10 * 1024 * 1024;
 export const MAX_GENERIC_FILE_BYTES = 25 * 1024 * 1024;
 
-const normalizeMimeType = (mimeType: string) => mimeType.split(';')[0]?.trim().toLowerCase() || '';
+export const normalizeMimeType = (mimeType: string) => mimeType.split(';')[0]?.trim().toLowerCase() || '';
+
+export const getSupportedAudioMime = (mimeType: string) => {
+  const normalizedMimeType = normalizeMimeType(mimeType);
+  return SUPPORTED_AUDIO_MIMES.includes(normalizedMimeType) ? normalizedMimeType : null;
+};
 
 export const isSupportedVideoMime = (mimeType: string) =>
   SUPPORTED_VIDEO_MIMES.includes(normalizeMimeType(mimeType));

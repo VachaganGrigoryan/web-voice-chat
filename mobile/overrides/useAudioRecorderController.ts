@@ -5,6 +5,7 @@ import { useAudioRecorderController as useBrowserAudioRecorderController } from 
 import type { SendMediaInput } from '@/hooks/useChat';
 import { getSocket } from '@/socket/socket';
 import { EVENTS } from '@/socket/events';
+import { getSupportedAudioMime, normalizeMimeType } from '@/utils/fileUtils';
 import type { ComposerReplyTarget } from '@/features/chat/types/message';
 
 interface UseAudioRecorderControllerParams {
@@ -164,11 +165,15 @@ export function useAudioRecorderController(params: UseAudioRecorderControllerPar
 
     try {
       const { value } = await CapacitorVoiceRecorder.stopRecording();
+      const mimeType =
+        getSupportedAudioMime(value.mimeType) ||
+        normalizeMimeType(value.mimeType) ||
+        'audio/aac';
       if (value.recordDataBase64) {
-        setAudioBlob(blobFromBase64(value.recordDataBase64, value.mimeType));
+        setAudioBlob(blobFromBase64(value.recordDataBase64, mimeType));
       }
-      setAudioMimeType(value.mimeType);
-      setAudioFileName(`voice.${getFileExtension(value.mimeType)}`);
+      setAudioMimeType(mimeType);
+      setAudioFileName(`voice.${getFileExtension(mimeType)}`);
       setDurationSec(Math.max(1, Math.round(value.msDuration / 1000)));
       emitTypingStop();
     } catch (error) {
