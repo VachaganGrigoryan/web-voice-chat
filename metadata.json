@@ -1,5 +1,5 @@
 {
-  "name": "Voca",
-  "description": "Voca is a new era secure and fast messenger.",
+  "name": "Vogi",
+  "description": "Voice, messages, media, and calls in one platform.",
   "requestFramePermissions": ["microphone", "publickey-credentials-get", "publickey-credentials-create"]
 }
