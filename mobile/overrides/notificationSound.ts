@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { toast } from 'sonner';
+import { androidNotifications } from '../plugins/androidNotifications';
 
 export type SoundCapability = 'unknown' | 'enabled' | 'blocked' | 'unsupported' | 'error';
 export type BrowserNotificationState = NotificationPermission | 'unsupported';
@@ -23,16 +24,6 @@ interface NotificationSoundState {
 }
 
 const SOUND_ENABLED_STORAGE_KEY = 'soundEnabled';
-const SOUND_CONSENT_STORAGE_KEY = 'notificationSoundConsentGranted';
-const NOTIFICATION_SOUND_URL = '/notification.mp3';
-
-type BrowserAudioContextConstructor = typeof AudioContext;
-
-let audioContext: AudioContext | null = null;
-let notificationBufferPromise: Promise<AudioBuffer> | null = null;
-let shouldUseSynthFallback = false;
-let isGestureRearmListenerInstalled = false;
-let rearmHandler: (() => void) | null = null;
 
 const readSoundEnabledPreference = () => {
   if (typeof window === 'undefined') {
@@ -50,193 +41,130 @@ const persistSoundEnabledPreference = (enabled: boolean) => {
   window.localStorage.setItem(SOUND_ENABLED_STORAGE_KEY, String(enabled));
 };
 
-const readSoundConsentPreference = () => {
-  if (typeof window === 'undefined') {
+const mapPermissionState = (
+  permissionState: Awaited<ReturnType<typeof androidNotifications.checkPermissions>>['notifications'],
+): BrowserNotificationState => {
+  switch (permissionState) {
+    case 'granted':
+      return 'granted';
+    case 'denied':
+      return 'denied';
+    case 'prompt':
+    case 'prompt-with-rationale':
+      return 'default';
+    default:
+      return 'unsupported';
+  }
+};
+
+const deriveSoundCapability = (
+  soundEnabled: boolean,
+  notificationState: BrowserNotificationState,
+): SoundCapability => {
+  if (!androidNotifications.isNativeAndroid) {
+    return 'unsupported';
+  }
+
+  if (!soundEnabled) {
+    return 'enabled';
+  }
+
+  switch (notificationState) {
+    case 'granted':
+      return 'enabled';
+    case 'denied':
+      return 'error';
+    case 'unsupported':
+      return 'unsupported';
+    default:
+      return 'unknown';
+  }
+};
+
+const applyNotificationState = (notificationState: BrowserNotificationState) => {
+  useNotificationSoundStore.setState((state) => ({
+    browserNotificationState: notificationState,
+    soundCapability: deriveSoundCapability(state.soundEnabled, notificationState),
+  }));
+
+  return notificationState;
+};
+
+async function refreshNativeNotificationState() {
+  if (!androidNotifications.isNativeAndroid) {
+    return applyNotificationState('unsupported');
+  }
+
+  try {
+    const permissionState = await androidNotifications.checkPermissions();
+    return applyNotificationState(mapPermissionState(permissionState.notifications));
+  } catch (error) {
+    console.error('Failed to refresh Android notification permission state', error);
+    return applyNotificationState('unsupported');
+  }
+}
+
+async function requestNativeNotificationPermission() {
+  if (!androidNotifications.isNativeAndroid) {
+    return applyNotificationState('unsupported');
+  }
+
+  useNotificationSoundStore.setState({ isRequestingBrowserNotifications: true });
+
+  try {
+    const permissionState = await androidNotifications.requestPermissions();
+    return applyNotificationState(mapPermissionState(permissionState.notifications));
+  } catch (error) {
+    console.error('Failed to request Android notification permission', error);
+    return applyNotificationState('unsupported');
+  } finally {
+    useNotificationSoundStore.setState({ isRequestingBrowserNotifications: false });
+  }
+}
+
+async function presentNativeNotification(title: string, message: string, withSound: boolean) {
+  if (!androidNotifications.isNativeAndroid) {
     return false;
   }
 
-  return window.localStorage.getItem(SOUND_CONSENT_STORAGE_KEY) === 'true';
-};
-
-const persistSoundConsentPreference = (enabled: boolean) => {
-  if (typeof window === 'undefined') {
-    return;
-  }
-
-  window.localStorage.setItem(SOUND_CONSENT_STORAGE_KEY, String(enabled));
-};
-
-const getAudioContextConstructor = (): BrowserAudioContextConstructor | null => {
-  if (typeof window === 'undefined') {
-    return null;
-  }
-
-  const browserWindow = window as Window &
-    typeof globalThis & {
-      webkitAudioContext?: BrowserAudioContextConstructor;
-    };
-
-  return browserWindow.AudioContext ?? browserWindow.webkitAudioContext ?? null;
-};
-
-const createAudioContext = () => {
-  if (audioContext && audioContext.state !== 'closed') {
-    return audioContext;
-  }
-
-  const AudioContextConstructor = getAudioContextConstructor();
-  if (!AudioContextConstructor) {
-    return null;
-  }
-
-  audioContext = new AudioContextConstructor();
-  return audioContext;
-};
-
-const loadNotificationBuffer = async (context: AudioContext) => {
-  if (shouldUseSynthFallback) {
-    throw new Error('Notification sound asset decode previously failed.');
-  }
-
-  if (!notificationBufferPromise) {
-    notificationBufferPromise = fetch(NOTIFICATION_SOUND_URL)
-      .then(async (response) => {
-        if (!response.ok) {
-          throw new Error(`Failed to load notification sound: ${response.status}`);
-        }
-
-        return response.arrayBuffer();
-      })
-      .then((arrayBuffer) => context.decodeAudioData(arrayBuffer.slice(0)));
-  }
-
   try {
-    return await notificationBufferPromise;
+    const result = await androidNotifications.notify({
+      title,
+      message,
+      withSound,
+    });
+
+    return result.presented;
   } catch (error) {
-    notificationBufferPromise = null;
-    throw error;
+    console.error('Failed to present Android notification', error);
+    return false;
   }
-};
-
-const playSynthFallback = (context: AudioContext) => {
-  const oscillator = context.createOscillator();
-  const gainNode = context.createGain();
-
-  oscillator.type = 'triangle';
-  oscillator.frequency.setValueAtTime(880, context.currentTime);
-  oscillator.frequency.exponentialRampToValueAtTime(660, context.currentTime + 0.18);
-
-  gainNode.gain.setValueAtTime(0.0001, context.currentTime);
-  gainNode.gain.exponentialRampToValueAtTime(0.12, context.currentTime + 0.02);
-  gainNode.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + 0.24);
-
-  oscillator.connect(gainNode);
-  gainNode.connect(context.destination);
-  oscillator.start(context.currentTime);
-  oscillator.stop(context.currentTime + 0.26);
-};
-
-const playNotificationCue = async () => {
-  const context = createAudioContext();
-  if (!context) {
-    throw new Error('Web Audio is not supported in this runtime.');
-  }
-
-  if (shouldUseSynthFallback) {
-    playSynthFallback(context);
-    return;
-  }
-
-  try {
-    const buffer = await loadNotificationBuffer(context);
-    const source = context.createBufferSource();
-    source.buffer = buffer;
-    source.connect(context.destination);
-    source.start(0);
-  } catch (error) {
-    shouldUseSynthFallback = true;
-    notificationBufferPromise = null;
-    console.warn(
-      'Notification sound asset failed to decode, falling back to synthesized cue.',
-      error,
-    );
-    playSynthFallback(context);
-  }
-};
-
-const getBrowserNotificationState = (): BrowserNotificationState => 'unsupported';
-
-const removeGestureRearmListeners = () => {
-  if (typeof document === 'undefined' || !isGestureRearmListenerInstalled || !rearmHandler) {
-    return;
-  }
-
-  ['pointerdown', 'keydown', 'touchstart'].forEach((eventName) => {
-    document.removeEventListener(eventName, rearmHandler!);
-  });
-
-  rearmHandler = null;
-  isGestureRearmListenerInstalled = false;
-};
-
-const installGestureRearmListeners = () => {
-  if (
-    typeof document === 'undefined' ||
-    isGestureRearmListenerInstalled ||
-    !readSoundConsentPreference() ||
-    !readSoundEnabledPreference()
-  ) {
-    return;
-  }
-
-  rearmHandler = () => {
-    removeGestureRearmListeners();
-    void useNotificationSoundStore.getState().resumeSoundFromRememberedGesture();
-  };
-
-  ['pointerdown', 'keydown', 'touchstart'].forEach((eventName) => {
-    document.addEventListener(eventName, rearmHandler!, { once: true });
-  });
-
-  isGestureRearmListenerInstalled = true;
-};
+}
 
 export const useNotificationSoundStore = create<NotificationSoundState>((set, get) => ({
   soundEnabled: readSoundEnabledPreference(),
-  soundCapability: getAudioContextConstructor() ? 'unknown' : 'unsupported',
-  browserNotificationState: getBrowserNotificationState(),
+  soundCapability: deriveSoundCapability(readSoundEnabledPreference(), 'default'),
+  browserNotificationState: androidNotifications.isNativeAndroid ? 'default' : 'unsupported',
   soundPromptDismissed: false,
   isEnablingSound: false,
   isRequestingBrowserNotifications: false,
 
   init: () => {
-    const hasRememberedConsent = readSoundConsentPreference();
-    set({
-      soundEnabled: readSoundEnabledPreference(),
-      soundCapability: getAudioContextConstructor()
-        ? hasRememberedConsent
-          ? 'unknown'
-          : get().soundCapability
-        : 'unsupported',
-      browserNotificationState: 'unsupported',
-    });
+    const soundEnabled = readSoundEnabledPreference();
+    set((state) => ({
+      soundEnabled,
+      soundCapability: deriveSoundCapability(soundEnabled, state.browserNotificationState),
+    }));
 
-    installGestureRearmListeners();
+    void refreshNativeNotificationState();
   },
 
   setSoundEnabled: (enabled) => {
     persistSoundEnabledPreference(enabled);
-    if (enabled) {
-      installGestureRearmListeners();
-    } else {
-      removeGestureRearmListeners();
-    }
-
     set((state) => ({
       soundEnabled: enabled,
       soundPromptDismissed: enabled ? false : state.soundPromptDismissed,
-      soundCapability:
-        !enabled && state.soundCapability === 'blocked' ? 'unknown' : state.soundCapability,
+      soundCapability: deriveSoundCapability(enabled, state.browserNotificationState),
     }));
   },
 
@@ -245,103 +173,62 @@ export const useNotificationSoundStore = create<NotificationSoundState>((set, ge
       return false;
     }
 
-    const context = createAudioContext();
-    if (!context) {
-      set({ soundCapability: 'unsupported' });
-      return false;
-    }
-
     set({ isEnablingSound: true });
 
     try {
-      await context.resume();
-      await playNotificationCue();
-      persistSoundConsentPreference(true);
-      removeGestureRearmListeners();
+      let notificationState = await refreshNativeNotificationState();
+      if (notificationState !== 'granted') {
+        notificationState = await requestNativeNotificationPermission();
+      }
+
+      if (notificationState !== 'granted') {
+        set({
+          isEnablingSound: false,
+          soundCapability: deriveSoundCapability(get().soundEnabled, notificationState),
+        });
+        return false;
+      }
+
+      const presented = await presentNativeNotification(
+        'Notifications enabled',
+        'Android notifications will now alert you for new messages.',
+        true,
+      );
+
       set({
-        soundCapability: 'enabled',
         isEnablingSound: false,
+        soundCapability: presented ? 'enabled' : 'error',
         soundPromptDismissed: false,
       });
-      return true;
+
+      return presented;
     } catch (error) {
-      console.error('Failed to enable notification sound', error);
-      installGestureRearmListeners();
+      console.error('Failed to enable Android notification sound', error);
       set({
-        soundCapability: error instanceof DOMException ? 'blocked' : 'error',
         isEnablingSound: false,
+        soundCapability: 'error',
       });
       return false;
     }
   },
 
   resumeSoundFromRememberedGesture: async () => {
-    if (!get().soundEnabled || !readSoundConsentPreference()) {
-      return false;
-    }
-
-    const context = createAudioContext();
-    if (!context) {
-      set({ soundCapability: 'unsupported' });
-      return false;
-    }
-
-    try {
-      await context.resume();
-      set({ soundCapability: 'enabled' });
-      return true;
-    } catch (error) {
-      console.error('Failed to resume notification sound after remembered consent', error);
-      installGestureRearmListeners();
-      set({ soundCapability: 'blocked' });
-      return false;
-    }
+    const notificationState = await refreshNativeNotificationState();
+    return get().soundEnabled && notificationState === 'granted';
   },
 
   playIncomingMessageCue: async () => {
-    if (!get().soundEnabled) {
-      return false;
-    }
-
-    const context = createAudioContext();
-    if (!context) {
-      set({ soundCapability: 'unsupported' });
-      return false;
-    }
-
-    try {
-      if (context.state === 'suspended') {
-        if (readSoundConsentPreference()) {
-          installGestureRearmListeners();
-        }
-
-        set({ soundCapability: 'blocked' });
-        return false;
-      }
-
-      await playNotificationCue();
-      set({ soundCapability: 'enabled' });
-      return true;
-    } catch (error) {
-      console.error('Failed to play notification sound', error);
-      set({ soundCapability: 'error' });
-      return false;
-    }
+    const notificationState = await refreshNativeNotificationState();
+    return get().soundEnabled && notificationState === 'granted';
   },
 
-  requestBrowserNotifications: async () => {
-    set({
-      browserNotificationState: 'unsupported',
-      isRequestingBrowserNotifications: false,
-    });
-    return 'unsupported';
-  },
+  requestBrowserNotifications: async () => requestNativeNotificationPermission(),
 
   dismissSoundPrompt: () => set({ soundPromptDismissed: true }),
   resetSoundPrompt: () => set({ soundPromptDismissed: false }),
   syncBrowserNotificationState: () => {
-    set({ browserNotificationState: 'unsupported' });
-    return 'unsupported';
+    void refreshNativeNotificationState();
+    return get().browserNotificationState;
   },
 }));
 
@@ -350,11 +237,21 @@ export const initNotificationSound = () => {
 };
 
 export const sendNotification = (title: string, message: string) => {
-  toast(title, {
-    description: message,
-    duration: 4000,
-    position: 'top-right',
-  });
+  void (async () => {
+    const notificationState = await refreshNativeNotificationState();
+    const withSound = useNotificationSoundStore.getState().soundEnabled;
 
-  void useNotificationSoundStore.getState().playIncomingMessageCue();
+    if (notificationState === 'granted') {
+      const presented = await presentNativeNotification(title, message, withSound);
+      if (presented) {
+        return;
+      }
+    }
+
+    toast(title, {
+      description: message,
+      duration: 4000,
+      position: 'top-right',
+    });
+  })();
 };

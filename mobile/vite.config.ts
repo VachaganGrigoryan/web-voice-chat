@@ -29,6 +29,10 @@ export default defineConfig(({ mode }) => {
           replacement: path.resolve(__dirname, 'overrides/PwaInstallCard.tsx'),
         },
         {
+          find: /^\.\/tabs\/NotificationsSettingsTab$/,
+          replacement: path.resolve(__dirname, 'overrides/NotificationsSettingsTab.tsx'),
+        },
+        {
           find: /^\.\.\/\.\.\/media\/recorders\/VideoRecorderModal$/,
           replacement: path.resolve(__dirname, 'overrides/VideoRecorderModal.tsx'),
         },

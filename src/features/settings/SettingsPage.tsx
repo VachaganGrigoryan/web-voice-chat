@@ -209,18 +209,18 @@ export default function SettingsPage() {
 
     const permission = await requestBrowserNotifications();
     if (permission === 'granted') {
-      setSuccess('Browser notifications enabled successfully.');
+      setSuccess('System notifications enabled successfully.');
       window.setTimeout(() => setSuccess(null), 3000);
       return;
     }
 
     if (permission === 'unsupported') {
-      setError('This browser does not support system notifications.');
+      setError('System notifications are not supported in this runtime.');
       window.setTimeout(() => setError(null), 3000);
       return;
     }
 
-    setError('Browser notifications were not enabled.');
+    setError('System notifications were not enabled.');
     window.setTimeout(() => setError(null), 3000);
   };
 
