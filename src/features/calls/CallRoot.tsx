@@ -33,6 +33,12 @@ import {
   useCallStore,
   type RecoverySource,
 } from './callController';
+import {
+  initCallSounds,
+  playCallStatusCue,
+  stopCallSounds,
+  syncCallToneLoop,
+} from './callSounds';
 import { ActiveCallView, MinimizedCallPip } from './components/CallActiveViews';
 import { CallRemoteAudio } from './components/CallMedia';
 import {
@@ -40,6 +46,7 @@ import {
   ReconnectingCallScreen,
   RingingCallScreen,
 } from './components/CallStatusScreens';
+import { useNotificationSoundStore, sendNotification } from '@/utils/notificationSound';
 
 export function CallRoot() {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
@@ -48,12 +55,19 @@ export function CallRoot() {
   const phase = useCallStore((state) => state.phase);
   const callPresentationMode = useCallStore((state) => state.callPresentationMode);
   const call = useCallStore((state) => state.call);
+  const peerUser = useCallStore((state) => state.peerUser);
   const localStream = useCallStore((state) => state.localStream);
   const remoteStream = useCallStore((state) => state.remoteStream);
+  const soundEnabled = useNotificationSoundStore((state) => state.soundEnabled);
   const [now, setNow] = useState(() => Date.now());
+  const [isDocumentHidden, setIsDocumentHidden] = useState(
+    () => typeof document !== 'undefined' && document.visibilityState === 'hidden'
+  );
   const [callEventHandlersReady, setCallEventHandlersReady] = useState(false);
   const lastRecoveryCheckSocketIdRef = useRef<string | null>(null);
   const expiredCallIdRef = useRef<string | null>(null);
+  const previousPhaseRef = useRef(phase);
+  const notifiedIncomingCallIdRef = useRef<string | null>(null);
 
   const refreshRecoverableCall = async (source: RecoverySource) => {
     try {
@@ -87,6 +101,121 @@ export function CallRoot() {
       resetCallController();
     }
   }, [isAuthenticated]);
+
+  useEffect(() => {
+    if (typeof document === 'undefined') {
+      return;
+    }
+
+    const handleVisibilityChange = () => {
+      setIsDocumentHidden(document.visibilityState === 'hidden');
+    };
+
+    handleVisibilityChange();
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, []);
+
+  useEffect(() => {
+    initCallSounds();
+    return () => {
+      stopCallSounds();
+    };
+  }, []);
+
+  useEffect(() => {
+    const previousPhase = previousPhaseRef.current;
+    previousPhaseRef.current = phase;
+
+    syncCallToneLoop(
+      phase === 'incoming-ringing' && isDocumentHidden ? 'connecting' : phase
+    );
+
+    if (isDocumentHidden) {
+      return;
+    }
+
+    if (
+      phase === 'active' &&
+      previousPhase !== 'active' &&
+      previousPhase !== 'idle'
+    ) {
+      void playCallStatusCue('connected');
+      return;
+    }
+
+    if (
+      (phase === 'ended' || phase === 'failed') &&
+      previousPhase !== phase &&
+      previousPhase !== 'idle'
+    ) {
+      void playCallStatusCue('ended');
+    }
+  }, [isDocumentHidden, phase, soundEnabled]);
+
+  useEffect(() => {
+    if (phase !== 'incoming-ringing' || !call?.id) {
+      return;
+    }
+
+    const notifyIncomingCall = () => {
+      if (
+        notifiedIncomingCallIdRef.current === call.id ||
+        typeof document === 'undefined' ||
+        document.visibilityState !== 'hidden'
+      ) {
+        return;
+      }
+
+      notifiedIncomingCallIdRef.current = call.id;
+
+      const peerLabel =
+        peerUser?.display_name ||
+        peerUser?.username ||
+        peerUser?.id ||
+        'Someone';
+      const callLabel = call.type === 'video' ? 'video' : 'audio';
+      sendNotification(
+        `Incoming ${callLabel} call`,
+        `${peerLabel} is calling you.`,
+        {
+          playInAppCue: false,
+          withSound: soundEnabled,
+        }
+      );
+    };
+
+    notifyIncomingCall();
+
+    if (typeof document === 'undefined') {
+      return;
+    }
+
+    const handleVisibilityChange = () => {
+      notifyIncomingCall();
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [
+    call?.id,
+    call?.type,
+    peerUser?.display_name,
+    peerUser?.id,
+    peerUser?.username,
+    phase,
+    soundEnabled,
+  ]);
+
+  useEffect(() => {
+    if (phase === 'idle') {
+      notifiedIncomingCallIdRef.current = null;
+    }
+  }, [phase]);
 
   useEffect(() => {
     if (!isSocketConnected) {

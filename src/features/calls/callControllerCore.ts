@@ -46,6 +46,7 @@ import {
   type CallPreferredDeviceIds,
   writeCallDevicePreferences,
 } from './callDevicePreferences';
+import { primeCallSoundFromUserGesture } from './callSounds';
 
 /*
  * CALL STATE MACHINE
@@ -1502,6 +1503,8 @@ export const startCall = async ({ peerUserId, type, peerUser }: StartCallInput) 
     return;
   }
 
+  void primeCallSoundFromUserGesture();
+
   const mediaPreferences = defaultMediaPreferencesForCall(type);
   setCallState({
     phase: 'outgoing-ringing',
@@ -1551,6 +1554,8 @@ export const acceptIncomingCall = async () => {
   if (state.phase !== 'incoming-ringing' || !state.call) {
     return;
   }
+
+  void primeCallSoundFromUserGesture();
 
   const socketId = getSocket()?.id;
   if (!socketId) {

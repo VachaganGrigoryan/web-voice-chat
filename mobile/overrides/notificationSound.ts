@@ -23,6 +23,11 @@ interface NotificationSoundState {
   syncBrowserNotificationState: () => BrowserNotificationState;
 }
 
+interface SendNotificationOptions {
+  playInAppCue?: boolean;
+  withSound?: boolean;
+}
+
 const SOUND_ENABLED_STORAGE_KEY = 'soundEnabled';
 
 const readSoundEnabledPreference = () => {
@@ -236,10 +241,15 @@ export const initNotificationSound = () => {
   useNotificationSoundStore.getState().init();
 };
 
-export const sendNotification = (title: string, message: string) => {
+export const sendNotification = (
+  title: string,
+  message: string,
+  options: SendNotificationOptions = {}
+) => {
   void (async () => {
     const notificationState = await refreshNativeNotificationState();
-    const withSound = useNotificationSoundStore.getState().soundEnabled;
+    const withSound =
+      options.withSound ?? useNotificationSoundStore.getState().soundEnabled;
 
     if (notificationState === 'granted') {
       const presented = await presentNativeNotification(title, message, withSound);

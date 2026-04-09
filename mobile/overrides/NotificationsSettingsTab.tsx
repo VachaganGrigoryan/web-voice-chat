@@ -24,22 +24,22 @@ const getSoundStatusText = (
   browserNotificationState: BrowserNotificationState,
 ) => {
   if (!soundEnabled) {
-    return 'Android notifications will stay silent until sound notifications are turned back on.';
+    return 'Call cues and Android notification sounds are off.';
   }
 
   if (browserNotificationState === 'granted') {
-    return 'Android notifications are ready and will use the default notification sound.';
+    return 'In-app call cues are on, and Android notifications can also use the default notification sound.';
   }
 
   if (browserNotificationState === 'denied') {
-    return 'Android notifications are blocked in system settings, so sound cannot play.';
+    return 'In-app call cues are on, but Android system notification sound is blocked in device settings.';
   }
 
   if (soundCapability === 'unsupported') {
     return 'This build is not running inside the Android app shell.';
   }
 
-  return 'Grant Android notification permission to enable native message alerts with sound.';
+  return 'In-app call cues are on. Grant Android notification permission to also enable native alerts with sound.';
 };
 
 const getSystemNotificationStatusText = (state: BrowserNotificationState) => {
@@ -69,7 +69,7 @@ export default function NotificationsSettingsTab({
     <div className="space-y-6">
       <PanelSection
         title="Sound Notifications"
-        description="Use Android's default notification sound for incoming chat alerts."
+        description="Control in-app call cues and Android notification sounds."
       >
         <div className="space-y-4">
           <div className="rounded-2xl border bg-background/80 p-4 text-sm text-muted-foreground shadow-sm">
@@ -89,7 +89,7 @@ export default function NotificationsSettingsTab({
 
           <SettingsToggleField
             title="Sound Notifications"
-            description="Play the Android notification sound when a new message arrives outside the active chat view."
+            description="Play in-app call tones and Android notification sounds when alerts arrive."
             checked={soundEnabled}
             onChange={setSoundEnabled}
           />

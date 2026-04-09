@@ -20,9 +20,9 @@ export function NotificationSoundPrompt({
             <BellRing className="h-4 w-4" />
           </div>
           <div className="min-w-0">
-            <div className="text-sm font-medium text-foreground">Incoming message sounds need your approval</div>
+            <div className="text-sm font-medium text-foreground">Alert and call sounds need your approval</div>
             <div className="mt-1 text-sm text-muted-foreground">
-              Browser autoplay rules blocked the alert sound. Enable it once with a click to allow future message cues.
+              Browser autoplay rules blocked sound playback. Enable it once with a click to allow future message alerts and call tones.
             </div>
           </div>
         </div>
