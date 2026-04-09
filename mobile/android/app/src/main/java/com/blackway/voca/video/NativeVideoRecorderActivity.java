@@ -2,10 +2,12 @@ package com.blackway.voca.video;
 
 import android.content.Intent;
 import android.content.res.ColorStateList;
+import android.hardware.camera2.CameraCharacteristics;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.util.SizeF;
 import android.view.View;
 import android.widget.Button;
 import android.widget.FrameLayout;
@@ -15,6 +17,9 @@ import android.widget.VideoView;
 import androidx.activity.OnBackPressedCallback;
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.camera.camera2.interop.Camera2CameraInfo;
+import androidx.camera.camera2.interop.ExperimentalCamera2Interop;
+import androidx.camera.core.CameraInfo;
 import androidx.camera.core.CameraSelector;
 import androidx.camera.core.Preview;
 import androidx.camera.lifecycle.ProcessCameraProvider;
@@ -31,9 +36,12 @@ import androidx.camera.view.PreviewView;
 import androidx.core.content.ContextCompat;
 import com.blackway.voca.R;
 import com.google.common.util.concurrent.ListenableFuture;
+import java.util.ArrayList;
+import java.util.List;
 import java.io.File;
 import java.util.Locale;
 
+@ExperimentalCamera2Interop
 public class NativeVideoRecorderActivity extends AppCompatActivity {
 
     public static final String EXTRA_MAX_DURATION_MS = "maxDurationMs";
@@ -117,6 +125,8 @@ public class NativeVideoRecorderActivity extends AppCompatActivity {
     private boolean usingFrontCamera = true;
     private boolean hasFrontCamera = true;
     private boolean hasBackCamera = true;
+    private String frontCameraId = null;
+    private String backCameraId = null;
     private boolean acceptedResult = false;
     private RecorderStage stage = RecorderStage.PREPARING;
     private StopReason stopReason = StopReason.NONE;
@@ -132,6 +142,25 @@ public class NativeVideoRecorderActivity extends AppCompatActivity {
     private String replyModeLabel = null;
     private String replySenderLabel = null;
     private String replyPreviewText = null;
+
+    private static final class CameraCandidate {
+        final String cameraId;
+        final long numericRank;
+        final double focalDistanceScore;
+        final boolean hasFocalDistanceScore;
+
+        CameraCandidate(
+            String cameraId,
+            long numericRank,
+            double focalDistanceScore,
+            boolean hasFocalDistanceScore
+        ) {
+            this.cameraId = cameraId;
+            this.numericRank = numericRank;
+            this.focalDistanceScore = focalDistanceScore;
+            this.hasFocalDistanceScore = hasFocalDistanceScore;
+        }
+    }
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -212,7 +241,7 @@ public class NativeVideoRecorderActivity extends AppCompatActivity {
         preparingHintView = findViewById(R.id.native_video_preparing_hint);
 
         previewView.setKeepScreenOn(true);
-        previewView.setImplementationMode(PreviewView.ImplementationMode.COMPATIBLE);
+        previewView.setImplementationMode(PreviewView.ImplementationMode.PERFORMANCE);
         previewView.setScaleType(PreviewView.ScaleType.FILL_CENTER);
         previewView.setBackgroundColor(ContextCompat.getColor(this, R.color.vogi_background));
         progressBar.setMax(1000);
@@ -366,8 +395,10 @@ public class NativeVideoRecorderActivity extends AppCompatActivity {
         updateUi();
 
         try {
-            hasFrontCamera = cameraProvider.hasCamera(CameraSelector.DEFAULT_FRONT_CAMERA);
-            hasBackCamera = cameraProvider.hasCamera(CameraSelector.DEFAULT_BACK_CAMERA);
+            frontCameraId = selectPrimaryCameraId(CameraSelector.LENS_FACING_FRONT);
+            backCameraId = selectPrimaryCameraId(CameraSelector.LENS_FACING_BACK);
+            hasFrontCamera = frontCameraId != null;
+            hasBackCamera = backCameraId != null;
         } catch (Exception exception) {
             finishWithError("The camera configuration could not be checked.");
             return;
@@ -383,12 +414,17 @@ public class NativeVideoRecorderActivity extends AppCompatActivity {
         } else if (!usingFrontCamera && !hasBackCamera) {
             usingFrontCamera = true;
         }
-        currentCameraSelector =
-            usingFrontCamera
-                ? CameraSelector.DEFAULT_FRONT_CAMERA
-                : CameraSelector.DEFAULT_BACK_CAMERA;
 
-        Preview preview = new Preview.Builder().build();
+        String selectedCameraId = usingFrontCamera ? frontCameraId : backCameraId;
+        if (selectedCameraId == null) {
+            finishWithError("The selected camera is not available on this device.");
+            return;
+        }
+        currentCameraSelector = buildCameraSelectorForId(selectedCameraId);
+
+        int targetRotation =
+            previewView.getDisplay() != null ? previewView.getDisplay().getRotation() : getWindowManager().getDefaultDisplay().getRotation();
+        Preview preview = new Preview.Builder().setTargetRotation(targetRotation).build();
         Recorder recorder =
             new Recorder.Builder()
                 .setQualitySelector(
@@ -414,6 +450,7 @@ public class NativeVideoRecorderActivity extends AppCompatActivity {
 
                     try {
                         preview.setSurfaceProvider(previewView.getSurfaceProvider());
+                        previewView.setScaleX(usingFrontCamera ? -1f : 1f);
                         cameraProvider.bindToLifecycle(this, currentCameraSelector, preview, videoCapture);
                         stage = RecorderStage.LIVE;
                         updateUi();
@@ -429,6 +466,168 @@ public class NativeVideoRecorderActivity extends AppCompatActivity {
 
     private boolean canSwitchCamera() {
         return hasFrontCamera && hasBackCamera;
+    }
+
+    private String selectPrimaryCameraId(int lensFacing) {
+        if (cameraProvider == null) {
+            return null;
+        }
+
+        List<CameraInfo> cameraInfos = cameraProvider.getAvailableCameraInfos();
+        CameraCandidate bestCandidate = null;
+
+        for (CameraInfo cameraInfo : cameraInfos) {
+            CameraCandidate candidate = buildCameraCandidate(cameraInfo, lensFacing);
+            if (candidate == null) {
+                continue;
+            }
+
+            if (bestCandidate == null || compareCandidates(candidate, bestCandidate) < 0) {
+                bestCandidate = candidate;
+            }
+        }
+
+        return bestCandidate != null ? bestCandidate.cameraId : null;
+    }
+
+    private CameraCandidate buildCameraCandidate(CameraInfo cameraInfo, int lensFacing) {
+        Camera2CameraInfo camera2Info;
+        try {
+            camera2Info = Camera2CameraInfo.from(cameraInfo);
+        } catch (IllegalArgumentException exception) {
+            return null;
+        }
+
+        Integer candidateLensFacing =
+            camera2Info.getCameraCharacteristic(CameraCharacteristics.LENS_FACING);
+        if (candidateLensFacing == null || candidateLensFacing != lensFacing) {
+            return null;
+        }
+
+        int[] capabilities =
+            camera2Info.getCameraCharacteristic(
+                CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES
+            );
+        if (
+            capabilities != null &&
+            containsCapability(
+                capabilities,
+                CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_DEPTH_OUTPUT
+            ) &&
+            !containsCapability(
+                capabilities,
+                CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_BACKWARD_COMPATIBLE
+            )
+        ) {
+            return null;
+        }
+
+        String cameraId = camera2Info.getCameraId();
+        double focalDistanceScore = computeFocalDistanceScore(camera2Info, lensFacing);
+        boolean hasFocalDistanceScore = Double.isFinite(focalDistanceScore);
+
+        return new CameraCandidate(
+            cameraId,
+            parseNumericCameraRank(cameraId),
+            focalDistanceScore,
+            hasFocalDistanceScore
+        );
+    }
+
+    private int compareCandidates(CameraCandidate left, CameraCandidate right) {
+        if (left.hasFocalDistanceScore != right.hasFocalDistanceScore) {
+            return left.hasFocalDistanceScore ? -1 : 1;
+        }
+
+        if (left.hasFocalDistanceScore) {
+            int focalComparison = Double.compare(left.focalDistanceScore, right.focalDistanceScore);
+            if (focalComparison != 0) {
+                return focalComparison;
+            }
+        }
+
+        int numericRankComparison = Long.compare(left.numericRank, right.numericRank);
+        if (numericRankComparison != 0) {
+            return numericRankComparison;
+        }
+
+        return left.cameraId.compareTo(right.cameraId);
+    }
+
+    private double computeFocalDistanceScore(Camera2CameraInfo camera2Info, int lensFacing) {
+        float[] focalLengths =
+            camera2Info.getCameraCharacteristic(
+                CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS
+            );
+        SizeF sensorSize =
+            camera2Info.getCameraCharacteristic(CameraCharacteristics.SENSOR_INFO_PHYSICAL_SIZE);
+
+        if (
+            focalLengths == null ||
+            focalLengths.length == 0 ||
+            sensorSize == null ||
+            sensorSize.getWidth() <= 0f
+        ) {
+            return Double.POSITIVE_INFINITY;
+        }
+
+        double targetEquivalentFocalLength =
+            lensFacing == CameraSelector.LENS_FACING_FRONT ? 24d : 26d;
+        double bestDistance = Double.POSITIVE_INFINITY;
+
+        for (float focalLength : focalLengths) {
+            double equivalentFocalLength =
+                (focalLength * 36d) / Math.max(0.001d, sensorSize.getWidth());
+            double distance = Math.abs(equivalentFocalLength - targetEquivalentFocalLength);
+            if (distance < bestDistance) {
+                bestDistance = distance;
+            }
+        }
+
+        return bestDistance;
+    }
+
+    private long parseNumericCameraRank(String cameraId) {
+        try {
+            return Long.parseLong(cameraId);
+        } catch (NumberFormatException exception) {
+            return Long.MAX_VALUE;
+        }
+    }
+
+    private boolean containsCapability(int[] capabilities, int targetCapability) {
+        for (int capability : capabilities) {
+            if (capability == targetCapability) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private CameraSelector buildCameraSelectorForId(String targetCameraId) {
+        return new CameraSelector.Builder()
+            .addCameraFilter(
+                cameraInfos -> {
+                    ArrayList<CameraInfo> matchingCameraInfos = new ArrayList<>();
+                    for (CameraInfo cameraInfo : cameraInfos) {
+                        try {
+                            if (
+                                targetCameraId.equals(
+                                    Camera2CameraInfo.from(cameraInfo).getCameraId()
+                                )
+                            ) {
+                                matchingCameraInfos.add(cameraInfo);
+                            }
+                        } catch (IllegalArgumentException exception) {
+                            // Ignore camera infos that do not expose Camera2 details.
+                        }
+                    }
+
+                    return matchingCameraInfos;
+                }
+            )
+            .build();
     }
 
     private void startRecording() {
