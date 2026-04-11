@@ -340,7 +340,7 @@ export const resolveCallDeviceState = (
 ): ResolvedCallDeviceState => {
   const availableMicrophones = toCallMediaDevices(devices, 'audioinput');
   const allCameras = toCallMediaDevices(devices, 'videoinput');
-  const availableCameras = getExposedCallCameras(allCameras);
+  const availableCameras = allCameras;
   const availableAudioRoutes = supportsBrowserAudioOutputSelection()
     ? toBrowserAudioRoutes(devices)
     : [];

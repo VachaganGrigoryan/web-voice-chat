@@ -21,6 +21,7 @@ public class AndroidAudioRoutePlugin extends Plugin {
 
     private static final String ROUTE_EARPIECE = "earpiece";
     private static final String ROUTE_SPEAKER = "speaker";
+    private static final String ROUTE_HEADSET = "headset";
     private static final String ROUTE_BLUETOOTH = "bluetooth";
 
     @PluginMethod
@@ -118,6 +119,9 @@ public class AndroidAudioRoutePlugin extends Plugin {
             if (isBluetoothDevice(currentDevice)) {
                 return ROUTE_BLUETOOTH;
             }
+            if (isWiredHeadsetDevice(currentDevice)) {
+                return ROUTE_HEADSET;
+            }
             if (currentDevice != null && currentDevice.getType() == AudioDeviceInfo.TYPE_BUILTIN_EARPIECE) {
                 return ROUTE_EARPIECE;
             }
@@ -128,6 +132,10 @@ public class AndroidAudioRoutePlugin extends Plugin {
 
         if (audioManager.isBluetoothScoOn()) {
             return ROUTE_BLUETOOTH;
+        }
+
+        if (audioManager.isWiredHeadsetOn()) {
+            return ROUTE_HEADSET;
         }
 
         return audioManager.isSpeakerphoneOn() ? ROUTE_SPEAKER : ROUTE_EARPIECE;
@@ -142,10 +150,14 @@ public class AndroidAudioRoutePlugin extends Plugin {
 
         boolean earpieceAvailable = hasEarpiece(audioManager);
         boolean speakerAvailable = true;
+        boolean headsetAvailable = hasWiredHeadsetRoute(audioManager);
         boolean bluetoothAvailable = hasBluetoothRoute(audioManager);
 
         routes.add(new RouteInfo(ROUTE_EARPIECE, "Phone", earpieceAvailable));
         routes.add(new RouteInfo(ROUTE_SPEAKER, "Speaker", speakerAvailable));
+        if (headsetAvailable) {
+            routes.add(new RouteInfo(ROUTE_HEADSET, "Headset", true));
+        }
         if (bluetoothAvailable) {
             routes.add(new RouteInfo(ROUTE_BLUETOOTH, "Bluetooth", true));
         }
@@ -162,6 +174,10 @@ public class AndroidAudioRoutePlugin extends Plugin {
                     break;
                 }
                 if (ROUTE_SPEAKER.equals(routeId) && device.getType() == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER) {
+                    targetDevice = device;
+                    break;
+                }
+                if (ROUTE_HEADSET.equals(routeId) && isWiredHeadsetDevice(device)) {
                     targetDevice = device;
                     break;
                 }
@@ -219,6 +235,20 @@ public class AndroidAudioRoutePlugin extends Plugin {
         return audioManager.isBluetoothScoAvailableOffCall();
     }
 
+    private boolean hasWiredHeadsetRoute(AudioManager audioManager) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            for (AudioDeviceInfo device : audioManager.getAvailableCommunicationDevices()) {
+                if (isWiredHeadsetDevice(device)) {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        return audioManager.isWiredHeadsetOn();
+    }
+
     private boolean hasBluetoothPermission() {
         return Build.VERSION.SDK_INT < Build.VERSION_CODES.S ||
             ContextCompat.checkSelfPermission(getContext(), Manifest.permission.BLUETOOTH_CONNECT) ==
@@ -235,6 +265,17 @@ public class AndroidAudioRoutePlugin extends Plugin {
             type == AudioDeviceInfo.TYPE_BLE_HEADSET ||
             type == AudioDeviceInfo.TYPE_BLE_SPEAKER ||
             type == AudioDeviceInfo.TYPE_HEARING_AID;
+    }
+
+    private boolean isWiredHeadsetDevice(AudioDeviceInfo device) {
+        if (device == null) {
+            return false;
+        }
+
+        int type = device.getType();
+        return type == AudioDeviceInfo.TYPE_WIRED_HEADSET ||
+            type == AudioDeviceInfo.TYPE_WIRED_HEADPHONES ||
+            type == AudioDeviceInfo.TYPE_USB_HEADSET;
     }
 
     private static final class RouteInfo {

@@ -1,6 +1,10 @@
 import { Capacitor, registerPlugin } from '@capacitor/core';
 
-export type AndroidAudioRouteId = 'earpiece' | 'speaker' | 'bluetooth';
+export type AndroidAudioRouteId =
+  | 'earpiece'
+  | 'speaker'
+  | 'headset'
+  | 'bluetooth';
 
 export interface AndroidAudioRouteOption {
   id: AndroidAudioRouteId;

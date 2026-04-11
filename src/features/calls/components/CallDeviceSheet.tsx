@@ -3,6 +3,7 @@ import { Check } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   setBrowserAudioOutput,
+  switchCamera,
   switchMicrophone,
   useCallStore,
 } from '../callController';
@@ -52,19 +53,41 @@ export function CallDeviceSheet({
   open,
   onOpenChange,
   isVideoCall,
+  allowCameraSelection = false,
+  desktopMode = false,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   isVideoCall: boolean;
+  allowCameraSelection?: boolean;
+  desktopMode?: boolean;
 }) {
   const availableMicrophones = useCallStore((state) => state.availableMicrophones);
+  const availableCameras = useCallStore((state) => state.availableCameras);
   const availableAudioRoutes = useCallStore((state) => state.availableAudioRoutes);
+  const browserAudioOutputSupported = useCallStore((state) => state.browserAudioOutputSupported);
   const selectedMicrophoneId = useCallStore((state) => state.selectedMicrophoneId);
+  const selectedCameraId = useCallStore((state) => state.selectedCameraId);
   const selectedAudioRouteId = useCallStore((state) => state.selectedAudioRouteId);
-  const [pendingSection, setPendingSection] = useState<'microphone' | 'audio' | null>(null);
+  const [pendingSection, setPendingSection] = useState<
+    'camera' | 'microphone' | 'audio' | null
+  >(null);
 
-  const showMicrophoneSection = availableMicrophones.length > 1;
-  const showAudioSection = availableAudioRoutes.length > 1;
+  const showCameraSection = allowCameraSelection && isVideoCall;
+  const showMicrophoneSection = desktopMode || availableMicrophones.length > 1;
+  const showAudioSection = desktopMode || browserAudioOutputSupported || availableAudioRoutes.length > 1;
+
+  const selectCamera = async (deviceId: string) => {
+    setPendingSection('camera');
+    try {
+      await switchCamera(deviceId);
+    } catch (error) {
+      console.error('Failed to switch camera:', error);
+      toast.error('Unable to switch the camera.');
+    } finally {
+      setPendingSection(null);
+    }
+  };
 
   const selectMicrophone = async (deviceId: string) => {
     setPendingSection('microphone');
@@ -97,30 +120,69 @@ export function CallDeviceSheet({
       >
         <div className="border-b border-white/10 px-6 py-5">
           <DialogTitle className="text-base font-semibold text-white">
-            Audio devices
+            {desktopMode ? 'Call settings' : 'Audio devices'}
           </DialogTitle>
           <DialogDescription className="mt-1 text-sm text-white/60">
-            Change microphones and speakers without leaving the current call.
+            {desktopMode
+              ? 'Change camera, microphone, and speaker settings without leaving the current call.'
+              : 'Change microphones and speakers without leaving the current call.'}
           </DialogDescription>
         </div>
 
         <div className="space-y-6 px-6 py-6">
+          {showCameraSection ? (
+            <div>
+              <div className="mb-3 text-xs font-semibold uppercase tracking-[0.22em] text-white/45">
+                Camera
+              </div>
+              {availableCameras.length ? (
+                <div className="space-y-2">
+                  {availableCameras.map((device) => (
+                    <CallDeviceOption
+                      key={device.id}
+                      label={device.label}
+                      selected={selectedCameraId === device.id}
+                      disabled={pendingSection === 'camera'}
+                      onClick={() => void selectCamera(device.id)}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <div className="rounded-3xl border border-white/10 bg-white/5 px-4 py-4 text-sm text-white/65">
+                  No camera devices are available right now.
+                </div>
+              )}
+            </div>
+          ) : null}
+
           {showAudioSection ? (
             <div>
               <div className="mb-3 text-xs font-semibold uppercase tracking-[0.22em] text-white/45">
                 Speaker
               </div>
-              <div className="space-y-2">
-                {availableAudioRoutes.map((route) => (
-                  <CallDeviceOption
-                    key={route.id}
-                    label={route.label}
-                    selected={selectedAudioRouteId === route.id}
-                    disabled={pendingSection === 'audio'}
-                    onClick={() => void selectAudioOutput(route.id)}
-                  />
-                ))}
-              </div>
+              {browserAudioOutputSupported ? (
+                availableAudioRoutes.length ? (
+                  <div className="space-y-2">
+                    {availableAudioRoutes.map((route) => (
+                      <CallDeviceOption
+                        key={route.id}
+                        label={route.label}
+                        selected={selectedAudioRouteId === route.id}
+                        disabled={pendingSection === 'audio'}
+                        onClick={() => void selectAudioOutput(route.id)}
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <div className="rounded-3xl border border-white/10 bg-white/5 px-4 py-4 text-sm text-white/65">
+                    No alternate speaker outputs are available right now.
+                  </div>
+                )
+              ) : (
+                <div className="rounded-3xl border border-white/10 bg-white/5 px-4 py-4 text-sm text-white/65">
+                  This browser does not let websites switch speaker outputs during a call.
+                </div>
+              )}
             </div>
           ) : null}
 
@@ -129,21 +191,27 @@ export function CallDeviceSheet({
               <div className="mb-3 text-xs font-semibold uppercase tracking-[0.22em] text-white/45">
                 Microphone
               </div>
-              <div className="space-y-2">
-                {availableMicrophones.map((device) => (
-                  <CallDeviceOption
-                    key={device.id}
-                    label={device.label}
-                    selected={selectedMicrophoneId === device.id}
-                    disabled={pendingSection === 'microphone'}
-                    onClick={() => void selectMicrophone(device.id)}
-                  />
-                ))}
-              </div>
+              {availableMicrophones.length ? (
+                <div className="space-y-2">
+                  {availableMicrophones.map((device) => (
+                    <CallDeviceOption
+                      key={device.id}
+                      label={device.label}
+                      selected={selectedMicrophoneId === device.id}
+                      disabled={pendingSection === 'microphone'}
+                      onClick={() => void selectMicrophone(device.id)}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <div className="rounded-3xl border border-white/10 bg-white/5 px-4 py-4 text-sm text-white/65">
+                  No microphone devices are available right now.
+                </div>
+              )}
             </div>
           ) : null}
 
-          {!showAudioSection && !showMicrophoneSection && isVideoCall ? (
+          {!desktopMode && !showAudioSection && !showMicrophoneSection && isVideoCall ? (
             <div className="rounded-3xl border border-white/10 bg-white/5 px-4 py-4 text-sm text-white/65">
               Camera switching is handled from the flip button on the call screen.
             </div>

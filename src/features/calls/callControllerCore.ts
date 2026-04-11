@@ -21,9 +21,11 @@ import { ICE_DISCONNECT_GRACE_MS, TERMINAL_REST_FALLBACK_TIMEOUT_MS, END_SCREEN_
 import {
   createInitialDeviceState,
   getCallState,
+  rememberExpandedSelfPreviewPlacement,
   resetCallStore,
   setCallState,
   type CallControllerState,
+  type CallExpandedSelfPreviewPlacement,
   type CallPhase,
   type CallRole,
   type LocalTerminalAction,
@@ -2155,6 +2157,13 @@ export const setMinimizedCallPosition = (position: MinimizedCallPosition) => {
   }
 
   setCallState({ minimizedCallPosition: position });
+};
+
+export const setExpandedSelfPreviewPlacement = (
+  placement: CallExpandedSelfPreviewPlacement
+) => {
+  rememberExpandedSelfPreviewPlacement(placement);
+  setCallState({ expandedSelfPreviewPlacement: placement });
 };
 
 export const resetCallPresentation = () => {

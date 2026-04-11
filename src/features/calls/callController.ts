@@ -1,6 +1,7 @@
 export { useCallStore } from './callStore';
 export type {
   CallAudioRoute,
+  CallExpandedSelfPreviewPlacement,
   CallMediaDevice,
   CallMediaDeviceKind,
   CallPhase,
@@ -37,6 +38,7 @@ export {
   resetCallPresentation,
   resumeRecoveredCall,
   setBrowserAudioOutput,
+  setExpandedSelfPreviewPlacement,
   setMinimizedCallPosition,
   startCall,
   switchCamera,

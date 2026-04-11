@@ -9,7 +9,6 @@ import {
   type CallMediaDevice,
 } from '@/features/calls/callStore';
 import {
-  readCallDevicePreferences,
   writeCallDevicePreferences,
 } from '@/features/calls/callDevicePreferences';
 import {
@@ -111,32 +110,34 @@ const choosePreferredRouteId = ({
   availableRouteIds,
   currentRouteId,
   selectedRouteId,
-  preferredRouteId,
 }: {
   callType: CallType;
   availableRouteIds: AndroidAudioRouteId[];
   currentRouteId: AndroidAudioRouteId | null;
   selectedRouteId: string | null;
-  preferredRouteId: string | null;
 }) => {
-  if (preferredRouteId && availableRouteIds.includes(preferredRouteId as AndroidAudioRouteId)) {
-    return preferredRouteId as AndroidAudioRouteId;
-  }
-
   if (selectedRouteId && availableRouteIds.includes(selectedRouteId as AndroidAudioRouteId)) {
     return selectedRouteId as AndroidAudioRouteId;
   }
 
-  if (currentRouteId && availableRouteIds.includes(currentRouteId)) {
-    return currentRouteId;
+  if (availableRouteIds.includes('bluetooth')) {
+    return 'bluetooth';
+  }
+
+  if (availableRouteIds.includes('headset')) {
+    return 'headset';
   }
 
   if (callType === 'video' && availableRouteIds.includes('speaker')) {
     return 'speaker';
   }
 
-  if (availableRouteIds.includes('earpiece')) {
+  if (callType === 'audio' && availableRouteIds.includes('earpiece')) {
     return 'earpiece';
+  }
+
+  if (currentRouteId && availableRouteIds.includes(currentRouteId)) {
+    return currentRouteId;
   }
 
   if (availableRouteIds.includes('speaker')) {
@@ -164,7 +165,6 @@ const syncNativeRoutes = async (callType: CallType = getCallState().call?.type |
     availableRouteIds: routes.map((route) => route.id),
     currentRouteId: currentRoute.id,
     selectedRouteId: state.selectedAudioRouteId,
-    preferredRouteId: state.preferredAudioRouteId || readCallDevicePreferences().audioRouteId,
   });
 
   if (preferredRouteId && preferredRouteId !== currentRoute.id) {
@@ -206,6 +206,7 @@ const syncNativeCallState = async (callType?: CallType) => {
 export { useCallStore };
 export type {
   CallAudioRoute,
+  CallExpandedSelfPreviewPlacement,
   CallMediaDevice,
   CallMediaDeviceKind,
   CallPhase,
@@ -229,6 +230,8 @@ export const minimizeCallView = rootCallController.minimizeCallView;
 export const registerCallRemoteAudioElement =
   rootCallController.registerCallRemoteAudioElement;
 export const resetCallPresentation = rootCallController.resetCallPresentation;
+export const setExpandedSelfPreviewPlacement =
+  rootCallController.setExpandedSelfPreviewPlacement;
 export const setMinimizedCallPosition = rootCallController.setMinimizedCallPosition;
 export const toggleCamera = rootCallController.toggleCamera;
 export const toggleMicrophone = rootCallController.toggleMicrophone;
