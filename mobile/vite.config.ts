@@ -45,6 +45,10 @@ export default defineConfig(({ mode }) => {
           replacement: path.resolve(__dirname, 'overrides/callController.ts'),
         },
         {
+          find: /^\.\/callSounds$/,
+          replacement: path.resolve(__dirname, 'overrides/callSounds.ts'),
+        },
+        {
           find: /^\.\.\/callController$/,
           replacement: path.resolve(__dirname, 'overrides/callController.ts'),
         },

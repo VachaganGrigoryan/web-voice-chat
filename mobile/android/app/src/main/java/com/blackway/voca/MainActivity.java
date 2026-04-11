@@ -4,6 +4,7 @@ import android.os.Bundle;
 import androidx.webkit.WebSettingsCompat;
 import androidx.webkit.WebViewFeature;
 import com.blackway.voca.plugins.AndroidAudioRoutePlugin;
+import com.blackway.voca.plugins.AndroidCallRingtonePlugin;
 import com.blackway.voca.plugins.AndroidNotificationsPlugin;
 import com.blackway.voca.plugins.AndroidVideoRecorderPlugin;
 import com.getcapacitor.BridgeActivity;
@@ -14,6 +15,7 @@ public class MainActivity extends BridgeActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         registerPlugin(AndroidAudioRoutePlugin.class);
+        registerPlugin(AndroidCallRingtonePlugin.class);
         registerPlugin(AndroidNotificationsPlugin.class);
         registerPlugin(AndroidVideoRecorderPlugin.class);
         super.onCreate(savedInstanceState);

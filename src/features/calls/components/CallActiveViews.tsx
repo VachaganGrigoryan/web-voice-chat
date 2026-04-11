@@ -73,13 +73,13 @@ const CALL_FLOATING_ACTION_STYLE: CSSProperties = {
   boxShadow: `0 18px 44px ${getCallBrandColor(0.16)}`,
 };
 const CALL_AUDIO_BACKGROUND_STYLE: CSSProperties = {
-  background: `radial-gradient(circle at top, ${getCallBrandColor(0.18)}, rgba(10, 10, 10, 0.98) 74%)`,
+  background: `radial-gradient(circle at top, ${getCallBrandColor(0.22)}, rgba(10, 10, 10, 0.96) 34%), linear-gradient(180deg, rgba(18, 18, 18, 0.98), rgba(6, 6, 6, 1))`,
 };
 const CALL_AUDIO_TOP_GLOW_STYLE: CSSProperties = {
-  background: `radial-gradient(circle at top, ${getCallBrandColor(0.26)}, transparent 62%)`,
+  background: `linear-gradient(180deg, ${getCallBrandColor(0.22)}, transparent)`,
 };
 const CALL_AUDIO_ORB_STYLE: CSSProperties = {
-  backgroundColor: getCallBrandColor(0.12),
+  background: `radial-gradient(circle, ${getCallBrandColor(0.18)}, transparent 72%)`,
 };
 
 const getActiveToggleStyle = (active: boolean) =>
@@ -132,22 +132,11 @@ function ActiveVideoFallback({
         }}
       />
       <div className="absolute inset-0 flex items-center justify-center px-6">
-        <div className="flex flex-col items-center text-center">
-          <div
-            className="mb-5 inline-flex h-14 w-14 items-center justify-center rounded-[20px] border border-white/10 backdrop-blur-md"
-            style={CALL_GLASS_SURFACE_STYLE}
-          >
-            <LogoSymbol size="sm" />
-          </div>
-          <CallPeerAvatar
-            peerLabel={peerLabel}
-            avatarUrl={avatarUrl}
-            className="h-28 w-28 border-2 border-white/15 shadow-2xl"
-            fallbackClassName="text-4xl"
-          />
-          <div className="mt-6 text-3xl font-semibold tracking-tight">{peerLabel}</div>
-          <div className="mt-2 text-sm text-white/65">{statusLabel}</div>
-        </div>
+        <CallAudioHero
+          peerLabel={peerLabel}
+          avatarUrl={avatarUrl}
+          statusLabel={statusLabel}
+        />
       </div>
     </>
   );
@@ -343,18 +332,20 @@ function CallTopBar({
   return (
     <div
       className={cn(
-        'absolute inset-x-0 top-0 flex items-start justify-between',
+        'absolute inset-x-0 top-0 z-40 flex items-start justify-between pointer-events-none',
         compact ? 'p-4' : 'p-4 sm:p-6'
       )}
     >
-      <CallHeaderCard
-        callLabel={callLabel}
-        peerLabel={peerLabel}
-        statusLabel={statusLabel}
-        compact={compact}
-      />
+      <div className="pointer-events-auto">
+        <CallHeaderCard
+          callLabel={callLabel}
+          peerLabel={peerLabel}
+          statusLabel={statusLabel}
+          compact={compact}
+        />
+      </div>
 
-      <div className="flex items-center gap-2">
+      <div className="pointer-events-auto flex items-center gap-2">
         {showSettings && onSettings ? (
           <CallTopActionButton onClick={onSettings} title="Open call settings">
             <Settings2 className="h-5 w-5" />
@@ -383,27 +374,39 @@ function CallAudioHero({
   compact?: boolean;
 }) {
   return (
-    <div
-      className={cn(
-        'w-full rounded-[40px] border border-white/10 px-8 py-10 shadow-2xl backdrop-blur-xl',
-        compact ? 'max-w-sm px-6 py-8' : 'max-w-xl'
-      )}
-      style={CALL_GLASS_SURFACE_STYLE}
-    >
-      <div className="flex flex-col items-center text-center">
+    <div className={cn('flex w-full flex-col items-center text-center', compact ? 'max-w-sm' : 'max-w-md')}>
+      <div
+        className={cn(
+          'relative flex items-center justify-center rounded-full border border-white/10 bg-black/55 shadow-2xl',
+          compact ? 'h-40 w-40' : 'h-52 w-52'
+        )}
+        style={{ boxShadow: `0 28px 80px ${getCallBrandColor(0.22)}` }}
+      >
+        <div
+          className="absolute inset-[10%] rounded-full"
+          style={{
+            background: `radial-gradient(circle, ${getCallBrandColor(0.2)}, rgba(10, 10, 10, 0.02) 72%)`,
+          }}
+        />
+        <div className="absolute -top-4 inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/70 px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-white/60 backdrop-blur-md">
+          <LogoSymbol size="sm" />
+          <span>In call</span>
+        </div>
         <CallPeerAvatar
           peerLabel={peerLabel}
           avatarUrl={avatarUrl}
           className={cn(
-            'border-2 border-white/15 shadow-xl',
+            'relative border-2 border-white/15 shadow-xl',
             compact ? 'h-24 w-24' : 'h-32 w-32'
           )}
           fallbackClassName={compact ? 'text-4xl' : 'text-5xl'}
         />
-        <div className={cn('mt-7 font-semibold tracking-tight', compact ? 'text-2xl' : 'text-3xl')}>
-          {peerLabel}
-        </div>
-        <div className="mt-2 text-sm text-white/70">{statusLabel}</div>
+      </div>
+      <div className={cn('mt-8 font-semibold tracking-tight text-white', compact ? 'text-[1.75rem]' : 'text-[2.25rem]')}>
+        {peerLabel}
+      </div>
+      <div className="mt-3 inline-flex rounded-full border border-white/10 bg-white/6 px-4 py-2 text-xs font-medium uppercase tracking-[0.24em] text-white/62">
+        {statusLabel}
       </div>
     </div>
   );
@@ -661,7 +664,7 @@ function DesktopVideoCallLayout({
   onChangeExpandedSelfPreviewPlacement,
 }: ActiveCallLayoutProps) {
   return (
-    <div className="fixed inset-0 z-[80] overflow-hidden bg-black text-white">
+    <div className="fixed inset-0 z-[80] isolate overflow-hidden bg-black text-white">
       <CallMediaSurface
         stream={hasRemoteVideo ? remoteStream : null}
         muted
@@ -741,7 +744,7 @@ function MobileVideoCallLayout({
   const speakerMeta = getMobileAudioRouteMeta(currentAudioRoute);
 
   return (
-    <div className="fixed inset-0 z-[80] overflow-hidden bg-black text-white">
+    <div className="fixed inset-0 z-[80] isolate overflow-hidden bg-black text-white">
       <CallMediaSurface
         stream={hasRemoteVideo ? remoteStream : null}
         muted
@@ -811,16 +814,16 @@ function DesktopAudioCallLayout({
 }: ActiveCallLayoutProps) {
   return (
     <div
-      className="fixed inset-0 z-[80] overflow-hidden text-white"
+      className="fixed inset-0 z-[80] isolate overflow-hidden bg-black text-white"
       style={CALL_AUDIO_BACKGROUND_STYLE}
     >
-      <div className="absolute inset-x-0 top-0 h-64" style={CALL_AUDIO_TOP_GLOW_STYLE} />
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-64" style={CALL_AUDIO_TOP_GLOW_STYLE} />
       <div
-        className="absolute bottom-[-8rem] right-[-4rem] h-64 w-64 rounded-full blur-3xl"
+        className="pointer-events-none absolute bottom-[-8rem] right-[-4rem] h-64 w-64 rounded-full blur-3xl"
         style={CALL_AUDIO_ORB_STYLE}
       />
       <div
-        className="absolute left-[-6rem] top-1/3 h-72 w-72 rounded-full blur-3xl"
+        className="pointer-events-none absolute left-[-6rem] top-1/3 h-72 w-72 rounded-full blur-3xl"
         style={CALL_AUDIO_ORB_STYLE}
       />
 
@@ -834,7 +837,7 @@ function DesktopAudioCallLayout({
         onMinimize={onMinimize}
       />
 
-      <div className="relative flex h-full items-center justify-center px-6 pb-28 pt-24">
+      <div className="relative z-10 flex h-full items-center justify-center px-6 pb-28 pt-24">
         <CallAudioHero
           peerLabel={peerLabel}
           avatarUrl={avatarUrl}
@@ -879,16 +882,16 @@ function MobileAudioCallLayout({
 
   return (
     <div
-      className="fixed inset-0 z-[80] overflow-hidden text-white"
+      className="fixed inset-0 z-[80] isolate overflow-hidden bg-black text-white"
       style={CALL_AUDIO_BACKGROUND_STYLE}
     >
-      <div className="absolute inset-x-0 top-0 h-64" style={CALL_AUDIO_TOP_GLOW_STYLE} />
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-64" style={CALL_AUDIO_TOP_GLOW_STYLE} />
       <div
-        className="absolute bottom-[-8rem] right-[-4rem] h-56 w-56 rounded-full blur-3xl"
+        className="pointer-events-none absolute bottom-[-8rem] right-[-4rem] h-56 w-56 rounded-full blur-3xl"
         style={CALL_AUDIO_ORB_STYLE}
       />
       <div
-        className="absolute left-[-5rem] top-1/3 h-64 w-64 rounded-full blur-3xl"
+        className="pointer-events-none absolute left-[-5rem] top-1/3 h-64 w-64 rounded-full blur-3xl"
         style={CALL_AUDIO_ORB_STYLE}
       />
 
@@ -903,7 +906,7 @@ function MobileAudioCallLayout({
         onMinimize={onMinimize}
       />
 
-      <div className="relative flex h-full items-center justify-center px-5 pb-28 pt-24">
+      <div className="relative z-10 flex h-full items-center justify-center px-5 pb-28 pt-24">
         <CallAudioHero
           peerLabel={peerLabel}
           avatarUrl={avatarUrl}

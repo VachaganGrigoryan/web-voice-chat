@@ -89,11 +89,11 @@ export function CallControlDock({
   return (
     <div
       className={cn(
-        'absolute inset-x-0 bottom-0 flex justify-center px-4 pb-6 sm:px-6',
+        'absolute inset-x-0 bottom-0 z-40 flex justify-center px-4 pb-6 pointer-events-none sm:px-6',
         className
       )}
     >
-      <div className="flex items-end gap-4 rounded-[32px] border border-white/10 bg-black/60 px-5 py-4 shadow-2xl backdrop-blur-xl">
+      <div className="pointer-events-auto flex items-end gap-4 rounded-[32px] border border-white/10 bg-black/70 px-5 py-4 shadow-2xl backdrop-blur-xl">
         <CallControlButton
           label={isMicMuted ? 'Muted' : 'Mic'}
           active={!isMicMuted}
