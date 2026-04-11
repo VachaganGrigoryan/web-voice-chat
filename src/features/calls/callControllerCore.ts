@@ -21,9 +21,11 @@ import { ICE_DISCONNECT_GRACE_MS, TERMINAL_REST_FALLBACK_TIMEOUT_MS, END_SCREEN_
 import {
   createInitialDeviceState,
   getCallState,
+  rememberExpandedSelfPreviewPlacement,
   resetCallStore,
   setCallState,
   type CallControllerState,
+  type CallExpandedSelfPreviewPlacement,
   type CallPhase,
   type CallRole,
   type LocalTerminalAction,
@@ -32,17 +34,21 @@ import {
   type RecoverySource,
 } from './callStore';
 import {
+  getExposedCallCameras,
   getTrackDeviceId,
   getVideoConstraints,
   isExactDeviceConstraintError,
+  resolveExposedCameraId,
   resolveCallDeviceState,
   supportsBrowserAudioOutputSelection,
+  toCallMediaDevices,
   type HTMLAudioElementWithSinkId,
 } from './callDevices';
 import {
   type CallPreferredDeviceIds,
   writeCallDevicePreferences,
 } from './callDevicePreferences';
+import { primeCallSoundFromUserGesture } from './callSounds';
 
 /*
  * CALL STATE MACHINE
@@ -619,14 +625,15 @@ const getLocalStreamConstraints = (
     | 'selectedCameraId'
     | 'preferredMicrophoneId'
     | 'preferredCameraId'
-  >
+  >,
+  requestedCameraId = getRequestedCameraId(state)
 ): MediaStreamConstraints => ({
   audio: getRequestedMicrophoneId(state)
     ? { deviceId: { exact: getRequestedMicrophoneId(state)! } }
     : true,
   video:
     callType === 'video'
-      ? getVideoConstraints(getRequestedCameraId(state))
+      ? getVideoConstraints(requestedCameraId)
       : false,
 });
 
@@ -651,10 +658,13 @@ const applyBrowserAudioOutputToElement = async (
 
 const syncAvailableCallDevices = (devices: MediaDeviceInfo[]) => {
   const state = getCallState();
-  const resolvedDeviceState = resolveCallDeviceState(state, devices);
+  const {
+    normalizedPreferredCameraId,
+    ...resolvedDeviceState
+  } = resolveCallDeviceState(state, devices);
   let nextPreferences: CallPreferredDeviceIds = {
     microphoneId: state.preferredMicrophoneId,
-    cameraId: state.preferredCameraId,
+    cameraId: normalizedPreferredCameraId,
     audioRouteId: state.preferredAudioRouteId,
   };
 
@@ -668,13 +678,8 @@ const syncAvailableCallDevices = (devices: MediaDeviceInfo[]) => {
     missingPreferencePatch.microphoneId = null;
   }
 
-  if (
-    state.preferredCameraId &&
-    !resolvedDeviceState.availableCameras.some(
-      (device) => device.id === state.preferredCameraId
-    )
-  ) {
-    missingPreferencePatch.cameraId = null;
+  if (state.preferredCameraId && normalizedPreferredCameraId !== state.preferredCameraId) {
+    missingPreferencePatch.cameraId = normalizedPreferredCameraId;
   }
 
   if (
@@ -701,6 +706,60 @@ const syncAvailableCallDevices = (devices: MediaDeviceInfo[]) => {
     void applyBrowserAudioOutputToElement(
       resolvedDeviceState.selectedAudioRouteId
     ).catch(() => {});
+  }
+};
+
+const normalizeRequestedCameraId = async (
+  state: Pick<
+    CallControllerState,
+    'selectedCameraId' | 'preferredCameraId'
+  >
+) => {
+  const requestedCameraId = getRequestedCameraId(state);
+  if (
+    !requestedCameraId ||
+    typeof navigator === 'undefined' ||
+    !navigator.mediaDevices?.enumerateDevices
+  ) {
+    return requestedCameraId;
+  }
+
+  try {
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    const cameras = toCallMediaDevices(devices, 'videoinput');
+    const normalizedCameraId = resolveExposedCameraId({
+      cameras,
+      exposedCameras: getExposedCallCameras(cameras),
+      cameraId: requestedCameraId,
+    });
+
+    if (!normalizedCameraId || normalizedCameraId === requestedCameraId) {
+      return requestedCameraId;
+    }
+
+    const nextState: Pick<
+      CallControllerState,
+      'selectedCameraId' | 'preferredCameraId'
+    > = {
+      selectedCameraId:
+        state.selectedCameraId === requestedCameraId
+          ? normalizedCameraId
+          : state.selectedCameraId,
+      preferredCameraId: state.preferredCameraId,
+    };
+
+    if (state.preferredCameraId === requestedCameraId) {
+      const nextPreferences = syncStoredDevicePreferences({
+        cameraId: normalizedCameraId,
+      });
+      nextState.preferredCameraId = nextPreferences.cameraId;
+    }
+
+    setCallState(nextState);
+    return normalizedCameraId;
+  } catch (error) {
+    console.error('Failed to normalize requested camera:', error);
+    return requestedCameraId;
   }
 };
 
@@ -776,14 +835,16 @@ const clearStoredInputPreference = (kind: 'audio' | 'video') => {
 };
 
 const requestLocalStream = async (callType: CallType, state: CallControllerState) => {
-  const constraints = getLocalStreamConstraints(callType, state);
+  const requestedCameraId =
+    callType === 'video' ? await normalizeRequestedCameraId(state) : null;
+  const constraints = getLocalStreamConstraints(callType, state, requestedCameraId);
 
   try {
     return await navigator.mediaDevices.getUserMedia(constraints);
   } catch (error) {
     const selectedDeviceRequested =
       !!getRequestedMicrophoneId(state) ||
-      (callType === 'video' && !!getRequestedCameraId(state));
+      (callType === 'video' && !!requestedCameraId);
     if (!selectedDeviceRequested || !isExactDeviceConstraintError(error)) {
       throw error;
     }
@@ -1444,6 +1505,8 @@ export const startCall = async ({ peerUserId, type, peerUser }: StartCallInput) 
     return;
   }
 
+  void primeCallSoundFromUserGesture();
+
   const mediaPreferences = defaultMediaPreferencesForCall(type);
   setCallState({
     phase: 'outgoing-ringing',
@@ -1493,6 +1556,8 @@ export const acceptIncomingCall = async () => {
   if (state.phase !== 'incoming-ringing' || !state.call) {
     return;
   }
+
+  void primeCallSoundFromUserGesture();
 
   const socketId = getSocket()?.id;
   if (!socketId) {
@@ -2092,6 +2157,13 @@ export const setMinimizedCallPosition = (position: MinimizedCallPosition) => {
   }
 
   setCallState({ minimizedCallPosition: position });
+};
+
+export const setExpandedSelfPreviewPlacement = (
+  placement: CallExpandedSelfPreviewPlacement
+) => {
+  rememberExpandedSelfPreviewPlacement(placement);
+  setCallState({ expandedSelfPreviewPlacement: placement });
 };
 
 export const resetCallPresentation = () => {

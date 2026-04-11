@@ -1,0 +1,359 @@
+import { Capacitor } from '@capacitor/core';
+import type { CallType } from '@/api/types';
+import * as rootCallController from '@/features/calls/callController';
+import {
+  getCallState,
+  setCallState,
+  useCallStore,
+  type CallAudioRoute,
+  type CallMediaDevice,
+} from '@/features/calls/callStore';
+import {
+  writeCallDevicePreferences,
+} from '@/features/calls/callDevicePreferences';
+import {
+  getCameraFacingFromDeviceId,
+  getCameraFacingFromTrack,
+  MOBILE_BACK_CAMERA_ID,
+  MOBILE_FRONT_CAMERA_ID,
+} from '@/features/calls/callDevices';
+import {
+  androidAudioRoute,
+  type AndroidAudioRouteId,
+  type AndroidAudioRouteOption,
+} from '../plugins/androidAudioRoute';
+
+const isNativeAndroid =
+  Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android';
+
+const ACTIVE_NATIVE_AUDIO_PHASES = new Set([
+  'outgoing-ringing',
+  'connecting',
+  'active',
+  'reconnecting',
+]);
+const NATIVE_ANDROID_CAMERAS: CallMediaDevice[] = [
+  {
+    id: MOBILE_FRONT_CAMERA_ID,
+    kind: 'videoinput',
+    label: 'Front camera',
+  },
+  {
+    id: MOBILE_BACK_CAMERA_ID,
+    kind: 'videoinput',
+    label: 'Back camera',
+  },
+];
+
+const toCallAudioRoute = (route: AndroidAudioRouteOption): CallAudioRoute => ({
+  id: route.id,
+  label: route.label,
+  kind: 'browser-output',
+  source: 'browser',
+});
+
+const clearNativeAudioState = () => {
+  setCallState({
+    availableAudioRoutes: [],
+    selectedAudioRouteId: null,
+    browserAudioOutputSupported: true,
+  });
+};
+
+const getNativeAndroidCameraId = (facing: 'front' | 'back') =>
+  facing === 'back' ? MOBILE_BACK_CAMERA_ID : MOBILE_FRONT_CAMERA_ID;
+
+const resolveNativeAndroidCameraFacing = () => {
+  const state = getCallState();
+  const trackFacing = getCameraFacingFromTrack(state.localStream?.getVideoTracks()[0]);
+  if (trackFacing !== 'unknown') {
+    return trackFacing;
+  }
+
+  const selectedFacing = getCameraFacingFromDeviceId(state.selectedCameraId);
+  if (selectedFacing !== 'unknown') {
+    return selectedFacing;
+  }
+
+  const preferredFacing = getCameraFacingFromDeviceId(state.preferredCameraId);
+  if (preferredFacing !== 'unknown') {
+    return preferredFacing;
+  }
+
+  return 'front';
+};
+
+const syncNativeCameraState = () => {
+  if (!isNativeAndroid) {
+    return;
+  }
+
+  const state = getCallState();
+  if (state.call?.type !== 'video') {
+    return;
+  }
+
+  const selectedCameraId = getNativeAndroidCameraId(resolveNativeAndroidCameraFacing());
+  const nextPreferences = writeCallDevicePreferences({
+    cameraId: selectedCameraId,
+  });
+
+  setCallState({
+    availableCameras: NATIVE_ANDROID_CAMERAS,
+    selectedCameraId,
+    preferredCameraId: nextPreferences.cameraId,
+  });
+};
+
+const choosePreferredRouteId = ({
+  callType,
+  availableRouteIds,
+  currentRouteId,
+  selectedRouteId,
+}: {
+  callType: CallType;
+  availableRouteIds: AndroidAudioRouteId[];
+  currentRouteId: AndroidAudioRouteId | null;
+  selectedRouteId: string | null;
+}) => {
+  if (selectedRouteId && availableRouteIds.includes(selectedRouteId as AndroidAudioRouteId)) {
+    return selectedRouteId as AndroidAudioRouteId;
+  }
+
+  if (availableRouteIds.includes('bluetooth')) {
+    return 'bluetooth';
+  }
+
+  if (availableRouteIds.includes('headset')) {
+    return 'headset';
+  }
+
+  if (callType === 'video' && availableRouteIds.includes('speaker')) {
+    return 'speaker';
+  }
+
+  if (callType === 'audio' && availableRouteIds.includes('earpiece')) {
+    return 'earpiece';
+  }
+
+  if (currentRouteId && availableRouteIds.includes(currentRouteId)) {
+    return currentRouteId;
+  }
+
+  if (availableRouteIds.includes('speaker')) {
+    return 'speaker';
+  }
+
+  return availableRouteIds[0] || null;
+};
+
+const syncNativeRoutes = async (callType: CallType = getCallState().call?.type || 'audio') => {
+  if (!isNativeAndroid) {
+    return;
+  }
+
+  const routes = (await androidAudioRoute.listRoutes()).filter((route) => route.available);
+  if (!routes.length) {
+    clearNativeAudioState();
+    return;
+  }
+
+  const state = getCallState();
+  const currentRoute = await androidAudioRoute.getCurrentRoute();
+  const preferredRouteId = choosePreferredRouteId({
+    callType,
+    availableRouteIds: routes.map((route) => route.id),
+    currentRouteId: currentRoute.id,
+    selectedRouteId: state.selectedAudioRouteId,
+  });
+
+  if (preferredRouteId && preferredRouteId !== currentRoute.id) {
+    await androidAudioRoute.setRoute({ id: preferredRouteId });
+  }
+
+  const resolvedRoute = preferredRouteId && preferredRouteId !== currentRoute.id
+    ? await androidAudioRoute.getCurrentRoute()
+    : currentRoute;
+  const nextPreferences = writeCallDevicePreferences({
+    audioRouteId: resolvedRoute.id,
+  });
+
+  setCallState({
+    availableAudioRoutes: routes.map(toCallAudioRoute),
+    selectedAudioRouteId: resolvedRoute.id,
+    preferredAudioRouteId: nextPreferences.audioRouteId,
+    browserAudioOutputSupported: true,
+  });
+};
+
+const syncNativeCallState = async (callType?: CallType) => {
+  if (!isNativeAndroid) {
+    return;
+  }
+
+  const state = getCallState();
+  const resolvedCallType = callType || state.call?.type || 'audio';
+  if (state.call && ACTIVE_NATIVE_AUDIO_PHASES.has(state.phase)) {
+    await androidAudioRoute.enterCommunicationMode();
+    await syncNativeRoutes(resolvedCallType);
+    return;
+  }
+
+  await androidAudioRoute.exitCommunicationMode();
+  clearNativeAudioState();
+};
+
+export { useCallStore };
+export type {
+  CallAudioRoute,
+  CallExpandedSelfPreviewPlacement,
+  CallMediaDevice,
+  CallMediaDeviceKind,
+  CallPhase,
+  CallPresentationMode,
+  CallRole,
+  CallVideoGeometry,
+  CallVideoOrientation,
+  MediaPreferences,
+  MinimizedCallPosition,
+  RecoverySource,
+} from '@/features/calls/callController';
+
+export const expandCallView = rootCallController.expandCallView;
+export const handleAnswerSignal = rootCallController.handleAnswerSignal;
+export const handleIceCandidateSignal = rootCallController.handleIceCandidateSignal;
+export const handleIncomingSession = rootCallController.handleIncomingSession;
+export const handleOfferSignal = rootCallController.handleOfferSignal;
+export const handleReconnectingCall = rootCallController.handleReconnectingCall;
+export const hydrateRecoverableCall = rootCallController.hydrateRecoverableCall;
+export const minimizeCallView = rootCallController.minimizeCallView;
+export const registerCallRemoteAudioElement =
+  rootCallController.registerCallRemoteAudioElement;
+export const resetCallPresentation = rootCallController.resetCallPresentation;
+export const setExpandedSelfPreviewPlacement =
+  rootCallController.setExpandedSelfPreviewPlacement;
+export const setMinimizedCallPosition = rootCallController.setMinimizedCallPosition;
+export const toggleCamera = rootCallController.toggleCamera;
+export const toggleMicrophone = rootCallController.toggleMicrophone;
+
+export const refreshCallDevices = async () => {
+  await rootCallController.refreshCallDevices();
+  syncNativeCameraState();
+  await syncNativeCallState();
+};
+
+export const setBrowserAudioOutput = async (routeId: string) => {
+  if (!isNativeAndroid) {
+    return rootCallController.setBrowserAudioOutput(routeId);
+  }
+
+  await androidAudioRoute.enterCommunicationMode();
+  await androidAudioRoute.setRoute({ id: routeId as AndroidAudioRouteId });
+  const nextPreferences = writeCallDevicePreferences({ audioRouteId: routeId });
+  setCallState({
+    selectedAudioRouteId: routeId,
+    preferredAudioRouteId: nextPreferences.audioRouteId,
+    browserAudioOutputSupported: true,
+  });
+  await syncNativeRoutes(getCallState().call?.type || 'audio');
+};
+
+export const startCall = async (
+  input: Parameters<typeof rootCallController.startCall>[0],
+) => {
+  await rootCallController.startCall(input);
+  syncNativeCameraState();
+  await syncNativeCallState(input.type);
+};
+
+export const acceptIncomingCall = async () => {
+  const callType = getCallState().call?.type;
+  await rootCallController.acceptIncomingCall();
+  syncNativeCameraState();
+  await syncNativeCallState(callType || 'audio');
+};
+
+export const handleAcceptedSession = async (
+  session: Parameters<typeof rootCallController.handleAcceptedSession>[0],
+) => {
+  await rootCallController.handleAcceptedSession(session);
+  syncNativeCameraState();
+  await syncNativeCallState(session.call.type);
+};
+
+export const handleConnectedSignal = async (
+  payload: Parameters<typeof rootCallController.handleConnectedSignal>[0],
+) => {
+  rootCallController.handleConnectedSignal(payload);
+  syncNativeCameraState();
+  await syncNativeCallState();
+};
+
+export const handleResumedSession = async (
+  session: Parameters<typeof rootCallController.handleResumedSession>[0],
+) => {
+  await rootCallController.handleResumedSession(session);
+  syncNativeCameraState();
+  await syncNativeCallState(session.call.type);
+};
+
+export const attemptCallRecovery = async (
+  source: Parameters<typeof rootCallController.attemptCallRecovery>[0],
+) => {
+  await rootCallController.attemptCallRecovery(source);
+  syncNativeCameraState();
+  await syncNativeCallState();
+};
+
+export const resumeRecoveredCall = async (
+  source: Parameters<typeof rootCallController.resumeRecoveredCall>[0],
+) => {
+  await rootCallController.resumeRecoveredCall(source);
+  syncNativeCameraState();
+  await syncNativeCallState();
+};
+
+export const switchCamera = async (deviceId: string) => {
+  await rootCallController.switchCamera(deviceId);
+  syncNativeCameraState();
+  await syncNativeRoutes(getCallState().call?.type || 'video');
+};
+
+export const switchMicrophone = async (deviceId: string) => {
+  await rootCallController.switchMicrophone(deviceId);
+  await syncNativeRoutes(getCallState().call?.type || 'audio');
+};
+
+export const endCurrentCall = async () => {
+  await rootCallController.endCurrentCall();
+  await syncNativeCallState();
+};
+
+export const rejectIncomingCall = async () => {
+  await rootCallController.rejectIncomingCall();
+  await syncNativeCallState();
+};
+
+export const handleTerminalCall = async (
+  payload: Parameters<typeof rootCallController.handleTerminalCall>[0],
+) => {
+  rootCallController.handleTerminalCall(payload);
+  await syncNativeCallState();
+};
+
+export const handleRecoveryExpired = async (
+  message?: Parameters<typeof rootCallController.handleRecoveryExpired>[0],
+) => {
+  rootCallController.handleRecoveryExpired(message);
+  await syncNativeCallState();
+};
+
+export const handleSocketDisconnected = async () => {
+  rootCallController.handleSocketDisconnected();
+  await syncNativeCallState();
+};
+
+export const resetCallController = async () => {
+  rootCallController.resetCallController();
+  await syncNativeCallState();
+};

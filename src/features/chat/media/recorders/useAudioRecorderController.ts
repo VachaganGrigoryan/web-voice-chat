@@ -1,9 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
-import { Capacitor } from '@capacitor/core';
-import { VoiceRecorder as CapacitorVoiceRecorder } from 'capacitor-voice-recorder';
 import type { SendMediaInput } from '@/hooks/useChat';
 import { getSocket } from '@/socket/socket';
 import { EVENTS } from '@/socket/events';
+import { getSupportedAudioMime, normalizeMimeType } from '@/utils/fileUtils';
 import type { ComposerReplyTarget } from '../../types/message';
 
 interface UseAudioRecorderControllerParams {
@@ -34,9 +33,6 @@ export function useAudioRecorderController({
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const isRecordingPausedRef = useRef(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
-
-  const isNativeAndroid =
-    Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android';
 
   const emitTypingStart = () => {
     const socket = getSocket();
@@ -80,12 +76,6 @@ export function useAudioRecorderController({
     return 'webm';
   };
 
-  const blobFromBase64 = (base64: string, mimeType: string) => {
-    const binary = atob(base64);
-    const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
-    return new Blob([bytes], { type: mimeType });
-  };
-
   const startTimer = () => {
     if (timerRef.current) {
       clearInterval(timerRef.current);
@@ -104,33 +94,6 @@ export function useAudioRecorderController({
 
   const startAudioRecording = async () => {
     try {
-      if (isNativeAndroid) {
-        const permission =
-          await CapacitorVoiceRecorder.requestAudioRecordingPermission();
-        if (!permission.value) {
-          alert('Microphone permission is required to record voice messages.');
-          return;
-        }
-
-        const canRecord = await CapacitorVoiceRecorder.canDeviceVoiceRecord();
-        if (!canRecord.value) {
-          alert('This Android device cannot record audio.');
-          return;
-        }
-
-        await CapacitorVoiceRecorder.startRecording();
-        setAudioBlob(null);
-        setAudioMimeType('audio/aac');
-        setAudioFileName('voice.m4a');
-        setIsRecording(true);
-        setIsRecordingPaused(false);
-        isRecordingPausedRef.current = false;
-        setDurationSec(0);
-        startTimer();
-        emitTypingStart();
-        return;
-      }
-
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const mediaRecorder = new MediaRecorder(stream);
       mediaRecorderRef.current = mediaRecorder;
@@ -143,10 +106,14 @@ export function useAudioRecorderController({
       };
 
       mediaRecorder.onstop = () => {
-        const blob = new Blob(chunksRef.current, { type: 'audio/webm' });
+        const mimeType =
+          getSupportedAudioMime(mediaRecorder.mimeType) ||
+          normalizeMimeType(mediaRecorder.mimeType) ||
+          'audio/webm';
+        const blob = new Blob(chunksRef.current, { type: mimeType });
         setAudioBlob(blob);
-        setAudioMimeType('audio/webm');
-        setAudioFileName('voice.webm');
+        setAudioMimeType(mimeType);
+        setAudioFileName(`voice.${getFileExtension(mimeType)}`);
         emitTypingStop();
         stream.getTracks().forEach((track) => track.stop());
       };
@@ -169,9 +136,7 @@ export function useAudioRecorderController({
     if (!isRecording || isRecordingPaused) return;
 
     try {
-      if (isNativeAndroid) {
-        await CapacitorVoiceRecorder.pauseRecording();
-      } else if (mediaRecorderRef.current) {
+      if (mediaRecorderRef.current) {
         mediaRecorderRef.current.pause();
       } else {
         return;
@@ -189,9 +154,7 @@ export function useAudioRecorderController({
     if (!isRecording || !isRecordingPaused) return;
 
     try {
-      if (isNativeAndroid) {
-        await CapacitorVoiceRecorder.resumeRecording();
-      } else if (mediaRecorderRef.current) {
+      if (mediaRecorderRef.current) {
         mediaRecorderRef.current.resume();
       } else {
         return;
@@ -209,16 +172,7 @@ export function useAudioRecorderController({
     if (!isRecording) return;
 
     try {
-      if (isNativeAndroid) {
-        const { value } = await CapacitorVoiceRecorder.stopRecording();
-        if (value.recordDataBase64) {
-          setAudioBlob(blobFromBase64(value.recordDataBase64, value.mimeType));
-        }
-        setAudioMimeType(value.mimeType);
-        setAudioFileName(`voice.${getFileExtension(value.mimeType)}`);
-        setDurationSec(Math.max(1, Math.round(value.msDuration / 1000)));
-        emitTypingStop();
-      } else if (mediaRecorderRef.current) {
+      if (mediaRecorderRef.current) {
         mediaRecorderRef.current.stop();
       }
     } catch (error) {

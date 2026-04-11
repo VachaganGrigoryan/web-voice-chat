@@ -14,6 +14,7 @@ import { ThemeProvider } from '@/components/ThemeProvider';
 import { APP_ROUTES, getDefaultAuthedPath } from '@/app/routes';
 import { useAuthStore } from '@/store/authStore';
 import CallRoot from '@/features/calls/CallRoot';
+import AppNavigationSync from '@/navigation/AppNavigationSync';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -51,6 +52,7 @@ export default function App() {
     <ThemeProvider defaultMode="system" defaultTheme="default">
       <QueryClientProvider client={queryClient}>
         <HashRouter>
+          <AppNavigationSync />
           <CallRoot />
           <Routes>
             <Route element={<PublicRoute />}>

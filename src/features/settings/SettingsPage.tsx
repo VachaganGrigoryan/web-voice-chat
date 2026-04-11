@@ -21,9 +21,11 @@ import PasskeysSettingsTab from './tabs/PasskeysSettingsTab';
 import PrivacySettingsTab from './tabs/PrivacySettingsTab';
 import ProfileSettingsTab from './tabs/ProfileSettingsTab';
 import AboutSettingsTab from './tabs/AboutSettingsTab';
+import { useAppNavigation } from '@/navigation/appNavigation';
 
 export default function SettingsPage() {
   const navigate = useNavigate();
+  const { goBack, goTo } = useAppNavigation();
   const { tab } = useParams<{ tab?: string }>();
   const routeTab = isSettingsTab(tab) ? tab : null;
   const activeTab = routeTab || 'profile';
@@ -84,17 +86,10 @@ export default function SettingsPage() {
   const isSaving = isUpdatingProfile || isUpdatingUsername;
 
   const handleBack = () => {
-    if (typeof window !== 'undefined' && window.history.length > 1) {
-      navigate(-1);
-      return;
-    }
-
-    if (activeTab !== 'profile') {
-      navigate(APP_ROUTES.settingsTab('profile'));
-      return;
-    }
-
-    navigate(APP_ROUTES.chat);
+    goBack({
+      fallback:
+        activeTab !== 'profile' ? APP_ROUTES.settingsTab('profile') : APP_ROUTES.chat,
+    });
   };
 
   const handleSave = async () => {
@@ -209,18 +204,18 @@ export default function SettingsPage() {
 
     const permission = await requestBrowserNotifications();
     if (permission === 'granted') {
-      setSuccess('Browser notifications enabled successfully.');
+      setSuccess('System notifications enabled successfully.');
       window.setTimeout(() => setSuccess(null), 3000);
       return;
     }
 
     if (permission === 'unsupported') {
-      setError('This browser does not support system notifications.');
+      setError('System notifications are not supported in this runtime.');
       window.setTimeout(() => setError(null), 3000);
       return;
     }
 
-    setError('Browser notifications were not enabled.');
+    setError('System notifications were not enabled.');
     window.setTimeout(() => setError(null), 3000);
   };
 
@@ -291,7 +286,7 @@ export default function SettingsPage() {
       title="Settings"
       description="Profile, appearance, notifications, privacy, passkeys, and discovery controls in one panel system."
       onBack={handleBack}
-      onClose={() => navigate(APP_ROUTES.chat)}
+      onClose={() => goTo(APP_ROUTES.chat)}
       headerActions={
         showSaveAction ? (
           <Button type="button" size="sm" className="gap-2 rounded-full" onClick={handleSave} disabled={isSaving}>

@@ -1,0 +1,19 @@
+{
+  "name": "vogi-mobile",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "sync:android": "npx cap sync android",
+    "open:android": "npx cap open android",
+    "assemble:android": "./android/gradlew -p android assembleDebug"
+  },
+  "dependencies": {
+    "@capacitor/android": "^8.2.0",
+    "@capacitor/app": "^8.1.0",
+    "@capacitor/camera": "^8.0.2",
+    "@capacitor/cli": "^8.2.0",
+    "@capacitor/core": "^8.2.0",
+    "@capacitor/filesystem": "^8.1.2",
+    "capacitor-voice-recorder": "^7.0.6"
+  }
+}

@@ -25,15 +25,15 @@ const getSoundStatusText = (soundEnabled: boolean, soundCapability: SoundCapabil
 
   switch (soundCapability) {
     case 'enabled':
-      return 'Sound is enabled and ready to play incoming message cues.';
+      return 'Sound is enabled and ready to play message alerts and in-app call tones.';
     case 'blocked':
       return 'The browser blocked sound until you approve it with a click.';
     case 'unsupported':
-      return 'This browser does not support Web Audio playback for notification sounds.';
+      return 'This browser does not support Web Audio playback for alerts and call tones.';
     case 'error':
       return 'Sound could not be enabled. Try the button again.';
     default:
-      return 'Sound is on, but browser approval is still needed before alerts can play.';
+      return 'Sound is on, but browser approval is still needed before alerts and call tones can play.';
   }
 };
 
@@ -62,7 +62,7 @@ export default function NotificationsSettingsTab({
 }: NotificationsSettingsTabProps) {
   return (
     <div className="space-y-6">
-      <PanelSection title="Sound Notifications" description="Control audible notifications for new chat events.">
+      <PanelSection title="Sound Notifications" description="Control audible message alerts and in-app call tones.">
         <div className="space-y-4">
           <div className="rounded-2xl border bg-background/80 p-4 text-sm text-muted-foreground shadow-sm">
             {getSoundStatusText(soundEnabled, soundCapability)}
@@ -81,7 +81,7 @@ export default function NotificationsSettingsTab({
 
           <SettingsToggleField
             title="Sound Notifications"
-            description="Play a sound when a new message arrives outside the active chat view."
+            description="Play sounds for new message alerts and call progress cues."
             checked={soundEnabled}
             onChange={setSoundEnabled}
           />

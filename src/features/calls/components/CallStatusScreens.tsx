@@ -3,6 +3,7 @@ import { useAuthStore } from '@/store/authStore';
 import { useSocketStore } from '@/socket/socket';
 import { Button } from '@/components/ui/Button';
 import { Logo } from '@/shared/branding/Logo';
+import { CALL_BRAND_PRIMARY, getCallBrandColor } from '../callBrand';
 import {
   acceptIncomingCall,
   endCurrentCall,
@@ -29,10 +30,26 @@ function StatusScreenShell({
   footer?: React.ReactNode;
 }) {
   return (
-    <div className="fixed inset-0 z-[80] overflow-hidden bg-[radial-gradient(circle_at_top,_rgba(239,68,68,0.18),_rgba(10,10,10,0.98)_72%)] text-white">
-      <div className="absolute inset-x-0 top-0 h-64 bg-[radial-gradient(circle_at_top,_rgba(239,68,68,0.24),_transparent_62%)]" />
-      <div className={badgeTone === 'danger' ? 'absolute bottom-[-8rem] right-[-4rem] h-72 w-72 rounded-full bg-red-500/10 blur-3xl' : 'absolute bottom-[-8rem] right-[-4rem] h-72 w-72 rounded-full bg-red-500/10 blur-3xl'} />
-      <div className="absolute left-[-6rem] top-1/3 h-72 w-72 rounded-full bg-red-500/10 blur-3xl" />
+    <div
+      className="fixed inset-0 z-[80] overflow-hidden text-white"
+      style={{
+        background: `radial-gradient(circle at top, ${getCallBrandColor(0.18)}, rgba(10, 10, 10, 0.98) 72%)`,
+      }}
+    >
+      <div
+        className="absolute inset-x-0 top-0 h-64"
+        style={{
+          background: `radial-gradient(circle at top, ${getCallBrandColor(0.24)}, transparent 62%)`,
+        }}
+      />
+      <div
+        className="absolute bottom-[-8rem] right-[-4rem] h-72 w-72 rounded-full blur-3xl"
+        style={{ backgroundColor: getCallBrandColor(0.1) }}
+      />
+      <div
+        className="absolute left-[-6rem] top-1/3 h-72 w-72 rounded-full blur-3xl"
+        style={{ backgroundColor: getCallBrandColor(0.1) }}
+      />
 
       <div className="relative flex h-full flex-col px-4 pb-6 pt-5 sm:px-6">
         <div className="mb-5 flex justify-center">
@@ -40,7 +57,22 @@ function StatusScreenShell({
         </div>
 
         <div className="flex justify-center">
-          <div className={badgeTone === 'danger' ? 'inline-flex items-center gap-2 rounded-full border border-red-400/20 bg-red-500/10 px-4 py-2 text-xs font-medium uppercase tracking-[0.22em] text-red-100' : 'inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/6 px-4 py-2 text-xs font-medium uppercase tracking-[0.22em] text-white/72'}>
+          <div
+            className="inline-flex items-center gap-2 rounded-full px-4 py-2 text-xs font-medium uppercase tracking-[0.22em]"
+            style={
+              badgeTone === 'danger'
+                ? {
+                    border: `1px solid ${getCallBrandColor(0.22)}`,
+                    backgroundColor: getCallBrandColor(0.12),
+                    color: '#fff5f5',
+                  }
+                : {
+                    border: '1px solid rgba(255, 255, 255, 0.1)',
+                    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+                    color: 'rgba(255, 255, 255, 0.72)',
+                  }
+            }
+          >
             {badge}
           </div>
         </div>
@@ -99,7 +131,8 @@ export function RingingCallScreen() {
             <Button
               type="button"
               size="lg"
-              className="min-w-36 rounded-[22px] bg-emerald-500 text-white hover:bg-emerald-600"
+              className="min-w-36 rounded-[22px] text-white hover:opacity-95"
+              style={{ backgroundColor: CALL_BRAND_PRIMARY }}
               onClick={() => void acceptIncomingCall()}
               disabled={isAccepting || isEnding}
             >

@@ -31,6 +31,11 @@ export type RecoverySource =
 export type LocalTerminalAction = 'reject' | 'end' | null;
 export type CallPresentationMode = 'expanded' | 'minimized';
 export type CallMediaDeviceKind = 'audioinput' | 'videoinput';
+export type CallExpandedSelfPreviewPlacement =
+  | 'top-left'
+  | 'top-right'
+  | 'bottom-left'
+  | 'bottom-right';
 export type CallVideoOrientation =
   | 'portrait'
   | 'landscape'
@@ -84,6 +89,7 @@ export interface CallControllerState {
   phase: CallPhase;
   callPresentationMode: CallPresentationMode;
   minimizedCallPosition: MinimizedCallPosition | null;
+  expandedSelfPreviewPlacement: CallExpandedSelfPreviewPlacement;
   role: CallRole;
   call: CallDoc | null;
   peerUser: CallPeerUserSummary | null;
@@ -129,6 +135,20 @@ export const initialMediaPreferences: MediaPreferences = {
   cameraEnabled: false,
 };
 
+const DEFAULT_EXPANDED_SELF_PREVIEW_PLACEMENT: CallExpandedSelfPreviewPlacement =
+  'bottom-right';
+let rememberedExpandedSelfPreviewPlacement: CallExpandedSelfPreviewPlacement =
+  DEFAULT_EXPANDED_SELF_PREVIEW_PLACEMENT;
+
+export const rememberExpandedSelfPreviewPlacement = (
+  placement: CallExpandedSelfPreviewPlacement
+) => {
+  rememberedExpandedSelfPreviewPlacement = placement;
+};
+
+export const getRememberedExpandedSelfPreviewPlacement = () =>
+  rememberedExpandedSelfPreviewPlacement;
+
 const createInitialDevicePreferenceState = (
   preferences: CallPreferredDeviceIds
 ): CallDeviceState => ({
@@ -151,6 +171,7 @@ export const createInitialCallState = (): CallControllerState => ({
   phase: 'idle',
   callPresentationMode: 'expanded',
   minimizedCallPosition: null,
+  expandedSelfPreviewPlacement: getRememberedExpandedSelfPreviewPlacement(),
   role: null,
   call: null,
   peerUser: null,

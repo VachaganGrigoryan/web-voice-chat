@@ -22,6 +22,11 @@ interface NotificationSoundState {
   syncBrowserNotificationState: () => BrowserNotificationState;
 }
 
+interface SendNotificationOptions {
+  playInAppCue?: boolean;
+  withSound?: boolean;
+}
+
 const SOUND_ENABLED_STORAGE_KEY = 'soundEnabled';
 const SOUND_CONSENT_STORAGE_KEY = 'notificationSoundConsentGranted';
 const NOTIFICATION_SOUND_URL = '/notification.mp3';
@@ -373,7 +378,11 @@ export const initNotificationSound = () => {
   useNotificationSoundStore.getState().init();
 };
 
-export const sendNotification = (title: string, message: string) => {
+export const sendNotification = (
+  title: string,
+  message: string,
+  options: SendNotificationOptions = {}
+) => {
   toast(title, {
     description: message,
     duration: 4000,
@@ -385,5 +394,7 @@ export const sendNotification = (title: string, message: string) => {
     new Notification(title, { body: message });
   }
 
-  void useNotificationSoundStore.getState().playIncomingMessageCue();
+  if (options.playInAppCue !== false) {
+    void useNotificationSoundStore.getState().playIncomingMessageCue();
+  }
 };

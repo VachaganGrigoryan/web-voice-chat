@@ -12,6 +12,23 @@ export type HTMLAudioElementWithSinkId = HTMLAudioElement & {
 
 const DEFAULT_DEVICE_ID = 'default';
 export type CallCameraFacing = 'front' | 'back' | 'unknown';
+type KnownCallCameraFacing = Exclude<CallCameraFacing, 'unknown'>;
+export const MOBILE_FRONT_CAMERA_ID = '__mobile-front-camera__';
+export const MOBILE_BACK_CAMERA_ID = '__mobile-back-camera__';
+
+export interface ResolvedCallDeviceState
+  extends Pick<
+    CallDeviceState,
+    | 'availableMicrophones'
+    | 'availableCameras'
+    | 'availableAudioRoutes'
+    | 'selectedMicrophoneId'
+    | 'selectedCameraId'
+    | 'selectedAudioRouteId'
+    | 'browserAudioOutputSupported'
+  > {
+  normalizedPreferredCameraId: string | null;
+}
 
 export const supportsBrowserAudioOutputSelection = () =>
   typeof HTMLMediaElement !== 'undefined' &&
@@ -72,9 +89,30 @@ export const getCameraFacingFromTrack = (
   return 'unknown';
 };
 
+export const getCameraFacingFromDeviceId = (
+  deviceId: string | null | undefined
+): CallCameraFacing => {
+  if (deviceId === MOBILE_FRONT_CAMERA_ID) {
+    return 'front';
+  }
+
+  if (deviceId === MOBILE_BACK_CAMERA_ID) {
+    return 'back';
+  }
+
+  return 'unknown';
+};
+
+export const isVirtualFacingCameraId = (deviceId: string | null | undefined) =>
+  deviceId === MOBILE_FRONT_CAMERA_ID || deviceId === MOBILE_BACK_CAMERA_ID;
+
+const isKnownCameraFacing = (
+  facing: CallCameraFacing
+): facing is KnownCallCameraFacing => facing === 'front' || facing === 'back';
+
 const getPrimaryCameraRank = (
   camera: Pick<CallMediaDevice, 'label' | 'id'>,
-  facing: Exclude<CallCameraFacing, 'unknown'>
+  facing: KnownCallCameraFacing
 ) => {
   const normalized = normalizeCameraLabel(camera.label);
   let rank = 0;
@@ -112,7 +150,7 @@ const getPrimaryCameraRank = (
 
 export const getPrimaryCameraForFacing = (
   cameras: CallMediaDevice[],
-  facing: Exclude<CallCameraFacing, 'unknown'>
+  facing: KnownCallCameraFacing
 ) =>
   [...cameras]
     .filter((camera) => getCameraFacingFromLabel(camera.label) === facing)
@@ -127,6 +165,55 @@ export const getPrimaryCameraForFacing = (
         sensitivity: 'base',
       });
     })[0] || null;
+
+export const getExposedCallCameras = (cameras: CallMediaDevice[]) => {
+  if (cameras.length <= 1) {
+    return cameras;
+  }
+
+  const primaryFrontCamera = getPrimaryCameraForFacing(cameras, 'front');
+  const primaryBackCamera = getPrimaryCameraForFacing(cameras, 'back');
+  const exposedCameras = [primaryFrontCamera, primaryBackCamera].filter(
+    (camera, index, items): camera is CallMediaDevice =>
+      !!camera && items.findIndex((candidate) => candidate?.id === camera.id) === index
+  );
+
+  if (exposedCameras.length) {
+    return exposedCameras;
+  }
+
+  return cameras.slice(0, 1);
+};
+
+export const resolveExposedCameraId = ({
+  cameras,
+  exposedCameras,
+  cameraId,
+}: {
+  cameras: CallMediaDevice[];
+  exposedCameras: CallMediaDevice[];
+  cameraId: string | null | undefined;
+}) => {
+  if (!cameraId) {
+    return null;
+  }
+
+  if (exposedCameras.some((camera) => camera.id === cameraId)) {
+    return cameraId;
+  }
+
+  const selectedCamera = cameras.find((camera) => camera.id === cameraId);
+  if (!selectedCamera) {
+    return null;
+  }
+
+  const facing = getCameraFacingFromLabel(selectedCamera.label);
+  if (!isKnownCameraFacing(facing)) {
+    return null;
+  }
+
+  return getPrimaryCameraForFacing(cameras, facing)?.id || null;
+};
 
 export const getQuickSwitchCameraId = ({
   cameras,
@@ -250,21 +337,28 @@ export const resolveCallDeviceState = (
     | 'selectedAudioRouteId'
   >,
   devices: MediaDeviceInfo[]
-): Pick<
-  CallDeviceState,
-  | 'availableMicrophones'
-  | 'availableCameras'
-  | 'availableAudioRoutes'
-  | 'selectedMicrophoneId'
-  | 'selectedCameraId'
-  | 'selectedAudioRouteId'
-  | 'browserAudioOutputSupported'
-> => {
+): ResolvedCallDeviceState => {
   const availableMicrophones = toCallMediaDevices(devices, 'audioinput');
-  const availableCameras = toCallMediaDevices(devices, 'videoinput');
+  const allCameras = toCallMediaDevices(devices, 'videoinput');
+  const availableCameras = allCameras;
   const availableAudioRoutes = supportsBrowserAudioOutputSelection()
     ? toBrowserAudioRoutes(devices)
     : [];
+  const normalizedPreferredCameraId = resolveExposedCameraId({
+    cameras: allCameras,
+    exposedCameras: availableCameras,
+    cameraId: state.preferredCameraId,
+  });
+  const normalizedTrackCameraId = resolveExposedCameraId({
+    cameras: allCameras,
+    exposedCameras: availableCameras,
+    cameraId: getTrackDeviceId(state.localStream?.getVideoTracks()[0]),
+  });
+  const normalizedSelectedCameraId = resolveExposedCameraId({
+    cameras: allCameras,
+    exposedCameras: availableCameras,
+    cameraId: state.selectedCameraId,
+  });
 
   const selectedMicrophoneId = getPreferredItemId(availableMicrophones, [
     state.preferredMicrophoneId,
@@ -273,9 +367,9 @@ export const resolveCallDeviceState = (
     DEFAULT_DEVICE_ID,
   ]);
   const selectedCameraId = getPreferredItemId(availableCameras, [
-    state.preferredCameraId,
-    getTrackDeviceId(state.localStream?.getVideoTracks()[0]),
-    state.selectedCameraId,
+    normalizedPreferredCameraId,
+    normalizedTrackCameraId,
+    normalizedSelectedCameraId,
     DEFAULT_DEVICE_ID,
   ]);
   const selectedAudioRouteId = getPreferredItemId(availableAudioRoutes, [
@@ -292,18 +386,31 @@ export const resolveCallDeviceState = (
     selectedCameraId,
     selectedAudioRouteId,
     browserAudioOutputSupported: supportsBrowserAudioOutputSelection(),
+    normalizedPreferredCameraId,
   };
 };
 
 export const getVideoConstraints = (deviceId?: string | null): MediaTrackConstraints =>
-  deviceId
+  deviceId === MOBILE_FRONT_CAMERA_ID
     ? {
-        deviceId: { exact: deviceId },
+        facingMode: { exact: 'user' },
         width: { ideal: 1280 },
         height: { ideal: 720 },
       }
-    : {
-        facingMode: 'user',
-        width: { ideal: 1280 },
-        height: { ideal: 720 },
-      };
+    : deviceId === MOBILE_BACK_CAMERA_ID
+      ? {
+          facingMode: { exact: 'environment' },
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+        }
+      : deviceId
+        ? {
+            deviceId: { exact: deviceId },
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+          }
+        : {
+            facingMode: 'user',
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+          };

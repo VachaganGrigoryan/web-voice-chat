@@ -6,9 +6,10 @@ const projectRoot = process.cwd();
 const publicPath = path.join(projectRoot, 'public');
 const brandPath = path.join(publicPath, 'brand');
 const symbolSvgPath = path.join(brandPath, 'logo-symbol.svg');
+const wordmarkLightSvgPath = path.join(brandPath, 'logo-wordmark-light.svg');
 const faviconSvgPath = path.join(brandPath, 'favicon.svg');
 const rootFaviconPath = path.join(publicPath, 'favicon.svg');
-const androidResPath = path.join(projectRoot, 'android', 'app', 'src', 'main', 'res');
+const androidResPath = path.join(projectRoot, 'mobile', 'android', 'app', 'src', 'main', 'res');
 const blackBackground = '#0a0a0a';
 
 const foregroundSizes = {
@@ -34,13 +35,30 @@ const webIcons = [
   { fileName: 'app-icon-512.png', size: 512, background: blackBackground, padding: 0.18 },
 ];
 
+const splashSpecs = [
+  { folder: 'drawable', width: 480, height: 320, widthRatio: 0.68 },
+  { folder: 'drawable-port-mdpi', width: 320, height: 480, widthRatio: 0.76 },
+  { folder: 'drawable-port-hdpi', width: 480, height: 800, widthRatio: 0.76 },
+  { folder: 'drawable-port-xhdpi', width: 720, height: 1280, widthRatio: 0.76 },
+  { folder: 'drawable-port-xxhdpi', width: 960, height: 1600, widthRatio: 0.76 },
+  { folder: 'drawable-port-xxxhdpi', width: 1280, height: 1920, widthRatio: 0.76 },
+  { folder: 'drawable-land-mdpi', width: 480, height: 320, widthRatio: 0.68 },
+  { folder: 'drawable-land-hdpi', width: 800, height: 480, widthRatio: 0.68 },
+  { folder: 'drawable-land-xhdpi', width: 1280, height: 720, widthRatio: 0.68 },
+  { folder: 'drawable-land-xxhdpi', width: 1600, height: 960, widthRatio: 0.68 },
+  { folder: 'drawable-land-xxxhdpi', width: 1920, height: 1280, widthRatio: 0.68 },
+];
+
 main().catch((error) => {
   console.error(error);
   process.exitCode = 1;
 });
 
 async function main() {
-  const symbolSvg = await readFile(symbolSvgPath, 'utf8');
+  const [symbolSvg, wordmarkLightSvg] = await Promise.all([
+    readFile(symbolSvgPath, 'utf8'),
+    readFile(wordmarkLightSvgPath, 'utf8'),
+  ]);
 
   await copyFile(faviconSvgPath, rootFaviconPath);
 
@@ -67,6 +85,12 @@ async function main() {
         awaitRenderIcon(symbolSvg, size, blackBackground, 0.2),
       ),
     ]),
+    ...splashSpecs.map((spec) =>
+      writeRaster(
+        path.join(androidResPath, spec.folder, 'splash.png'),
+        awaitRenderSplash(wordmarkLightSvg, spec.width, spec.height, spec.widthRatio),
+      ),
+    ),
   ]);
 }
 
@@ -80,21 +104,59 @@ async function awaitRenderIcon(symbolSvg, size, background, padding) {
   return sharp(Buffer.from(wrappedSvg)).resize(size, size).png().toBuffer();
 }
 
+async function awaitRenderSplash(wordmarkSvg, width, height, widthRatio) {
+  const wrappedSvg = wrapSvgOnCanvas(wordmarkSvg, {
+    canvasWidth: width,
+    canvasHeight: height,
+    background: blackBackground,
+    maxWidthRatio: widthRatio,
+  });
+  return sharp(Buffer.from(wrappedSvg)).png().toBuffer();
+}
+
 function wrapSymbolSvg(symbolSvg, background, padding) {
-  const viewBoxMatch = symbolSvg.match(/viewBox="([^"]+)"/i);
+  return wrapSvgOnCanvas(symbolSvg, {
+    canvasWidth: 1024,
+    canvasHeight: 1024,
+    background,
+    maxWidthRatio: 1 - padding * 2,
+    maxHeightRatio: 1 - padding * 2,
+    cornerRadiusRatio: background ? 0.22 : 0,
+  });
+}
+
+function wrapSvgOnCanvas(svg, options) {
+  const {
+    canvasWidth,
+    canvasHeight,
+    background = null,
+    maxWidthRatio = 1,
+    maxHeightRatio = 1,
+    cornerRadiusRatio = 0,
+  } = options;
+  const viewBoxMatch = svg.match(/viewBox="([^"]+)"/i);
   const viewBox = viewBoxMatch ? viewBoxMatch[1] : '0 0 512 512';
-  const innerContent = symbolSvg
+  const innerContent = svg
     .replace(/<svg[^>]*>/, '')
     .replace(/<\/svg>\s*$/, '');
-
-  const canvasSize = 1024;
-  const inset = canvasSize * padding;
-  const innerSize = canvasSize - inset * 2;
+  const contentWidth = canvasWidth * maxWidthRatio;
+  const contentHeight = canvasHeight * maxHeightRatio;
+  const offsetX = (canvasWidth - contentWidth) / 2;
+  const offsetY = (canvasHeight - contentHeight) / 2;
+  const cornerRadius = Math.min(canvasWidth, canvasHeight) * cornerRadiusRatio;
 
   return `<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="${canvasSize}" height="${canvasSize}" viewBox="0 0 ${canvasSize} ${canvasSize}" fill="none">
-  ${background ? `<rect width="${canvasSize}" height="${canvasSize}" rx="${canvasSize * 0.22}" fill="${background}" />` : ''}
-  <svg x="${inset}" y="${inset}" width="${innerSize}" height="${innerSize}" viewBox="${viewBox}" fill="none">
+<svg xmlns="http://www.w3.org/2000/svg" width="${canvasWidth}" height="${canvasHeight}" viewBox="0 0 ${canvasWidth} ${canvasHeight}" fill="none">
+  ${background ? `<rect width="${canvasWidth}" height="${canvasHeight}" rx="${cornerRadius}" fill="${background}" />` : ''}
+  <svg
+    x="${offsetX}"
+    y="${offsetY}"
+    width="${contentWidth}"
+    height="${contentHeight}"
+    viewBox="${viewBox}"
+    fill="none"
+    preserveAspectRatio="xMidYMid meet"
+  >
     ${innerContent}
   </svg>
 </svg>`;

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="vogi_background">#0A0A0A</color>
+    <color name="vogi_primary">#D90429</color>
+    <color name="vogi_primary_dark">#A6031F</color>
+    <color name="vogi_accent">#FF6B6B</color>
+
+    <color name="colorPrimary">@color/vogi_primary</color>
+    <color name="colorPrimaryDark">@color/vogi_primary_dark</color>
+    <color name="colorAccent">@color/vogi_accent</color>
+</resources>
