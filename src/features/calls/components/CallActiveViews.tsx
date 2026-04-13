@@ -258,6 +258,22 @@ function getPeerParticipantState(
   return call.participant_states?.[peerUserId] || null;
 }
 
+function hasRenderablePeerVideo(
+  isVideoCall: boolean,
+  remoteStream: MediaStream | null,
+  peerParticipantState: CallParticipantState | null
+) {
+  if (!isVideoCall) {
+    return false;
+  }
+
+  if (peerParticipantState?.video_enabled === false) {
+    return false;
+  }
+
+  return !!remoteStream?.getVideoTracks().some((track) => track.readyState === 'live');
+}
+
 function getCallStatusLabel(
   phase: 'connecting' | 'active' | 'ending',
   participantState: CallParticipantState | null
@@ -1123,9 +1139,11 @@ export function ActiveCallView({
     peerParticipantState
   );
   const callLabel = isVideoCall ? 'Video call' : 'Audio call';
-  const hasRemoteVideo =
-    isVideoCall &&
-    !!remoteStream?.getVideoTracks().some((track) => track.readyState === 'live');
+  const hasRemoteVideo = hasRenderablePeerVideo(
+    isVideoCall,
+    remoteStream,
+    peerParticipantState
+  );
   const hasMicChoices = availableMicrophones.length > 1;
   const hasAudioRouteChoices = availableAudioRoutes.length > 1;
   const currentAudioRoute =
@@ -1265,12 +1283,14 @@ export function MinimizedCallPip() {
   const isEnding = useCallStore((state) => state.isEnding);
   const minimizedCallPosition = useCallStore((state) => state.minimizedCallPosition);
   const isVideoCall = call?.type === 'video';
-  const hasRemoteVideo =
-    isVideoCall &&
-    !!remoteStream?.getVideoTracks().some((track) => track.readyState === 'live');
   const peerLabel = getPeerLabel(peerUser);
   const avatarUrl = getAvatarUrl(peerUser);
   const peerParticipantState = getPeerParticipantState(call, peerUser?.id);
+  const hasRemoteVideo = hasRenderablePeerVideo(
+    !!isVideoCall,
+    remoteStream,
+    peerParticipantState
+  );
   const statusLabel = getCallStatusLabel(
     phase === 'active' ? 'active' : 'connecting',
     peerParticipantState
