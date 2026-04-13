@@ -118,6 +118,7 @@ export interface CallControllerState {
   isEnding: boolean;
   isResuming: boolean;
   resumeSource: RecoverySource | null;
+  recoveryAcknowledged: boolean;
   needsRecoveryOffer: boolean;
   hasSentInitialOffer: boolean;
   hasEmittedConnected: boolean;
@@ -191,6 +192,7 @@ export const createInitialCallState = (): CallControllerState => ({
   isEnding: false,
   isResuming: false,
   resumeSource: null,
+  recoveryAcknowledged: false,
   needsRecoveryOffer: false,
   hasSentInitialOffer: false,
   hasEmittedConnected: false,

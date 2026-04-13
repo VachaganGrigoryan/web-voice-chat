@@ -15,6 +15,7 @@ import {
   CallTerminalPayload,
   CallType,
   IceServer,
+  SocketErrorPayload,
 } from '@/api/types';
 import { extractApiError } from '@/api/errors';
 import { useAuthStore } from '@/store/authStore';
@@ -115,6 +116,12 @@ let remoteAudioElement: HTMLAudioElementWithSinkId | null = null;
 const getSocket = () => useSocketStore.getState().socket;
 const isSocketConnected = () => !!getSocket()?.connected;
 const getCurrentUserId = () => useAuthStore.getState().userId;
+const RECOVERABLE_RESUME_ERROR_CODES = new Set([
+  'CALL_EXPIRED',
+  'CALL_NOT_FOUND',
+  'CALL_NOT_RECOVERABLE',
+  'INVALID_CALL_STATE',
+]);
 
 
 const isRecoverableStatus = (status: CallDoc['status']) =>
@@ -134,14 +141,6 @@ const isTerminalStatus = (status: CallDoc['status']) =>
   status === 'cancelled' ||
   status === 'expired' ||
   status === 'ended';
-
-const isRecoveryExpired = (call: CallDoc | null | undefined) => {
-  if (!call?.reconnect_deadline_at) {
-    return false;
-  }
-
-  return new Date(call.reconnect_deadline_at).getTime() <= Date.now();
-};
 
 const defaultMediaPreferencesForCall = (callType: CallType): MediaPreferences => ({
   micMuted: false,
@@ -319,7 +318,9 @@ const resetCallState = () => {
   resetCallStore();
 };
 
-const prepareRecoveryReset = () => {
+const prepareRecoveryReset = (
+  options: { preserveRecoveryAcknowledged?: boolean } = {}
+) => {
   clearDisconnectTimeout();
   clearTerminalFallbackTimeout();
   clearTerminalDisplayTimeout();
@@ -340,6 +341,9 @@ const prepareRecoveryReset = () => {
     isStarting: false,
     isAccepting: false,
     isEnding: false,
+    recoveryAcknowledged: options.preserveRecoveryAcknowledged
+      ? state.recoveryAcknowledged
+      : false,
     localTerminalAction: null,
     pendingTerminalActionId: null,
     endScreenMessage: null,
@@ -368,6 +372,7 @@ const setRecoveryError = (message: string, toastError = false) => {
     error: message,
     isResuming: false,
     resumeSource: null,
+    recoveryAcknowledged: false,
     needsRecoveryOffer: nextRole === 'caller',
   });
 
@@ -455,6 +460,7 @@ const showTerminalCallScreen = (
     isEnding: false,
     isResuming: false,
     resumeSource: null,
+    recoveryAcknowledged: false,
     localTerminalAction: null,
     terminalFallbackTimeoutId: null,
     pendingTerminalActionId: null,
@@ -487,6 +493,7 @@ const beginEndingCall = (
     isAccepting: false,
     isResuming: false,
     resumeSource: null,
+    recoveryAcknowledged: false,
     localTerminalAction: action,
     terminalFallbackTimeoutId: null,
     pendingTerminalActionId: actionId,
@@ -1141,6 +1148,7 @@ const markCallAsConnecting = () => {
     phase: 'connecting',
     isResuming: false,
     resumeSource: null,
+    recoveryAcknowledged: true,
     error: null,
   });
 
@@ -1167,6 +1175,7 @@ const markCallAsActive = () => {
     phase: 'active',
     isResuming: false,
     resumeSource: null,
+    recoveryAcknowledged: true,
     error: null,
     needsRecoveryOffer: false,
   });
@@ -1216,6 +1225,7 @@ const transitionToReconnecting = (options: {
     error: options.error ?? null,
     isResuming: false,
     resumeSource: null,
+    recoveryAcknowledged: false,
     needsRecoveryOffer: nextRole === 'caller',
   });
 };
@@ -1519,9 +1529,11 @@ const applyPendingRecoverySignaling = async (
 const prepareRecoveryTransport = async ({
   emitResume,
   forceRecreate,
+  preserveRecoveryAcknowledged = false,
 }: {
   emitResume: boolean;
   forceRecreate: boolean;
+  preserveRecoveryAcknowledged?: boolean;
 }) => {
   const state = getCallState();
   if (!state.call) {
@@ -1531,7 +1543,7 @@ const prepareRecoveryTransport = async ({
   let peerConnection = state.peerConnection;
 
   if (!peerConnection || forceRecreate) {
-    prepareRecoveryReset();
+    prepareRecoveryReset({ preserveRecoveryAcknowledged });
     const latestState = getCallState();
     if (!latestState.call) {
       return null;
@@ -1839,6 +1851,7 @@ export const hydrateRecoverableCall = (session: CallSession) => {
     isCameraEnabled: session.call.type === 'video' ? mediaPreferences.cameraEnabled : false,
     isResuming: sameCall ? state.isResuming : false,
     resumeSource: sameCall ? state.resumeSource : null,
+    recoveryAcknowledged: sameCall ? state.recoveryAcknowledged : false,
     needsRecoveryOffer: role === 'caller' && isRecoverableCall(session.call),
     localTerminalAction: null,
     pendingTerminalActionId: null,
@@ -1871,16 +1884,13 @@ export const resumeRecoveredCall = async (source: RecoverySource) => {
     return false;
   }
 
-  if (isRecoveryExpired(state.call)) {
-    return false;
-  }
-
   setCallState({
     phase: 'reconnecting',
     callPresentationMode: 'expanded',
     minimizedCallPosition: null,
     isResuming: true,
     resumeSource: source,
+    recoveryAcknowledged: false,
     error: null,
     needsRecoveryOffer: state.role === 'caller',
   });
@@ -1891,6 +1901,59 @@ export const resumeRecoveredCall = async (source: RecoverySource) => {
   });
 
   return true;
+};
+
+export const continueAcknowledgedRecovery = async (source: RecoverySource) => {
+  const state = getCallState();
+  if (
+    !state.call ||
+    state.phase !== 'reconnecting' ||
+    !state.recoveryAcknowledged ||
+    state.isResuming ||
+    !!state.localTerminalAction
+  ) {
+    return false;
+  }
+
+  if (!isSocketConnected()) {
+    if (source === 'manual') {
+      toast.error('Reconnect to the server before retrying the call.');
+    }
+    return false;
+  }
+
+  setCallState({
+    callPresentationMode: 'expanded',
+    minimizedCallPosition: null,
+    error: null,
+    needsRecoveryOffer: state.role === 'caller',
+  });
+
+  try {
+    const peerConnection = await prepareRecoveryTransport({
+      emitResume: false,
+      forceRecreate: true,
+      preserveRecoveryAcknowledged: true,
+    });
+
+    if (peerConnection) {
+      await applyPendingRecoverySignaling(peerConnection);
+    }
+
+    await maybeSendRecoveryOffer();
+
+    if (peerConnection) {
+      await applyPendingRecoverySignaling(peerConnection);
+    }
+
+    return true;
+  } catch (error) {
+    setRecoveryError(
+      extractApiError(error, 'Unable to continue recovering the call.'),
+      source === 'manual'
+    );
+    return false;
+  }
 };
 
 /**
@@ -1912,14 +1975,10 @@ export const attemptCallRecovery = async (source: RecoverySource) => {
     !state.call ||
     !isRecoverableCall(state.call) ||
     state.isResuming ||
+    state.recoveryAcknowledged ||
     state.phase === 'ending' ||
     !!state.localTerminalAction
   ) {
-    return false;
-  }
-
-  if (isRecoveryExpired(state.call)) {
-    handleRecoveryExpired();
     return false;
   }
 
@@ -1952,6 +2011,7 @@ export const handleIncomingSession = async (session: CallSession) => {
     ...createInitialDeviceState(),
     isMicMuted: mediaPreferences.micMuted,
     isCameraEnabled: mediaPreferences.cameraEnabled,
+    recoveryAcknowledged: false,
     error: null,
   });
   syncCurrentParticipantMediaState(session.call, { applyToLocalStream: false });
@@ -2130,6 +2190,28 @@ export const handleReconnectingCall = (callDoc: CallDoc) => {
   transitionToReconnecting({ callDoc });
 };
 
+export const handleRecoverySocketError = (payload: SocketErrorPayload) => {
+  const state = getCallState();
+  if (
+    !state.call ||
+    state.phase !== 'reconnecting' ||
+    !!state.localTerminalAction ||
+    !RECOVERABLE_RESUME_ERROR_CODES.has(payload.code) ||
+    (!state.isResuming && state.resumeSource === null)
+  ) {
+    return false;
+  }
+
+  setCallState({
+    isResuming: false,
+    resumeSource: null,
+    recoveryAcknowledged: false,
+    error: null,
+  });
+
+  return true;
+};
+
 export const handleResumedSession = async (session: CallSession) => {
   const state = getCallState();
   if (
@@ -2141,6 +2223,12 @@ export const handleResumedSession = async (session: CallSession) => {
   }
 
   hydrateRecoverableCall(session);
+  setCallState({
+    isResuming: false,
+    resumeSource: null,
+    recoveryAcknowledged: true,
+    error: null,
+  });
 
   try {
     const peerConnection = await prepareRecoveryTransport({
@@ -2155,6 +2243,7 @@ export const handleResumedSession = async (session: CallSession) => {
     setCallState({
       isResuming: false,
       resumeSource: null,
+      recoveryAcknowledged: true,
       error: null,
     });
 

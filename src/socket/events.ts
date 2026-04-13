@@ -5,6 +5,7 @@ export const EVENTS = {
   CONNECT: 'connect',
   DISCONNECT: 'disconnect',
   CONNECT_ERROR: 'connect_error',
+  ERROR: 'error',
 
   // Client -> Server
   SEND_MESSAGE: 'send_message',

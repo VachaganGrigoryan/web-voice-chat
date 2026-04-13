@@ -72,6 +72,11 @@ export interface ErrorResponse {
   request_id?: string | null;
 }
 
+export interface SocketErrorPayload {
+  code: string;
+  message: string;
+}
+
 export interface RegenerateCodeResponse {
   code: string;
   token_preview: string;

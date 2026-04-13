@@ -9,6 +9,7 @@ import type {
   CallOfferPayload,
   CallParticipantUpdatedEvent,
   CallSession,
+  SocketErrorPayload,
   CallTerminalPayload,
 } from '@/api/types';
 import { useAuthStore } from '@/store/authStore';
@@ -16,6 +17,7 @@ import { EVENTS } from '@/socket/events';
 import { useSocketStore } from '@/socket/socket';
 import {
   attemptCallRecovery,
+  continueAcknowledgedRecovery,
   expandCallView,
   handleAcceptedSession,
   handleAnswerSignal,
@@ -26,6 +28,7 @@ import {
   handleParticipantUpdated,
   handleReconnectingCall,
   handleRecoveryExpired,
+  handleRecoverySocketError,
   handleResumedSession,
   handleSocketDisconnected,
   handleTerminalCall,
@@ -50,8 +53,105 @@ import {
 } from './components/CallStatusScreens';
 import { useNotificationSoundStore, sendNotification } from '@/utils/notificationSound';
 
+const CALL_RELOAD_RECOVERY_STORAGE_KEY = 'voicechat.call-reload-recovery';
+const CALL_RELOAD_RECOVERY_TTL_MS = 30_000;
+const CALL_RELOAD_RECOVERY_RETRY_MS = 1_500;
+
+interface CallReloadRecoveryHint {
+  callId: string;
+  userId: string;
+  capturedAt: number;
+}
+
+const isRecoverableCallForReload = (call: CallDoc | null | undefined) =>
+  !!call &&
+  call.is_live &&
+  (call.status === 'accepted' ||
+    call.status === 'connecting' ||
+    call.status === 'active' ||
+    call.status === 'reconnecting');
+
+const clearCallReloadRecoveryHint = () => {
+  if (typeof window === 'undefined' || typeof window.sessionStorage === 'undefined') {
+    return;
+  }
+
+  window.sessionStorage.removeItem(CALL_RELOAD_RECOVERY_STORAGE_KEY);
+};
+
+const persistCallReloadRecoveryHint = (
+  call: CallDoc | null | undefined,
+  userId: string | null | undefined
+) => {
+  if (typeof window === 'undefined' || typeof window.sessionStorage === 'undefined') {
+    return;
+  }
+
+  if (!isRecoverableCallForReload(call) || !userId) {
+    clearCallReloadRecoveryHint();
+    return;
+  }
+
+  const payload: CallReloadRecoveryHint = {
+    callId: call.id,
+    userId,
+    capturedAt: Date.now(),
+  };
+  window.sessionStorage.setItem(
+    CALL_RELOAD_RECOVERY_STORAGE_KEY,
+    JSON.stringify(payload)
+  );
+};
+
+const readCallReloadRecoveryHint = (
+  userId: string | null | undefined
+): CallReloadRecoveryHint | null => {
+  if (
+    typeof window === 'undefined' ||
+    typeof window.sessionStorage === 'undefined' ||
+    !userId
+  ) {
+    return null;
+  }
+
+  const rawValue = window.sessionStorage.getItem(CALL_RELOAD_RECOVERY_STORAGE_KEY);
+  if (!rawValue) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(rawValue) as Partial<CallReloadRecoveryHint>;
+    if (
+      typeof parsed.callId !== 'string' ||
+      typeof parsed.userId !== 'string' ||
+      typeof parsed.capturedAt !== 'number'
+    ) {
+      clearCallReloadRecoveryHint();
+      return null;
+    }
+
+    if (
+      parsed.userId !== userId ||
+      Date.now() - parsed.capturedAt > CALL_RELOAD_RECOVERY_TTL_MS
+    ) {
+      clearCallReloadRecoveryHint();
+      return null;
+    }
+
+    return {
+      callId: parsed.callId,
+      userId: parsed.userId,
+      capturedAt: parsed.capturedAt,
+    };
+  } catch {
+    clearCallReloadRecoveryHint();
+    return null;
+  }
+};
+
 export function CallRoot() {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
+  const currentUserId = useAuthStore((state) => state.userId);
   const socket = useSocketStore((state) => state.socket);
   const isSocketConnected = useSocketStore((state) => state.isConnected);
   const phase = useCallStore((state) => state.phase);
@@ -60,6 +160,10 @@ export function CallRoot() {
   const peerUser = useCallStore((state) => state.peerUser);
   const localStream = useCallStore((state) => state.localStream);
   const remoteStream = useCallStore((state) => state.remoteStream);
+  const isResuming = useCallStore((state) => state.isResuming);
+  const recoveryAcknowledged = useCallStore(
+    (state) => state.recoveryAcknowledged
+  );
   const soundEnabled = useNotificationSoundStore((state) => state.soundEnabled);
   const [now, setNow] = useState(() => Date.now());
   const [isDocumentHidden, setIsDocumentHidden] = useState(
@@ -70,39 +174,253 @@ export function CallRoot() {
   const expiredCallIdRef = useRef<string | null>(null);
   const previousPhaseRef = useRef(phase);
   const notifiedIncomingCallIdRef = useRef<string | null>(null);
+  const reloadRecoveryTimeoutIdRef = useRef<number | null>(null);
+  const reloadRecoveryInFlightRef = useRef(false);
+  const currentUserIdRef = useRef(currentUserId);
+  const isAuthenticatedRef = useRef(isAuthenticated);
+  const isSocketConnectedRef = useRef(isSocketConnected);
+  const callEventHandlersReadyRef = useRef(callEventHandlersReady);
 
-  const refreshRecoverableCall = async (source: RecoverySource) => {
+  const clearReloadRecoveryTimeout = () => {
+    if (reloadRecoveryTimeoutIdRef.current !== null) {
+      window.clearTimeout(reloadRecoveryTimeoutIdRef.current);
+      reloadRecoveryTimeoutIdRef.current = null;
+    }
+  };
+
+  const clearReloadRecoveryState = () => {
+    clearReloadRecoveryTimeout();
+    reloadRecoveryInFlightRef.current = false;
+    clearCallReloadRecoveryHint();
+  };
+
+  const resumeCurrentRecovery = async (source: RecoverySource) => {
+    const startedRecovery = await attemptCallRecovery(source);
+    if (startedRecovery) {
+      return true;
+    }
+
+    return continueAcknowledgedRecovery(source);
+  };
+
+  const isRecoverySettled = (callId: string) => {
+    const state = useCallStore.getState();
+    return (
+      state.call?.id === callId &&
+      (state.phase === 'connecting' ||
+        state.phase === 'active' ||
+        state.recoveryAcknowledged)
+    );
+  };
+
+  const scheduleRecoveryRetry = (
+    source: RecoverySource = 'socket-connect',
+    delayMs = CALL_RELOAD_RECOVERY_RETRY_MS
+  ) => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const userId = currentUserIdRef.current;
+    const recoveryHint = userId ? readCallReloadRecoveryHint(userId) : null;
+    if (recoveryHint) {
+      const remainingMs =
+        CALL_RELOAD_RECOVERY_TTL_MS - (Date.now() - recoveryHint.capturedAt);
+      if (remainingMs <= 0) {
+        clearReloadRecoveryState();
+        return;
+      }
+
+      clearReloadRecoveryTimeout();
+      reloadRecoveryTimeoutIdRef.current = window.setTimeout(() => {
+        void runReloadRecoveryAttempt();
+      }, Math.min(delayMs, remainingMs));
+      return;
+    }
+
+    clearReloadRecoveryTimeout();
+    reloadRecoveryTimeoutIdRef.current = window.setTimeout(() => {
+      const state = useCallStore.getState();
+      if (state.phase === 'reconnecting' && !!state.call) {
+        void resumeCurrentRecovery(source);
+        return;
+      }
+
+      void refreshRecoverableCall(source, {
+        attemptResume:
+          useSocketStore.getState().isConnected &&
+          callEventHandlersReadyRef.current,
+        expireOnMissing: true,
+      });
+    }, delayMs);
+  };
+
+  const refreshRecoverableCall = async (
+    source: RecoverySource,
+    options: { attemptResume?: boolean; expireOnMissing?: boolean } = {}
+  ) => {
     try {
       const session = await callsApi.getActive();
 
       if (!session) {
-        if (useCallStore.getState().phase === 'reconnecting') {
+        clearReloadRecoveryState();
+        if (
+          options.expireOnMissing !== false &&
+          useCallStore.getState().phase === 'reconnecting'
+        ) {
           handleRecoveryExpired(
             source === 'manual'
               ? 'No recoverable call was found.'
               : 'The call could not be recovered.'
           );
         }
-        return;
+        return null;
       }
 
       hydrateRecoverableCall(session);
-      await attemptCallRecovery(source);
+      if (options.attemptResume !== false) {
+        await resumeCurrentRecovery(source);
+      }
+      return session;
     } catch (error) {
       console.error('Failed to fetch active call:', error);
       if (source === 'manual') {
         toast.error('Unable to check for a recoverable call right now.');
       }
+      return null;
     }
   };
+
+  const runReloadRecoveryAttempt = async () => {
+    if (!isAuthenticatedRef.current || reloadRecoveryInFlightRef.current) {
+      return;
+    }
+
+    const userId = currentUserIdRef.current;
+    const recoveryHint = userId ? readCallReloadRecoveryHint(userId) : null;
+    if (!recoveryHint) {
+      clearReloadRecoveryTimeout();
+      return;
+    }
+
+    const state = useCallStore.getState();
+    if (isRecoverySettled(recoveryHint.callId)) {
+      clearReloadRecoveryState();
+      return;
+    }
+
+    if (
+      state.phase !== 'idle' &&
+      state.phase !== 'reconnecting' &&
+      state.call?.id !== recoveryHint.callId
+    ) {
+      clearReloadRecoveryState();
+      return;
+    }
+
+    reloadRecoveryInFlightRef.current = true;
+
+    try {
+      const session = await refreshRecoverableCall('page-load', {
+        attemptResume:
+          isSocketConnectedRef.current && callEventHandlersReadyRef.current,
+        expireOnMissing: true,
+      });
+
+      if (!session) {
+        return;
+      }
+
+      const latestHint = readCallReloadRecoveryHint(userId);
+      if (!latestHint) {
+        return;
+      }
+
+      if (isRecoverySettled(latestHint.callId)) {
+        clearReloadRecoveryState();
+        return;
+      }
+
+      scheduleRecoveryRetry('page-load');
+    } finally {
+      reloadRecoveryInFlightRef.current = false;
+    }
+  };
+
+  useEffect(() => {
+    currentUserIdRef.current = currentUserId;
+  }, [currentUserId]);
+
+  useEffect(() => {
+    isAuthenticatedRef.current = isAuthenticated;
+  }, [isAuthenticated]);
+
+  useEffect(() => {
+    isSocketConnectedRef.current = isSocketConnected;
+  }, [isSocketConnected]);
+
+  useEffect(() => {
+    callEventHandlersReadyRef.current = callEventHandlersReady;
+  }, [callEventHandlersReady]);
 
   useEffect(() => {
     if (!isAuthenticated) {
       lastRecoveryCheckSocketIdRef.current = null;
       expiredCallIdRef.current = null;
+      clearReloadRecoveryState();
       resetCallController();
     }
   }, [isAuthenticated]);
+
+  useEffect(() => {
+    if (!isAuthenticated || !currentUserId) {
+      return;
+    }
+
+    const recoveryHint = readCallReloadRecoveryHint(currentUserId);
+    if (!recoveryHint) {
+      return;
+    }
+
+    if (call?.id !== recoveryHint.callId) {
+      return;
+    }
+
+    if (
+      recoveryAcknowledged ||
+      phase === 'connecting' ||
+      phase === 'active' ||
+      phase === 'ended' ||
+      phase === 'failed'
+    ) {
+      clearReloadRecoveryState();
+    }
+  }, [
+    call?.id,
+    currentUserId,
+    isAuthenticated,
+    phase,
+    recoveryAcknowledged,
+  ]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const persistRecoveryHint = () => {
+      const state = useCallStore.getState();
+      persistCallReloadRecoveryHint(state.call, useAuthStore.getState().userId);
+    };
+
+    window.addEventListener('pagehide', persistRecoveryHint);
+    window.addEventListener('beforeunload', persistRecoveryHint);
+
+    return () => {
+      window.removeEventListener('pagehide', persistRecoveryHint);
+      window.removeEventListener('beforeunload', persistRecoveryHint);
+    };
+  }, []);
 
   useEffect(() => {
     if (typeof document === 'undefined') {
@@ -226,6 +544,31 @@ export function CallRoot() {
   }, [isSocketConnected]);
 
   useEffect(() => {
+    if (!isAuthenticated || !currentUserId) {
+      clearReloadRecoveryTimeout();
+      reloadRecoveryInFlightRef.current = false;
+      return;
+    }
+
+    const recoveryHint = readCallReloadRecoveryHint(currentUserId);
+    if (!recoveryHint) {
+      clearReloadRecoveryTimeout();
+      reloadRecoveryInFlightRef.current = false;
+      return;
+    }
+
+    if (isSocketConnected && socket?.id && callEventHandlersReady) {
+      lastRecoveryCheckSocketIdRef.current = socket.id;
+    }
+
+    void runReloadRecoveryAttempt();
+
+    return () => {
+      clearReloadRecoveryTimeout();
+    };
+  }, [callEventHandlersReady, currentUserId, isAuthenticated, isSocketConnected, socket?.id]);
+
+  useEffect(() => {
     if (
       !isAuthenticated ||
       !isSocketConnected ||
@@ -245,9 +588,12 @@ export function CallRoot() {
     }
 
     lastRecoveryCheckSocketIdRef.current = socket.id;
-    void refreshRecoverableCall(
-      state.phase === 'idle' ? 'page-load' : 'socket-connect'
-    );
+    if (state.phase === 'reconnecting' && !!state.call) {
+      void resumeCurrentRecovery('socket-connect');
+      return;
+    }
+
+    void refreshRecoverableCall('page-load');
   }, [callEventHandlersReady, isAuthenticated, isSocketConnected, socket?.id]);
 
   useEffect(() => {
@@ -287,9 +633,23 @@ export function CallRoot() {
       return;
     }
 
+    if (isResuming || reloadRecoveryInFlightRef.current) {
+      return;
+    }
+
     expiredCallIdRef.current = call.id;
-    handleRecoveryExpired();
-  }, [phase, call?.id, reconnectRemainingMs]);
+    void refreshRecoverableCall('socket-connect', {
+      attemptResume: isSocketConnected && callEventHandlersReady,
+      expireOnMissing: true,
+    });
+  }, [
+    call?.id,
+    callEventHandlersReady,
+    isResuming,
+    isSocketConnected,
+    phase,
+    reconnectRemainingMs,
+  ]);
 
   useEffect(() => {
     if (phase === 'reconnecting' && callPresentationMode === 'minimized') {
@@ -359,13 +719,16 @@ export function CallRoot() {
       EVENTS.CALL_PARTICIPANT_UPDATED
     );
     const handleRejected = wrapAsync<CallTerminalPayload>(
-      handleTerminalCall,
+      async (payload) => {
+        handleTerminalCall(payload);
+        clearReloadRecoveryState();
+      },
       EVENTS.CALL_REJECTED
     );
     const handleRecoveryAvailable = wrapAsync<CallSession>(
       async (payload) => {
         hydrateRecoverableCall(payload);
-        await attemptCallRecovery('recovery-available');
+        await resumeCurrentRecovery('recovery-available');
       },
       EVENTS.CALL_RECOVERY_AVAILABLE
     );
@@ -394,9 +757,19 @@ export function CallRoot() {
       EVENTS.CALL_RESUMED
     );
     const handleEnded = wrapAsync<CallTerminalPayload>(
-      handleTerminalCall,
+      async (payload) => {
+        handleTerminalCall(payload);
+        clearReloadRecoveryState();
+      },
       EVENTS.CALL_ENDED
     );
+    const handleSocketError = (payload: SocketErrorPayload) => {
+      if (!handleRecoverySocketError(payload)) {
+        return;
+      }
+
+      scheduleRecoveryRetry('socket-connect');
+    };
     const handleDisconnect = () => {
       handleSocketDisconnected();
     };
@@ -413,6 +786,7 @@ export function CallRoot() {
     socket.on(EVENTS.CALL_RECONNECTING, handleReconnecting);
     socket.on(EVENTS.CALL_RESUMED, handleResumed);
     socket.on(EVENTS.CALL_ENDED, handleEnded);
+    socket.on(EVENTS.ERROR, handleSocketError);
     socket.on(EVENTS.DISCONNECT, handleDisconnect);
     setCallEventHandlersReady(true);
 
@@ -430,6 +804,7 @@ export function CallRoot() {
       socket.off(EVENTS.CALL_RECONNECTING, handleReconnecting);
       socket.off(EVENTS.CALL_RESUMED, handleResumed);
       socket.off(EVENTS.CALL_ENDED, handleEnded);
+      socket.off(EVENTS.ERROR, handleSocketError);
       socket.off(EVENTS.DISCONNECT, handleDisconnect);
     };
   }, [isAuthenticated, socket]);

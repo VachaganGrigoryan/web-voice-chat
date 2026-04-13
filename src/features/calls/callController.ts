@@ -16,6 +16,7 @@ export type {
 export {
   acceptIncomingCall,
   attemptCallRecovery,
+  continueAcknowledgedRecovery,
   endCurrentCall,
   expandCallView,
   handleAcceptedSession,
@@ -27,6 +28,7 @@ export {
   handleParticipantUpdated,
   handleReconnectingCall,
   handleRecoveryExpired,
+  handleRecoverySocketError,
   handleResumedSession,
   handleSocketDisconnected,
   handleTerminalCall,
