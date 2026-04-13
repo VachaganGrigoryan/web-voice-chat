@@ -19,9 +19,11 @@ import {
   PhoneOff,
   Settings2,
   Smartphone,
+  VideoOff,
   Volume2,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import type { CallDoc, CallParticipantState } from '@/api/types';
 import { Button } from '@/components/ui/Button';
 import { cn } from '@/lib/utils';
 import { LogoSymbol } from '@/shared/branding/LogoSymbol';
@@ -245,6 +247,122 @@ function getMobileAudioRouteMeta(route: CallAudioRoute | null) {
   }
 }
 
+function getPeerParticipantState(
+  call: CallDoc | null,
+  peerUserId: string | null | undefined
+) {
+  if (!call || !peerUserId) {
+    return null;
+  }
+
+  return call.participant_states?.[peerUserId] || null;
+}
+
+function getCallStatusLabel(
+  phase: 'connecting' | 'active' | 'ending',
+  participantState: CallParticipantState | null
+) {
+  if (phase === 'ending') {
+    return 'Ending call…';
+  }
+
+  if (participantState?.join_state === 'disconnected') {
+    return 'Reconnecting…';
+  }
+
+  if (phase !== 'active' || participantState?.join_state === 'waiting') {
+    return 'Connecting…';
+  }
+
+  return 'Live now';
+}
+
+function ParticipantStatusBadge({
+  label,
+  icon,
+  compact = false,
+}: {
+  label: string;
+  icon: ReactNode;
+  compact?: boolean;
+}) {
+  return (
+    <div
+      className={cn(
+        'inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-black/45 px-2.5 py-1 font-semibold uppercase tracking-[0.14em] text-white/72 backdrop-blur-md',
+        compact ? 'text-[9px]' : 'text-[10px]'
+      )}
+    >
+      {icon}
+      <span>{label}</span>
+    </div>
+  );
+}
+
+function ParticipantStatusBadges({
+  participantState,
+  isVideoCall,
+  compact = false,
+}: {
+  participantState: CallParticipantState | null;
+  isVideoCall: boolean;
+  compact?: boolean;
+}) {
+  if (!participantState) {
+    return null;
+  }
+
+  const badges: ReactNode[] = [];
+
+  if (participantState.join_state === 'disconnected') {
+    badges.push(
+      <ParticipantStatusBadge
+        key="disconnected"
+        label="Reconnecting"
+        compact={compact}
+        icon={<Loader2 className={cn('animate-spin', compact ? 'h-3 w-3' : 'h-3.5 w-3.5')} />}
+      />
+    );
+  } else if (participantState.join_state === 'waiting') {
+    badges.push(
+      <ParticipantStatusBadge
+        key="waiting"
+        label="Joining"
+        compact={compact}
+        icon={<Loader2 className={cn('animate-spin', compact ? 'h-3 w-3' : 'h-3.5 w-3.5')} />}
+      />
+    );
+  }
+
+  if (!participantState.audio_enabled) {
+    badges.push(
+      <ParticipantStatusBadge
+        key="audio-off"
+        label="Muted"
+        compact={compact}
+        icon={<MicOff className={compact ? 'h-3 w-3' : 'h-3.5 w-3.5'} />}
+      />
+    );
+  }
+
+  if (isVideoCall && !participantState.video_enabled) {
+    badges.push(
+      <ParticipantStatusBadge
+        key="video-off"
+        label="Camera off"
+        compact={compact}
+        icon={<VideoOff className={compact ? 'h-3 w-3' : 'h-3.5 w-3.5'} />}
+      />
+    );
+  }
+
+  if (!badges.length) {
+    return null;
+  }
+
+  return <div className="mt-2 flex flex-wrap gap-2">{badges}</div>;
+}
+
 function CallTopActionButton({
   onClick,
   children,
@@ -274,11 +392,13 @@ function CallHeaderCard({
   callLabel,
   peerLabel,
   statusLabel,
+  statusBadges,
   compact = false,
 }: {
   callLabel: string;
   peerLabel: string;
   statusLabel: string;
+  statusBadges?: ReactNode;
   compact?: boolean;
 }) {
   return (
@@ -305,6 +425,7 @@ function CallHeaderCard({
           {peerLabel}
         </div>
         <div className="mt-0.5 text-sm text-white/65">{statusLabel}</div>
+        {statusBadges}
       </div>
     </div>
   );
@@ -314,6 +435,7 @@ function CallTopBar({
   callLabel,
   peerLabel,
   statusLabel,
+  statusBadges,
   compact = false,
   showSettings = false,
   showMinimize = false,
@@ -323,6 +445,7 @@ function CallTopBar({
   callLabel: string;
   peerLabel: string;
   statusLabel: string;
+  statusBadges?: ReactNode;
   compact?: boolean;
   showSettings?: boolean;
   showMinimize?: boolean;
@@ -341,6 +464,7 @@ function CallTopBar({
           callLabel={callLabel}
           peerLabel={peerLabel}
           statusLabel={statusLabel}
+          statusBadges={statusBadges}
           compact={compact}
         />
       </div>
@@ -616,6 +740,7 @@ interface ActiveCallLayoutProps {
   peerLabel: string;
   avatarUrl?: string;
   statusLabel: string;
+  peerParticipantState: CallParticipantState | null;
   hasRemoteVideo: boolean;
   remoteStream: MediaStream | null;
   localStream: MediaStream | null;
@@ -647,6 +772,7 @@ function DesktopVideoCallLayout({
   peerLabel,
   avatarUrl,
   statusLabel,
+  peerParticipantState,
   hasRemoteVideo,
   remoteStream,
   localStream,
@@ -682,6 +808,12 @@ function DesktopVideoCallLayout({
         callLabel={callLabel}
         peerLabel={peerLabel}
         statusLabel={statusLabel}
+        statusBadges={
+          <ParticipantStatusBadges
+            participantState={peerParticipantState}
+            isVideoCall
+          />
+        }
         showSettings={canOpenSettings}
         showMinimize={canMinimize}
         onSettings={onOpenSettings}
@@ -719,6 +851,7 @@ function MobileVideoCallLayout({
   peerLabel,
   avatarUrl,
   statusLabel,
+  peerParticipantState,
   hasRemoteVideo,
   remoteStream,
   localStream,
@@ -762,6 +895,13 @@ function MobileVideoCallLayout({
         callLabel={callLabel}
         peerLabel={peerLabel}
         statusLabel={statusLabel}
+        statusBadges={
+          <ParticipantStatusBadges
+            participantState={peerParticipantState}
+            isVideoCall
+            compact
+          />
+        }
         compact
         showSettings={canOpenSettings}
         showMinimize={canMinimize}
@@ -803,6 +943,7 @@ function DesktopAudioCallLayout({
   peerLabel,
   avatarUrl,
   statusLabel,
+  peerParticipantState,
   isMicMuted,
   isEnding,
   canMinimize,
@@ -831,6 +972,12 @@ function DesktopAudioCallLayout({
         callLabel={callLabel}
         peerLabel={peerLabel}
         statusLabel={statusLabel}
+        statusBadges={
+          <ParticipantStatusBadges
+            participantState={peerParticipantState}
+            isVideoCall={false}
+          />
+        }
         showSettings={canOpenSettings}
         showMinimize={canMinimize}
         onSettings={onOpenSettings}
@@ -866,6 +1013,7 @@ function MobileAudioCallLayout({
   peerLabel,
   avatarUrl,
   statusLabel,
+  peerParticipantState,
   isMicMuted,
   isEnding,
   canMinimize,
@@ -899,6 +1047,13 @@ function MobileAudioCallLayout({
         callLabel={callLabel}
         peerLabel={peerLabel}
         statusLabel={statusLabel}
+        statusBadges={
+          <ParticipantStatusBadges
+            participantState={peerParticipantState}
+            isVideoCall={false}
+            compact
+          />
+        }
         compact
         showSettings={canOpenSettings}
         showMinimize={canMinimize}
@@ -939,6 +1094,7 @@ export function ActiveCallView({
   isVideoCall: boolean;
 }) {
   const phase = useCallStore((state) => state.phase);
+  const call = useCallStore((state) => state.call);
   const peerUser = useCallStore((state) => state.peerUser);
   const localStream = useCallStore((state) => state.localStream);
   const remoteStream = useCallStore((state) => state.remoteStream);
@@ -961,8 +1117,11 @@ export function ActiveCallView({
 
   const peerLabel = getPeerLabel(peerUser);
   const avatarUrl = getAvatarUrl(peerUser);
-  const statusLabel =
-    phase === 'active' ? 'Live now' : phase === 'ending' ? 'Ending call…' : 'Connecting…';
+  const peerParticipantState = getPeerParticipantState(call, peerUser?.id);
+  const statusLabel = getCallStatusLabel(
+    phase === 'ending' ? 'ending' : phase === 'active' ? 'active' : 'connecting',
+    peerParticipantState
+  );
   const callLabel = isVideoCall ? 'Video call' : 'Audio call';
   const hasRemoteVideo =
     isVideoCall &&
@@ -1051,6 +1210,7 @@ export function ActiveCallView({
     peerLabel,
     avatarUrl,
     statusLabel,
+    peerParticipantState,
     hasRemoteVideo,
     remoteStream,
     localStream,
@@ -1110,7 +1270,11 @@ export function MinimizedCallPip() {
     !!remoteStream?.getVideoTracks().some((track) => track.readyState === 'live');
   const peerLabel = getPeerLabel(peerUser);
   const avatarUrl = getAvatarUrl(peerUser);
-  const statusLabel = phase === 'active' ? 'Live now' : 'Connecting…';
+  const peerParticipantState = getPeerParticipantState(call, peerUser?.id);
+  const statusLabel = getCallStatusLabel(
+    phase === 'active' ? 'active' : 'connecting',
+    peerParticipantState
+  );
   const cardRef = useRef<HTMLDivElement | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const dragStateRef = useRef<{
@@ -1346,6 +1510,11 @@ export function MinimizedCallPip() {
             >
               <div className="text-sm font-semibold">{peerLabel}</div>
               <div className="mt-1 text-xs text-white/65">{statusLabel}</div>
+              <ParticipantStatusBadges
+                participantState={peerParticipantState}
+                isVideoCall={!!isVideoCall}
+                compact
+              />
               <div className="mt-3 flex items-center justify-between gap-2">
                 <Button
                   {...actionProps}
@@ -1422,6 +1591,11 @@ export function MinimizedCallPip() {
             />
             <div className="mt-4 text-sm font-semibold">{peerLabel}</div>
             <div className="mt-1 text-xs text-white/65">{statusLabel}</div>
+            <ParticipantStatusBadges
+              participantState={peerParticipantState}
+              isVideoCall={false}
+              compact
+            />
           </div>
 
           <div className="mt-4 flex items-center justify-between gap-2">

@@ -324,7 +324,24 @@ export interface CallDoc {
   expires_at: string | null;
   reconnect_deadline_at: string | null;
   disconnected_user_ids: string[];
+  participant_states: Record<string, CallParticipantState>;
   is_live: boolean;
+}
+
+export type CallParticipantRole = 'caller' | 'callee';
+export type CallParticipantJoinState = 'waiting' | 'joined' | 'disconnected';
+export type CallParticipantUpdateReason =
+  | 'joined'
+  | 'media_updated'
+  | 'disconnected'
+  | 'resumed';
+
+export interface CallParticipantState {
+  role: CallParticipantRole;
+  join_state: CallParticipantJoinState;
+  audio_enabled: boolean;
+  video_enabled: boolean;
+  updated_at: string;
 }
 
 export interface CreateCallRequest {
@@ -358,6 +375,16 @@ export interface CallAnswerPayload extends CallActionPayload {
 
 export interface CallIceCandidatePayload extends CallActionPayload {
   candidate: any;
+}
+
+export interface CallMediaStatePayload extends CallActionPayload {
+  audio_enabled?: boolean;
+  video_enabled?: boolean;
+}
+
+export interface CallParticipantUpdatedEvent extends CallSession {
+  actor_user_id: string;
+  reason: CallParticipantUpdateReason;
 }
 
 export interface CallHistoryItem {

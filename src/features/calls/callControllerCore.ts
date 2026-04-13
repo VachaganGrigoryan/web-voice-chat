@@ -6,7 +6,10 @@ import {
   CallAnswerPayload,
   CallDoc,
   CallIceCandidatePayload,
+  CallMediaStatePayload,
   CallOfferPayload,
+  CallParticipantState,
+  CallParticipantUpdatedEvent,
   CallPeerUserSummary,
   CallSession,
   CallTerminalPayload,
@@ -171,6 +174,20 @@ const getPeerUserIdForCall = (call: CallDoc) => {
   return call.caller_user_id === currentUserId ? call.callee_user_id : call.caller_user_id;
 };
 
+const getParticipantState = (
+  call: CallDoc | null | undefined,
+  userId: string | null | undefined
+): CallParticipantState | null => {
+  if (!call || !userId) {
+    return null;
+  }
+
+  return call.participant_states?.[userId] || null;
+};
+
+const getCurrentParticipantState = (call: CallDoc | null | undefined) =>
+  getParticipantState(call, getCurrentUserId());
+
 const isPeerDisconnected = (call: CallDoc | null | undefined) => {
   if (!call) {
     return false;
@@ -193,6 +210,10 @@ const buildPeerUserSummary = (
 
 const emitCallEvent = (event: string, payload: unknown) => {
   getSocket()?.emit(event, payload);
+};
+
+const emitCallJoin = (callId: string) => {
+  emitCallEvent(EVENTS.CALL_JOIN, { call_id: callId } satisfies CallActionPayload);
 };
 
 const updateCurrentCall = (patch: Partial<CallDoc>) => {
@@ -810,6 +831,65 @@ const applyMediaPreferencesToStream = (
   stream.getVideoTracks().forEach((track) => {
     track.enabled = callType === 'video' ? preferences.cameraEnabled : false;
   });
+};
+
+const getMediaPreferencesFromCall = (
+  call: CallDoc,
+  fallback = defaultMediaPreferencesForCall(call.type)
+): MediaPreferences => {
+  const participantState = getCurrentParticipantState(call);
+  if (!participantState) {
+    return fallback;
+  }
+
+  return {
+    micMuted: !participantState.audio_enabled,
+    cameraEnabled: call.type === 'video' ? participantState.video_enabled : false,
+  };
+};
+
+const syncCurrentParticipantMediaState = (
+  call: CallDoc,
+  options: { applyToLocalStream?: boolean } = {}
+) => {
+  const state = getCallState();
+  const nextPreferences = getMediaPreferencesFromCall(call, state.mediaPreferences);
+
+  if (options.applyToLocalStream !== false && state.localStream) {
+    applyMediaPreferencesToStream(state.localStream, call.type, nextPreferences);
+  }
+
+  syncMediaPreferenceState(call.type, nextPreferences);
+};
+
+const applySessionSnapshot = (
+  session: Pick<CallSession, 'call' | 'peer_user' | 'ice_servers'>,
+  options: { syncLocalMedia?: boolean } = {}
+) => {
+  const state = getCallState();
+  setCallState({
+    call: session.call,
+    peerUser: session.peer_user,
+    iceServers: session.ice_servers.length ? session.ice_servers : state.iceServers,
+  });
+
+  if (options.syncLocalMedia !== false) {
+    syncCurrentParticipantMediaState(session.call);
+  }
+};
+
+const emitCurrentParticipantMediaState = (
+  patch: Omit<CallMediaStatePayload, 'call_id'>
+) => {
+  const call = getCallState().call;
+  if (!call) {
+    return;
+  }
+
+  emitCallEvent(EVENTS.CALL_MEDIA_STATE, {
+    call_id: call.id,
+    ...patch,
+  } satisfies CallMediaStatePayload);
 };
 
 const hasLiveTracks = (tracks: MediaStreamTrack[]) =>
@@ -1529,12 +1609,11 @@ export const startCall = async ({ peerUserId, type, peerUser }: StartCallInput) 
       callee_user_id: peerUserId,
       type,
     });
+    applySessionSnapshot(createdSession);
     setCallState({
-      call: createdSession.call,
-      peerUser: createdSession.peer_user,
-      iceServers: createdSession.ice_servers,
       localTerminalAction: null,
     });
+    emitCallJoin(createdSession.call.id);
 
     const peerConnection = createPeerConnection(createdSession.call.id, createdSession.ice_servers);
     const localStream = await acquireLocalStream(createdSession.call.type, { reuseExisting: false });
@@ -1585,13 +1664,12 @@ export const acceptIncomingCall = async () => {
       socket_id: socketId,
     } satisfies AcceptCallRequest);
 
+    applySessionSnapshot(acceptedSession);
     setCallState({
-      call: acceptedSession.call,
-      peerUser: acceptedSession.peer_user,
-      iceServers: acceptedSession.ice_servers,
       phase: 'connecting',
       localTerminalAction: null,
     });
+    emitCallJoin(acceptedSession.call.id);
 
     const peerConnection = createPeerConnection(
       acceptedSession.call.id,
@@ -1675,6 +1753,9 @@ export const toggleMicrophone = () => {
   };
   applyMediaPreferencesToStream(localStream, getCallState().call?.type || 'audio', nextPreferences);
   syncMediaPreferenceState(getCallState().call?.type || 'audio', nextPreferences);
+  emitCurrentParticipantMediaState({
+    audio_enabled: !nextPreferences.micMuted,
+  });
 };
 
 export const switchMicrophone = async (deviceId: string) => {
@@ -1698,6 +1779,9 @@ export const toggleCamera = () => {
   };
   applyMediaPreferencesToStream(localStream, call.type, nextPreferences);
   syncMediaPreferenceState(call.type, nextPreferences);
+  emitCurrentParticipantMediaState({
+    video_enabled: nextPreferences.cameraEnabled,
+  });
 };
 
 export const switchCamera = async (deviceId: string) => {
@@ -1718,9 +1802,10 @@ export const hydrateRecoverableCall = (session: CallSession) => {
   }
 
   const role = getRoleForCall(session.call);
-  const mediaPreferences = sameCall
-    ? state.mediaPreferences
-    : defaultMediaPreferencesForCall(session.call.type);
+  const mediaPreferences = getMediaPreferencesFromCall(
+    session.call,
+    sameCall ? state.mediaPreferences : defaultMediaPreferencesForCall(session.call.type)
+  );
   const nextDeviceState = sameCall
     ? {
         availableMicrophones: state.availableMicrophones,
@@ -1759,6 +1844,7 @@ export const hydrateRecoverableCall = (session: CallSession) => {
     pendingTerminalActionId: null,
     error: sameCall ? state.error : null,
   });
+  syncCurrentParticipantMediaState(session.call);
 };
 
 /**
@@ -1868,6 +1954,7 @@ export const handleIncomingSession = async (session: CallSession) => {
     isCameraEnabled: mediaPreferences.cameraEnabled,
     error: null,
   });
+  syncCurrentParticipantMediaState(session.call, { applyToLocalStream: false });
 };
 
 export const handleAcceptedSession = async (session: CallSession) => {
@@ -1893,11 +1980,9 @@ export const handleAcceptedSession = async (session: CallSession) => {
           ? 'active'
           : 'connecting';
 
+  applySessionSnapshot(session);
   setCallState({
     phase: nextPhase,
-    call: session.call,
-    peerUser: session.peer_user,
-    iceServers: session.ice_servers,
     role,
     error: null,
   });
@@ -1905,6 +1990,20 @@ export const handleAcceptedSession = async (session: CallSession) => {
   if (role === 'caller') {
     await sendInitialOfferForCurrentCall();
   }
+};
+
+export const handleParticipantUpdated = (event: CallParticipantUpdatedEvent) => {
+  const state = getCallState();
+  if (
+    state.call?.id !== event.call.id ||
+    state.phase === 'idle' ||
+    state.phase === 'ending' ||
+    !!state.localTerminalAction
+  ) {
+    return;
+  }
+
+  applySessionSnapshot(event);
 };
 
 export const handleOfferSignal = async (payload: CallOfferPayload) => {

@@ -7,6 +7,7 @@ import type {
   CallDoc,
   CallIceCandidatePayload,
   CallOfferPayload,
+  CallParticipantUpdatedEvent,
   CallSession,
   CallTerminalPayload,
 } from '@/api/types';
@@ -22,6 +23,7 @@ import {
   handleIceCandidateSignal,
   handleIncomingSession,
   handleOfferSignal,
+  handleParticipantUpdated,
   handleReconnectingCall,
   handleRecoveryExpired,
   handleResumedSession,
@@ -352,6 +354,10 @@ export function CallRoot() {
       handleAcceptedSession,
       EVENTS.CALL_ACCEPTED
     );
+    const handleParticipantStateUpdated = wrapAsync<CallParticipantUpdatedEvent>(
+      handleParticipantUpdated,
+      EVENTS.CALL_PARTICIPANT_UPDATED
+    );
     const handleRejected = wrapAsync<CallTerminalPayload>(
       handleTerminalCall,
       EVENTS.CALL_REJECTED
@@ -397,6 +403,7 @@ export function CallRoot() {
 
     socket.on(EVENTS.CALL_INCOMING, handleIncoming);
     socket.on(EVENTS.CALL_ACCEPTED, handleAccepted);
+    socket.on(EVENTS.CALL_PARTICIPANT_UPDATED, handleParticipantStateUpdated);
     socket.on(EVENTS.CALL_REJECTED, handleRejected);
     socket.on(EVENTS.CALL_RECOVERY_AVAILABLE, handleRecoveryAvailable);
     socket.on(EVENTS.CALL_OFFER, handleOffer);
@@ -413,6 +420,7 @@ export function CallRoot() {
       setCallEventHandlersReady(false);
       socket.off(EVENTS.CALL_INCOMING, handleIncoming);
       socket.off(EVENTS.CALL_ACCEPTED, handleAccepted);
+      socket.off(EVENTS.CALL_PARTICIPANT_UPDATED, handleParticipantStateUpdated);
       socket.off(EVENTS.CALL_REJECTED, handleRejected);
       socket.off(EVENTS.CALL_RECOVERY_AVAILABLE, handleRecoveryAvailable);
       socket.off(EVENTS.CALL_OFFER, handleOffer);

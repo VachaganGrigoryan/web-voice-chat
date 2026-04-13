@@ -24,6 +24,7 @@ export {
   handleIceCandidateSignal,
   handleIncomingSession,
   handleOfferSignal,
+  handleParticipantUpdated,
   handleReconnectingCall,
   handleRecoveryExpired,
   handleResumedSession,
