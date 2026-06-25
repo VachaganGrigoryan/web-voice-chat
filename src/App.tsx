@@ -5,14 +5,14 @@ import { getApiErrorStatus, getRetryDelayMs, isRateLimitError } from '@/api/erro
 import AuthPage from '@/features/auth/AuthPage';
 import ChatLayout from '@/features/chat/ChatLayout';
 import InvitePage from '@/features/invite/InvitePage';
+import LandingPage from '@/features/landing/LandingPage';
 import SettingsPage from '@/features/settings/SettingsPage';
 import PingsPage from '@/features/pings/PingsPage';
 import ProfilePage from '@/features/profile/ProfilePage';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import PublicRoute from '@/components/PublicRoute';
 import { ThemeProvider } from '@/components/ThemeProvider';
-import { APP_ROUTES, getDefaultAuthedPath } from '@/app/routes';
-import { useAuthStore } from '@/store/authStore';
+import { APP_ROUTES } from '@/app/routes';
 import CallRoot from '@/features/calls/CallRoot';
 import AppNavigationSync from '@/navigation/AppNavigationSync';
 
@@ -36,17 +36,6 @@ const queryClient = new QueryClient({
   },
 });
 
-function RootRedirect() {
-  const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
-
-  return (
-    <Navigate
-      to={isAuthenticated ? getDefaultAuthedPath() : APP_ROUTES.auth}
-      replace
-    />
-  );
-}
-
 export default function App() {
   return (
     <ThemeProvider defaultMode="system" defaultTheme="default">
@@ -60,6 +49,8 @@ export default function App() {
               <Route path={APP_ROUTES.legacyLogin} element={<Navigate to={APP_ROUTES.auth} replace />} />
             </Route>
 
+            <Route path={APP_ROUTES.root} element={<LandingPage />} />
+
             <Route element={<ProtectedRoute />}>
               <Route path={APP_ROUTES.chat} element={<ChatLayout />} />
               <Route path="/chat/:peerUserId" element={<ChatLayout />} />
@@ -72,7 +63,6 @@ export default function App() {
             </Route>
 
             <Route path={APP_ROUTES.invite(':token')} element={<InvitePage />} />
-            <Route path={APP_ROUTES.root} element={<RootRedirect />} />
             <Route path="*" element={<Navigate to={APP_ROUTES.root} replace />} />
           </Routes>
         </HashRouter>

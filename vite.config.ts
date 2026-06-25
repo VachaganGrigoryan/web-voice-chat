@@ -15,11 +15,11 @@ export default defineConfig(({mode}) => {
         registerType: 'autoUpdate',
         manifest: false,
         includeAssets: [
-          'brand/favicon-32x32.png',
-          'brand/apple-touch-icon.png',
-          'brand/app-icon-192.png',
-          'brand/app-icon-512.png',
-          'brand/logo-symbol.svg',
+          'brand/vogi-symbol-64x64.png',
+          'brand/vogi-symbol-256x256.png',
+          'brand/vogi-symbol-512x512.png',
+          'brand/vogi-full-1024x256.png',
+          'brand/vogi-full-512x128.png',
         ],
         workbox: {
           cleanupOutdatedCaches: true,

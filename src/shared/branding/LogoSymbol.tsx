@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { cn } from '@/lib/utils';
-import { BRAND } from './brand';
+import { getBrandSymbolSrc } from './brand';
 
 export type LogoSize = 'sm' | 'md' | 'lg';
 
@@ -34,9 +34,10 @@ export const LogoSymbol = React.forwardRef<HTMLElement, LogoSymbolProps>(functio
   ref,
 ) {
   const rootClassName = cn('inline-flex shrink-0 items-center justify-center', className);
+  const symbolSrc = getBrandSymbolSrc(size);
   const content = (
     <img
-      src={BRAND.assets.symbol}
+      src={symbolSrc}
       alt=""
       aria-hidden="true"
       draggable={false}
