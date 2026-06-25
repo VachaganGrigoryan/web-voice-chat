@@ -1,16 +1,33 @@
-import { copyFile, mkdir, readFile } from 'node:fs/promises';
+import { copyFile, mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import sharp from 'sharp';
 
 const projectRoot = process.cwd();
 const publicPath = path.join(projectRoot, 'public');
 const brandPath = path.join(publicPath, 'brand');
-const symbolSvgPath = path.join(brandPath, 'logo-symbol.svg');
-const wordmarkLightSvgPath = path.join(brandPath, 'logo-wordmark-light.svg');
-const faviconSvgPath = path.join(brandPath, 'favicon.svg');
-const rootFaviconPath = path.join(publicPath, 'favicon.svg');
+const sourceBrandPath = path.join(projectRoot, '..', 'vogi_transparent_assets');
 const androidResPath = path.join(projectRoot, 'mobile', 'android', 'app', 'src', 'main', 'res');
 const blackBackground = '#0a0a0a';
+
+const brandSources = {
+  symbol: path.join(sourceBrandPath, 'vogi-symbol-1254x1254.png'),
+  splashWordmark: path.join(sourceBrandPath, 'vogi-full-2508x627.png'),
+};
+
+const sourceBrandFiles = [
+  'vogi-full-1024x256.png',
+  'vogi-full-128x32.png',
+  'vogi-full-2048x512.png',
+  'vogi-full-2508x627.png',
+  'vogi-full-256x64.png',
+  'vogi-full-512x128.png',
+  'vogi-symbol-1024x1024.png',
+  'vogi-symbol-1254x1254.png',
+  'vogi-symbol-128x128.png',
+  'vogi-symbol-256x256.png',
+  'vogi-symbol-512x512.png',
+  'vogi-symbol-64x64.png',
+];
 
 const foregroundSizes = {
   mdpi: 108,
@@ -27,13 +44,6 @@ const legacySizes = {
   xxhdpi: 144,
   xxxhdpi: 192,
 };
-
-const webIcons = [
-  { fileName: 'favicon-32x32.png', size: 32, background: null, padding: 0.08 },
-  { fileName: 'apple-touch-icon.png', size: 180, background: blackBackground, padding: 0.18 },
-  { fileName: 'app-icon-192.png', size: 192, background: blackBackground, padding: 0.18 },
-  { fileName: 'app-icon-512.png', size: 512, background: blackBackground, padding: 0.18 },
-];
 
 const splashSpecs = [
   { folder: 'drawable', width: 480, height: 320, widthRatio: 0.68 },
@@ -55,40 +65,30 @@ main().catch((error) => {
 });
 
 async function main() {
-  const [symbolSvg, wordmarkLightSvg] = await Promise.all([
-    readFile(symbolSvgPath, 'utf8'),
-    readFile(wordmarkLightSvgPath, 'utf8'),
-  ]);
-
-  await copyFile(faviconSvgPath, rootFaviconPath);
-
   await Promise.all([
-    ...webIcons.map((spec) =>
-      writeRaster(
-        path.join(brandPath, spec.fileName),
-        awaitRenderIcon(symbolSvg, spec.size, spec.background, spec.padding),
-      ),
+    ...sourceBrandFiles.map((fileName) =>
+      copyFile(path.join(sourceBrandPath, fileName), path.join(brandPath, fileName)),
     ),
     ...Object.entries(foregroundSizes).map(([density, size]) =>
       writeRaster(
         path.join(androidResPath, `mipmap-${density}`, 'ic_launcher_foreground.png'),
-        awaitRenderIcon(symbolSvg, size, null, 0.19),
+        renderSquarePng(brandSources.symbol, size),
       ),
     ),
     ...Object.entries(legacySizes).flatMap(([density, size]) => [
       writeRaster(
         path.join(androidResPath, `mipmap-${density}`, 'ic_launcher.png'),
-        awaitRenderIcon(symbolSvg, size, blackBackground, 0.2),
+        renderSquarePng(brandSources.symbol, size),
       ),
       writeRaster(
         path.join(androidResPath, `mipmap-${density}`, 'ic_launcher_round.png'),
-        awaitRenderIcon(symbolSvg, size, blackBackground, 0.2),
+        renderSquarePng(brandSources.symbol, size),
       ),
     ]),
     ...splashSpecs.map((spec) =>
       writeRaster(
         path.join(androidResPath, spec.folder, 'splash.png'),
-        awaitRenderSplash(wordmarkLightSvg, spec.width, spec.height, spec.widthRatio),
+        renderSplashPng(brandSources.splashWordmark, spec.width, spec.height, spec.widthRatio),
       ),
     ),
   ]);
@@ -99,65 +99,30 @@ async function writeRaster(filePath, rasterPromise) {
   await sharp(await rasterPromise).png().toFile(filePath);
 }
 
-async function awaitRenderIcon(symbolSvg, size, background, padding) {
-  const wrappedSvg = wrapSymbolSvg(symbolSvg, background, padding);
-  return sharp(Buffer.from(wrappedSvg)).resize(size, size).png().toBuffer();
+async function renderSquarePng(sourcePath, size) {
+  return sharp(sourcePath).resize(size, size).png().toBuffer();
 }
 
-async function awaitRenderSplash(wordmarkSvg, width, height, widthRatio) {
-  const wrappedSvg = wrapSvgOnCanvas(wordmarkSvg, {
-    canvasWidth: width,
-    canvasHeight: height,
-    background: blackBackground,
-    maxWidthRatio: widthRatio,
-  });
-  return sharp(Buffer.from(wrappedSvg)).png().toBuffer();
-}
+async function renderSplashPng(sourcePath, width, height, widthRatio) {
+  const wordmarkBuffer = await sharp(sourcePath)
+    .resize({
+      width: Math.round(width * widthRatio),
+      height: Math.round(height * 0.42),
+      fit: 'inside',
+      withoutEnlargement: true,
+    })
+    .png()
+    .toBuffer();
 
-function wrapSymbolSvg(symbolSvg, background, padding) {
-  return wrapSvgOnCanvas(symbolSvg, {
-    canvasWidth: 1024,
-    canvasHeight: 1024,
-    background,
-    maxWidthRatio: 1 - padding * 2,
-    maxHeightRatio: 1 - padding * 2,
-    cornerRadiusRatio: background ? 0.22 : 0,
-  });
-}
-
-function wrapSvgOnCanvas(svg, options) {
-  const {
-    canvasWidth,
-    canvasHeight,
-    background = null,
-    maxWidthRatio = 1,
-    maxHeightRatio = 1,
-    cornerRadiusRatio = 0,
-  } = options;
-  const viewBoxMatch = svg.match(/viewBox="([^"]+)"/i);
-  const viewBox = viewBoxMatch ? viewBoxMatch[1] : '0 0 512 512';
-  const innerContent = svg
-    .replace(/<svg[^>]*>/, '')
-    .replace(/<\/svg>\s*$/, '');
-  const contentWidth = canvasWidth * maxWidthRatio;
-  const contentHeight = canvasHeight * maxHeightRatio;
-  const offsetX = (canvasWidth - contentWidth) / 2;
-  const offsetY = (canvasHeight - contentHeight) / 2;
-  const cornerRadius = Math.min(canvasWidth, canvasHeight) * cornerRadiusRatio;
-
-  return `<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="${canvasWidth}" height="${canvasHeight}" viewBox="0 0 ${canvasWidth} ${canvasHeight}" fill="none">
-  ${background ? `<rect width="${canvasWidth}" height="${canvasHeight}" rx="${cornerRadius}" fill="${background}" />` : ''}
-  <svg
-    x="${offsetX}"
-    y="${offsetY}"
-    width="${contentWidth}"
-    height="${contentHeight}"
-    viewBox="${viewBox}"
-    fill="none"
-    preserveAspectRatio="xMidYMid meet"
-  >
-    ${innerContent}
-  </svg>
-</svg>`;
+  return sharp({
+    create: {
+      width,
+      height,
+      channels: 4,
+      background: blackBackground,
+    },
+  })
+    .composite([{ input: wordmarkBuffer, gravity: 'center' }])
+    .png()
+    .toBuffer();
 }

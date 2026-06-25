@@ -6,12 +6,16 @@ import {
   CallAnswerPayload,
   CallDoc,
   CallIceCandidatePayload,
+  CallMediaStatePayload,
   CallOfferPayload,
+  CallParticipantState,
+  CallParticipantUpdatedEvent,
   CallPeerUserSummary,
   CallSession,
   CallTerminalPayload,
   CallType,
   IceServer,
+  SocketErrorPayload,
 } from '@/api/types';
 import { extractApiError } from '@/api/errors';
 import { useAuthStore } from '@/store/authStore';
@@ -112,6 +116,12 @@ let remoteAudioElement: HTMLAudioElementWithSinkId | null = null;
 const getSocket = () => useSocketStore.getState().socket;
 const isSocketConnected = () => !!getSocket()?.connected;
 const getCurrentUserId = () => useAuthStore.getState().userId;
+const RECOVERABLE_RESUME_ERROR_CODES = new Set([
+  'CALL_EXPIRED',
+  'CALL_NOT_FOUND',
+  'CALL_NOT_RECOVERABLE',
+  'INVALID_CALL_STATE',
+]);
 
 
 const isRecoverableStatus = (status: CallDoc['status']) =>
@@ -131,14 +141,6 @@ const isTerminalStatus = (status: CallDoc['status']) =>
   status === 'cancelled' ||
   status === 'expired' ||
   status === 'ended';
-
-const isRecoveryExpired = (call: CallDoc | null | undefined) => {
-  if (!call?.reconnect_deadline_at) {
-    return false;
-  }
-
-  return new Date(call.reconnect_deadline_at).getTime() <= Date.now();
-};
 
 const defaultMediaPreferencesForCall = (callType: CallType): MediaPreferences => ({
   micMuted: false,
@@ -171,6 +173,20 @@ const getPeerUserIdForCall = (call: CallDoc) => {
   return call.caller_user_id === currentUserId ? call.callee_user_id : call.caller_user_id;
 };
 
+const getParticipantState = (
+  call: CallDoc | null | undefined,
+  userId: string | null | undefined
+): CallParticipantState | null => {
+  if (!call || !userId) {
+    return null;
+  }
+
+  return call.participant_states?.[userId] || null;
+};
+
+const getCurrentParticipantState = (call: CallDoc | null | undefined) =>
+  getParticipantState(call, getCurrentUserId());
+
 const isPeerDisconnected = (call: CallDoc | null | undefined) => {
   if (!call) {
     return false;
@@ -193,6 +209,10 @@ const buildPeerUserSummary = (
 
 const emitCallEvent = (event: string, payload: unknown) => {
   getSocket()?.emit(event, payload);
+};
+
+const emitCallJoin = (callId: string) => {
+  emitCallEvent(EVENTS.CALL_JOIN, { call_id: callId } satisfies CallActionPayload);
 };
 
 const updateCurrentCall = (patch: Partial<CallDoc>) => {
@@ -298,7 +318,9 @@ const resetCallState = () => {
   resetCallStore();
 };
 
-const prepareRecoveryReset = () => {
+const prepareRecoveryReset = (
+  options: { preserveRecoveryAcknowledged?: boolean } = {}
+) => {
   clearDisconnectTimeout();
   clearTerminalFallbackTimeout();
   clearTerminalDisplayTimeout();
@@ -319,6 +341,9 @@ const prepareRecoveryReset = () => {
     isStarting: false,
     isAccepting: false,
     isEnding: false,
+    recoveryAcknowledged: options.preserveRecoveryAcknowledged
+      ? state.recoveryAcknowledged
+      : false,
     localTerminalAction: null,
     pendingTerminalActionId: null,
     endScreenMessage: null,
@@ -347,6 +372,7 @@ const setRecoveryError = (message: string, toastError = false) => {
     error: message,
     isResuming: false,
     resumeSource: null,
+    recoveryAcknowledged: false,
     needsRecoveryOffer: nextRole === 'caller',
   });
 
@@ -434,6 +460,7 @@ const showTerminalCallScreen = (
     isEnding: false,
     isResuming: false,
     resumeSource: null,
+    recoveryAcknowledged: false,
     localTerminalAction: null,
     terminalFallbackTimeoutId: null,
     pendingTerminalActionId: null,
@@ -466,6 +493,7 @@ const beginEndingCall = (
     isAccepting: false,
     isResuming: false,
     resumeSource: null,
+    recoveryAcknowledged: false,
     localTerminalAction: action,
     terminalFallbackTimeoutId: null,
     pendingTerminalActionId: actionId,
@@ -812,6 +840,65 @@ const applyMediaPreferencesToStream = (
   });
 };
 
+const getMediaPreferencesFromCall = (
+  call: CallDoc,
+  fallback = defaultMediaPreferencesForCall(call.type)
+): MediaPreferences => {
+  const participantState = getCurrentParticipantState(call);
+  if (!participantState) {
+    return fallback;
+  }
+
+  return {
+    micMuted: !participantState.audio_enabled,
+    cameraEnabled: call.type === 'video' ? participantState.video_enabled : false,
+  };
+};
+
+const syncCurrentParticipantMediaState = (
+  call: CallDoc,
+  options: { applyToLocalStream?: boolean } = {}
+) => {
+  const state = getCallState();
+  const nextPreferences = getMediaPreferencesFromCall(call, state.mediaPreferences);
+
+  if (options.applyToLocalStream !== false && state.localStream) {
+    applyMediaPreferencesToStream(state.localStream, call.type, nextPreferences);
+  }
+
+  syncMediaPreferenceState(call.type, nextPreferences);
+};
+
+const applySessionSnapshot = (
+  session: Pick<CallSession, 'call' | 'peer_user' | 'ice_servers'>,
+  options: { syncLocalMedia?: boolean } = {}
+) => {
+  const state = getCallState();
+  setCallState({
+    call: session.call,
+    peerUser: session.peer_user,
+    iceServers: session.ice_servers.length ? session.ice_servers : state.iceServers,
+  });
+
+  if (options.syncLocalMedia !== false) {
+    syncCurrentParticipantMediaState(session.call);
+  }
+};
+
+const emitCurrentParticipantMediaState = (
+  patch: Omit<CallMediaStatePayload, 'call_id'>
+) => {
+  const call = getCallState().call;
+  if (!call) {
+    return;
+  }
+
+  emitCallEvent(EVENTS.CALL_MEDIA_STATE, {
+    call_id: call.id,
+    ...patch,
+  } satisfies CallMediaStatePayload);
+};
+
 const hasLiveTracks = (tracks: MediaStreamTrack[]) =>
   tracks.some((track) => track.readyState === 'live');
 
@@ -1061,6 +1148,7 @@ const markCallAsConnecting = () => {
     phase: 'connecting',
     isResuming: false,
     resumeSource: null,
+    recoveryAcknowledged: true,
     error: null,
   });
 
@@ -1087,6 +1175,7 @@ const markCallAsActive = () => {
     phase: 'active',
     isResuming: false,
     resumeSource: null,
+    recoveryAcknowledged: true,
     error: null,
     needsRecoveryOffer: false,
   });
@@ -1136,6 +1225,7 @@ const transitionToReconnecting = (options: {
     error: options.error ?? null,
     isResuming: false,
     resumeSource: null,
+    recoveryAcknowledged: false,
     needsRecoveryOffer: nextRole === 'caller',
   });
 };
@@ -1439,9 +1529,11 @@ const applyPendingRecoverySignaling = async (
 const prepareRecoveryTransport = async ({
   emitResume,
   forceRecreate,
+  preserveRecoveryAcknowledged = false,
 }: {
   emitResume: boolean;
   forceRecreate: boolean;
+  preserveRecoveryAcknowledged?: boolean;
 }) => {
   const state = getCallState();
   if (!state.call) {
@@ -1451,7 +1543,7 @@ const prepareRecoveryTransport = async ({
   let peerConnection = state.peerConnection;
 
   if (!peerConnection || forceRecreate) {
-    prepareRecoveryReset();
+    prepareRecoveryReset({ preserveRecoveryAcknowledged });
     const latestState = getCallState();
     if (!latestState.call) {
       return null;
@@ -1529,12 +1621,11 @@ export const startCall = async ({ peerUserId, type, peerUser }: StartCallInput) 
       callee_user_id: peerUserId,
       type,
     });
+    applySessionSnapshot(createdSession);
     setCallState({
-      call: createdSession.call,
-      peerUser: createdSession.peer_user,
-      iceServers: createdSession.ice_servers,
       localTerminalAction: null,
     });
+    emitCallJoin(createdSession.call.id);
 
     const peerConnection = createPeerConnection(createdSession.call.id, createdSession.ice_servers);
     const localStream = await acquireLocalStream(createdSession.call.type, { reuseExisting: false });
@@ -1585,13 +1676,12 @@ export const acceptIncomingCall = async () => {
       socket_id: socketId,
     } satisfies AcceptCallRequest);
 
+    applySessionSnapshot(acceptedSession);
     setCallState({
-      call: acceptedSession.call,
-      peerUser: acceptedSession.peer_user,
-      iceServers: acceptedSession.ice_servers,
       phase: 'connecting',
       localTerminalAction: null,
     });
+    emitCallJoin(acceptedSession.call.id);
 
     const peerConnection = createPeerConnection(
       acceptedSession.call.id,
@@ -1675,6 +1765,9 @@ export const toggleMicrophone = () => {
   };
   applyMediaPreferencesToStream(localStream, getCallState().call?.type || 'audio', nextPreferences);
   syncMediaPreferenceState(getCallState().call?.type || 'audio', nextPreferences);
+  emitCurrentParticipantMediaState({
+    audio_enabled: !nextPreferences.micMuted,
+  });
 };
 
 export const switchMicrophone = async (deviceId: string) => {
@@ -1698,6 +1791,9 @@ export const toggleCamera = () => {
   };
   applyMediaPreferencesToStream(localStream, call.type, nextPreferences);
   syncMediaPreferenceState(call.type, nextPreferences);
+  emitCurrentParticipantMediaState({
+    video_enabled: nextPreferences.cameraEnabled,
+  });
 };
 
 export const switchCamera = async (deviceId: string) => {
@@ -1718,9 +1814,10 @@ export const hydrateRecoverableCall = (session: CallSession) => {
   }
 
   const role = getRoleForCall(session.call);
-  const mediaPreferences = sameCall
-    ? state.mediaPreferences
-    : defaultMediaPreferencesForCall(session.call.type);
+  const mediaPreferences = getMediaPreferencesFromCall(
+    session.call,
+    sameCall ? state.mediaPreferences : defaultMediaPreferencesForCall(session.call.type)
+  );
   const nextDeviceState = sameCall
     ? {
         availableMicrophones: state.availableMicrophones,
@@ -1754,11 +1851,13 @@ export const hydrateRecoverableCall = (session: CallSession) => {
     isCameraEnabled: session.call.type === 'video' ? mediaPreferences.cameraEnabled : false,
     isResuming: sameCall ? state.isResuming : false,
     resumeSource: sameCall ? state.resumeSource : null,
+    recoveryAcknowledged: sameCall ? state.recoveryAcknowledged : false,
     needsRecoveryOffer: role === 'caller' && isRecoverableCall(session.call),
     localTerminalAction: null,
     pendingTerminalActionId: null,
     error: sameCall ? state.error : null,
   });
+  syncCurrentParticipantMediaState(session.call);
 };
 
 /**
@@ -1785,16 +1884,13 @@ export const resumeRecoveredCall = async (source: RecoverySource) => {
     return false;
   }
 
-  if (isRecoveryExpired(state.call)) {
-    return false;
-  }
-
   setCallState({
     phase: 'reconnecting',
     callPresentationMode: 'expanded',
     minimizedCallPosition: null,
     isResuming: true,
     resumeSource: source,
+    recoveryAcknowledged: false,
     error: null,
     needsRecoveryOffer: state.role === 'caller',
   });
@@ -1805,6 +1901,59 @@ export const resumeRecoveredCall = async (source: RecoverySource) => {
   });
 
   return true;
+};
+
+export const continueAcknowledgedRecovery = async (source: RecoverySource) => {
+  const state = getCallState();
+  if (
+    !state.call ||
+    state.phase !== 'reconnecting' ||
+    !state.recoveryAcknowledged ||
+    state.isResuming ||
+    !!state.localTerminalAction
+  ) {
+    return false;
+  }
+
+  if (!isSocketConnected()) {
+    if (source === 'manual') {
+      toast.error('Reconnect to the server before retrying the call.');
+    }
+    return false;
+  }
+
+  setCallState({
+    callPresentationMode: 'expanded',
+    minimizedCallPosition: null,
+    error: null,
+    needsRecoveryOffer: state.role === 'caller',
+  });
+
+  try {
+    const peerConnection = await prepareRecoveryTransport({
+      emitResume: false,
+      forceRecreate: true,
+      preserveRecoveryAcknowledged: true,
+    });
+
+    if (peerConnection) {
+      await applyPendingRecoverySignaling(peerConnection);
+    }
+
+    await maybeSendRecoveryOffer();
+
+    if (peerConnection) {
+      await applyPendingRecoverySignaling(peerConnection);
+    }
+
+    return true;
+  } catch (error) {
+    setRecoveryError(
+      extractApiError(error, 'Unable to continue recovering the call.'),
+      source === 'manual'
+    );
+    return false;
+  }
 };
 
 /**
@@ -1826,14 +1975,10 @@ export const attemptCallRecovery = async (source: RecoverySource) => {
     !state.call ||
     !isRecoverableCall(state.call) ||
     state.isResuming ||
+    state.recoveryAcknowledged ||
     state.phase === 'ending' ||
     !!state.localTerminalAction
   ) {
-    return false;
-  }
-
-  if (isRecoveryExpired(state.call)) {
-    handleRecoveryExpired();
     return false;
   }
 
@@ -1866,8 +2011,10 @@ export const handleIncomingSession = async (session: CallSession) => {
     ...createInitialDeviceState(),
     isMicMuted: mediaPreferences.micMuted,
     isCameraEnabled: mediaPreferences.cameraEnabled,
+    recoveryAcknowledged: false,
     error: null,
   });
+  syncCurrentParticipantMediaState(session.call, { applyToLocalStream: false });
 };
 
 export const handleAcceptedSession = async (session: CallSession) => {
@@ -1893,11 +2040,9 @@ export const handleAcceptedSession = async (session: CallSession) => {
           ? 'active'
           : 'connecting';
 
+  applySessionSnapshot(session);
   setCallState({
     phase: nextPhase,
-    call: session.call,
-    peerUser: session.peer_user,
-    iceServers: session.ice_servers,
     role,
     error: null,
   });
@@ -1905,6 +2050,20 @@ export const handleAcceptedSession = async (session: CallSession) => {
   if (role === 'caller') {
     await sendInitialOfferForCurrentCall();
   }
+};
+
+export const handleParticipantUpdated = (event: CallParticipantUpdatedEvent) => {
+  const state = getCallState();
+  if (
+    state.call?.id !== event.call.id ||
+    state.phase === 'idle' ||
+    state.phase === 'ending' ||
+    !!state.localTerminalAction
+  ) {
+    return;
+  }
+
+  applySessionSnapshot(event);
 };
 
 export const handleOfferSignal = async (payload: CallOfferPayload) => {
@@ -2031,6 +2190,28 @@ export const handleReconnectingCall = (callDoc: CallDoc) => {
   transitionToReconnecting({ callDoc });
 };
 
+export const handleRecoverySocketError = (payload: SocketErrorPayload) => {
+  const state = getCallState();
+  if (
+    !state.call ||
+    state.phase !== 'reconnecting' ||
+    !!state.localTerminalAction ||
+    !RECOVERABLE_RESUME_ERROR_CODES.has(payload.code) ||
+    (!state.isResuming && state.resumeSource === null)
+  ) {
+    return false;
+  }
+
+  setCallState({
+    isResuming: false,
+    resumeSource: null,
+    recoveryAcknowledged: false,
+    error: null,
+  });
+
+  return true;
+};
+
 export const handleResumedSession = async (session: CallSession) => {
   const state = getCallState();
   if (
@@ -2042,6 +2223,12 @@ export const handleResumedSession = async (session: CallSession) => {
   }
 
   hydrateRecoverableCall(session);
+  setCallState({
+    isResuming: false,
+    resumeSource: null,
+    recoveryAcknowledged: true,
+    error: null,
+  });
 
   try {
     const peerConnection = await prepareRecoveryTransport({
@@ -2056,6 +2243,7 @@ export const handleResumedSession = async (session: CallSession) => {
     setCallState({
       isResuming: false,
       resumeSource: null,
+      recoveryAcknowledged: true,
       error: null,
     });
 

@@ -50,7 +50,7 @@ export default function InvitePage() {
             This invite link is no longer valid. It may have expired or reached its usage limit.
           </p>
           <Button onClick={() => navigate(APP_ROUTES.root)} className="mt-4 w-full">
-            Go to App
+            Go Home
           </Button>
         </div>
       </div>

@@ -9,12 +9,12 @@
   "theme_color": "#0a0a0a",
   "icons": [
     {
-      "src": "/brand/app-icon-192.png",
-      "sizes": "192x192",
+      "src": "/brand/vogi-symbol-256x256.png",
+      "sizes": "256x256",
       "type": "image/png"
     },
     {
-      "src": "/brand/app-icon-512.png",
+      "src": "/brand/vogi-symbol-512x512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"

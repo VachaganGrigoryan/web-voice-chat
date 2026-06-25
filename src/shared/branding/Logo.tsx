@@ -37,7 +37,7 @@ export const Logo = React.forwardRef<HTMLElement, LogoProps>(function Logo(
 ) {
   const { resolvedMode } = useTheme();
   const surfaceTheme = theme ?? resolvedMode;
-  const wordmarkSrc = getBrandWordmarkSrc(surfaceTheme);
+  const wordmarkSrc = getBrandWordmarkSrc(surfaceTheme, size);
 
   const wordmark = (
     <img
