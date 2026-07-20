@@ -24,6 +24,7 @@ interface ChatTimelineItemsProps {
   currentUserId?: string | null;
   highlightedMessageIds?: Set<string>;
   onOpenMenu: (message: ChatMessage, anchor: MessageMenuAnchor) => void;
+  onSwipeReply?: (message: ChatMessage) => void;
   onToggleReaction: (messageId: string, emoji: string) => Promise<void>;
   isTogglingReaction?: boolean;
   onMediaClick?: (payload: MediaClickPayload) => void;
@@ -41,6 +42,7 @@ export function ChatTimelineItems({
   currentUserId,
   highlightedMessageIds = new Set(),
   onOpenMenu,
+  onSwipeReply,
   onToggleReaction,
   isTogglingReaction = false,
   onMediaClick,
@@ -131,6 +133,7 @@ export function ChatTimelineItems({
                 isOwn={item.isOwn}
                 onOpenMenu={(anchor) => onOpenMenu(item.latestMessage, anchor)}
                 openMenuOnClick={isMessageMenuOpen}
+                onSwipeReply={onSwipeReply ? () => onSwipeReply(item.latestMessage) : undefined}
               >
                 <MediaCollageGroupRenderer
                   messages={item.messages}
@@ -147,6 +150,7 @@ export function ChatTimelineItems({
                 isOwn={item.message.isOwn}
                 onOpenMenu={(anchor) => onOpenMenu(item.message, anchor)}
                 openMenuOnClick={isMessageMenuOpen}
+                onSwipeReply={onSwipeReply ? () => onSwipeReply(item.message) : undefined}
               >
                 <MessageRenderer
                   message={item.message}

@@ -9,6 +9,7 @@ import { extractApiError } from '@/api/errors';
 import { useAuthStore } from '@/store/authStore';
 import { authApi } from '@/api/endpoints';
 import { toast } from 'sonner';
+import { triggerHaptic } from '@/utils/haptics';
 import ChatComposer from './composer';
 import { useChatAudioPlayerStore } from './media/players/audioPlayerStore';
 import { MediaViewer } from './media/MediaViewer';
@@ -197,6 +198,7 @@ export default function ChatLayout() {
     closeMessageMenu,
     openMessageMenu,
     handleSelectReplyMode,
+    handleSwipeReply,
     openThreadForMessage,
     handleSendText,
     handleSendThreadText,
@@ -462,6 +464,7 @@ export default function ChatLayout() {
         }
       }
 
+      triggerHaptic('destructive');
       setPendingDestructiveAction(null);
     } catch (error) {
       const fallback =
@@ -670,6 +673,7 @@ export default function ChatLayout() {
                 isFetchingNextPage={isFetchingNextPage}
                 onVisibleMessageIdsChange={handleVisibleMainMessageIds}
                 onOpenMenu={(message, anchor) => openMessageMenu(message, anchor, 'main')}
+                onSwipeReply={(message) => handleSwipeReply(message, 'main')}
                 onToggleReaction={handleToggleReaction}
                 isTogglingReaction={isTogglingReaction}
                 onMediaClick={handleMainMediaClick}
@@ -725,6 +729,7 @@ export default function ChatLayout() {
                     currentUserId={userId}
                     onClose={closeThreadRoute}
                     onOpenMenu={(message, anchor) => openMessageMenu(message, anchor, 'thread')}
+                    onSwipeReply={(message) => handleSwipeReply(message, 'thread')}
                     onToggleReaction={handleToggleReaction}
                     isTogglingReaction={isTogglingReaction}
                     onVisibleUnreadMessages={handleVisibleThreadMessageIds}

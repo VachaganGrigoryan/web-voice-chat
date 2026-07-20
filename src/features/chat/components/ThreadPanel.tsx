@@ -23,6 +23,7 @@ interface ThreadPanelProps {
   currentUserId?: string | null;
   onClose: () => void;
   onOpenMenu: (message: ChatMessage, anchor: MessageMenuAnchor) => void;
+  onSwipeReply?: (message: ChatMessage) => void;
   onToggleReaction: (messageId: string, emoji: string) => Promise<void>;
   isTogglingReaction?: boolean;
   onVisibleUnreadMessages?: (messageIds: string[]) => void;
@@ -48,6 +49,7 @@ export function ThreadPanel({
   currentUserId,
   onClose,
   onOpenMenu,
+  onSwipeReply,
   onToggleReaction,
   isTogglingReaction = false,
   onVisibleUnreadMessages,
@@ -119,6 +121,7 @@ export function ThreadPanel({
               isOwn={rootMessage.isOwn}
               onOpenMenu={(anchor) => onOpenMenu(rootMessage, anchor)}
               openMenuOnClick={isMessageMenuOpen}
+              onSwipeReply={onSwipeReply ? () => onSwipeReply(rootMessage) : undefined}
             >
               <MessageRenderer
                 message={rootMessage}
@@ -147,6 +150,7 @@ export function ThreadPanel({
                 chronology="oldest-first"
                 currentUserId={currentUserId}
                 onOpenMenu={onOpenMenu}
+                onSwipeReply={onSwipeReply}
                 onToggleReaction={onToggleReaction}
                 isTogglingReaction={isTogglingReaction}
                 onMediaClick={onMediaClick}

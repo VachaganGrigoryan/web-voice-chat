@@ -1,5 +1,16 @@
 import { type MouseEvent as ReactMouseEvent } from 'react';
-import { Bell, Loader2, LogOut, MoreVertical, Phone, Video } from 'lucide-react';
+import {
+  Bell,
+  Image as ImageIcon,
+  Loader2,
+  LogOut,
+  Mic,
+  MoreVertical,
+  Music,
+  Paperclip,
+  Phone,
+  Video,
+} from 'lucide-react';
 import { CallHistoryItem, Conversation, User } from '@/api/types';
 import { Button } from '@/components/ui/Button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/Avatar';
@@ -73,6 +84,15 @@ function getCallHistoryPeerLabel(peer: CallHistoryItem['peer_user']) {
   return peer.display_name || peer.username || peer.id;
 }
 
+function PreviewIcon({ icon: Icon, label }: { icon: typeof Music; label: string }) {
+  return (
+    <span className="inline-flex items-center gap-1 align-middle">
+      <Icon className="h-3 w-3 shrink-0" />
+      {label}
+    </span>
+  );
+}
+
 function getConversationPreview(conversation: Conversation, currentUserId: string | null) {
   const lastMessage = conversation.last_message;
   if (!lastMessage) {
@@ -90,13 +110,17 @@ function getConversationPreview(conversation: Conversation, currentUserId: strin
 
   switch (getPresentedMessageKind(lastMessage.type, lastMessage.media?.kind)) {
     case 'audio':
-      return lastMessage.media?.kind === 'audio' ? '🎵 Audio' : '🎤 Voice message';
+      return lastMessage.media?.kind === 'audio' ? (
+        <PreviewIcon icon={Music} label="Audio" />
+      ) : (
+        <PreviewIcon icon={Mic} label="Voice message" />
+      );
     case 'file':
-      return '📎 File';
+      return <PreviewIcon icon={Paperclip} label="File" />;
     case 'image':
-      return lastMessage.text?.trim() || '📷 Photo';
+      return lastMessage.text?.trim() || <PreviewIcon icon={ImageIcon} label="Photo" />;
     case 'video':
-      return lastMessage.text?.trim() || '🎬 Video';
+      return lastMessage.text?.trim() || <PreviewIcon icon={Video} label="Video" />;
     default:
       return shortenMessageText(lastMessage.text);
   }
@@ -155,7 +179,7 @@ function CallHistoryListItem({
     >
       <button
         type="button"
-        className="flex w-full min-w-0 items-center gap-3 rounded-[18px] px-2.5 py-2 pr-12 text-left transition-colors"
+        className="flex w-full min-w-0 items-center gap-3 rounded-[18px] px-2.5 py-2 pr-14 text-left transition-colors"
         onClick={onSelect}
       >
         <div className="relative shrink-0">
@@ -184,7 +208,7 @@ function CallHistoryListItem({
         variant="ghost"
         size="icon"
         className={cn(
-          'absolute right-2 top-1/2 h-8 w-8 -translate-y-1/2 rounded-full text-muted-foreground transition-opacity hover:bg-muted hover:text-foreground',
+          'absolute right-1.5 top-1/2 h-11 w-11 -translate-y-1/2 rounded-full text-muted-foreground transition-opacity hover:bg-muted hover:text-foreground',
           'opacity-100 md:opacity-0 md:group-hover:opacity-100',
           isMenuOpen && 'bg-muted text-foreground opacity-100'
         )}
@@ -238,7 +262,7 @@ function ConversationListItem({
     >
       <button
         type="button"
-        className="flex w-full min-w-0 max-w-full items-center gap-3 rounded-[18px] px-2.5 py-2 pr-12 text-left transition-colors"
+        className="flex w-full min-w-0 max-w-full items-center gap-3 rounded-[18px] px-2.5 py-2 pr-14 text-left transition-colors"
         onClick={onSelect}
       >
         <div className="relative shrink-0">
@@ -298,7 +322,7 @@ function ConversationListItem({
         variant="ghost"
         size="icon"
         className={cn(
-          'absolute right-2 top-1/2 h-8 w-8 -translate-y-1/2 rounded-full text-muted-foreground transition-opacity hover:bg-muted hover:text-foreground',
+          'absolute right-1.5 top-1/2 h-11 w-11 -translate-y-1/2 rounded-full text-muted-foreground transition-opacity hover:bg-muted hover:text-foreground',
           'opacity-100 md:opacity-0 md:group-hover:opacity-100',
           isMenuOpen && 'bg-muted text-foreground opacity-100'
         )}

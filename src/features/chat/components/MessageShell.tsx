@@ -1,7 +1,8 @@
 import React from 'react';
-import { Check, CheckCheck } from 'lucide-react';
+import { Check, CheckCheck, Reply } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { formatChatMessageTime } from '@/utils/dateUtils';
+import { triggerHaptic } from '@/utils/haptics';
 import { ChatMessage } from '../types/message';
 
 export interface MessageMenuAnchor {
@@ -11,11 +12,15 @@ export interface MessageMenuAnchor {
   source: 'mouse' | 'touch';
 }
 
+const SWIPE_REPLY_THRESHOLD = 56;
+const SWIPE_REPLY_MAX = 72;
+
 interface MessageItemProps {
   isOwn: boolean;
   children: React.ReactNode;
   onOpenMenu?: (anchor: MessageMenuAnchor) => void;
   openMenuOnClick?: boolean;
+  onSwipeReply?: () => void;
 }
 
 export const MessageItem: React.FC<MessageItemProps> = ({
@@ -23,8 +28,14 @@ export const MessageItem: React.FC<MessageItemProps> = ({
   children,
   onOpenMenu,
   openMenuOnClick = false,
+  onSwipeReply,
 }) => {
   const touchTimerRef = React.useRef<number | null>(null);
+  const swipeContentRef = React.useRef<HTMLDivElement | null>(null);
+  const swipeIconRef = React.useRef<HTMLSpanElement | null>(null);
+  const swipeStartRef = React.useRef<{ x: number; y: number } | null>(null);
+  const swipeAxisRef = React.useRef<'horizontal' | 'vertical' | null>(null);
+  const swipeDeltaRef = React.useRef(0);
 
   const getAnchorFromRect = (rect: DOMRect, x?: number, y?: number): MessageMenuAnchor => ({
     x: x ?? rect.left + rect.width / 2,
@@ -40,25 +51,86 @@ export const MessageItem: React.FC<MessageItemProps> = ({
     }
   };
 
+  const resetSwipe = () => {
+    swipeStartRef.current = null;
+    swipeAxisRef.current = null;
+    swipeDeltaRef.current = 0;
+    if (swipeContentRef.current) {
+      swipeContentRef.current.style.transition = 'transform 200ms ease-out';
+      swipeContentRef.current.style.transform = '';
+    }
+    if (swipeIconRef.current) {
+      swipeIconRef.current.style.opacity = '0';
+    }
+  };
+
   const handleTouchStart = (event: React.TouchEvent<HTMLDivElement>) => {
-    if (!onOpenMenu) return;
+    if (onOpenMenu) {
+      clearTouchTimer();
+      const rect = event.currentTarget.getBoundingClientRect();
+      touchTimerRef.current = window.setTimeout(() => {
+        onOpenMenu({
+          x: rect.left + rect.width / 2,
+          y: rect.top + rect.height / 2,
+          rect,
+          source: 'touch',
+        });
+        touchTimerRef.current = null;
+      }, 450);
+    }
+
+    if (onSwipeReply) {
+      const touch = event.touches[0];
+      swipeStartRef.current = { x: touch.clientX, y: touch.clientY };
+      swipeAxisRef.current = null;
+    }
+  };
+
+  const handleTouchMove = (event: React.TouchEvent<HTMLDivElement>) => {
     clearTouchTimer();
-    const rect = event.currentTarget.getBoundingClientRect();
-    touchTimerRef.current = window.setTimeout(() => {
-      onOpenMenu({
-        x: rect.left + rect.width / 2,
-        y: rect.top + rect.height / 2,
-        rect,
-        source: 'touch',
-      });
-      touchTimerRef.current = null;
-    }, 450);
+
+    if (!onSwipeReply || !swipeStartRef.current) return;
+
+    const touch = event.touches[0];
+    const deltaX = touch.clientX - swipeStartRef.current.x;
+    const deltaY = touch.clientY - swipeStartRef.current.y;
+
+    if (!swipeAxisRef.current) {
+      if (Math.abs(deltaX) < 8 && Math.abs(deltaY) < 8) return;
+      swipeAxisRef.current = Math.abs(deltaX) > Math.abs(deltaY) ? 'horizontal' : 'vertical';
+    }
+
+    if (swipeAxisRef.current !== 'horizontal' || deltaX <= 0) {
+      return;
+    }
+
+    const clamped = Math.min(deltaX, SWIPE_REPLY_MAX);
+    swipeDeltaRef.current = clamped;
+
+    if (swipeContentRef.current) {
+      swipeContentRef.current.style.transition = 'none';
+      swipeContentRef.current.style.transform = `translateX(${clamped}px)`;
+    }
+    if (swipeIconRef.current) {
+      swipeIconRef.current.style.opacity = String(Math.min(clamped / SWIPE_REPLY_THRESHOLD, 1));
+    }
+  };
+
+  const handleTouchEnd = () => {
+    clearTouchTimer();
+
+    if (onSwipeReply && swipeDeltaRef.current >= SWIPE_REPLY_THRESHOLD) {
+      triggerHaptic('reaction');
+      onSwipeReply();
+    }
+
+    resetSwipe();
   };
 
   return (
     <div
       className={cn(
-        "group flex flex-col max-w-[85%] md:max-w-[70%] mb-1 min-w-0",
+        "group relative flex flex-col max-w-[85%] md:max-w-[70%] mb-1 min-w-0 touch-pan-y",
         isOwn ? "self-end items-end" : "self-start items-start"
       )}
       onClickCapture={
@@ -85,12 +157,22 @@ export const MessageItem: React.FC<MessageItemProps> = ({
             }
           : undefined
       }
-      onTouchStart={onOpenMenu ? handleTouchStart : undefined}
-      onTouchEnd={onOpenMenu ? clearTouchTimer : undefined}
-      onTouchMove={onOpenMenu ? clearTouchTimer : undefined}
-      onTouchCancel={onOpenMenu ? clearTouchTimer : undefined}
+      onTouchStart={onOpenMenu || onSwipeReply ? handleTouchStart : undefined}
+      onTouchEnd={onOpenMenu || onSwipeReply ? handleTouchEnd : undefined}
+      onTouchMove={onOpenMenu || onSwipeReply ? handleTouchMove : undefined}
+      onTouchCancel={onOpenMenu || onSwipeReply ? resetSwipe : undefined}
     >
-      {children}
+      {onSwipeReply ? (
+        <span
+          ref={swipeIconRef}
+          className="pointer-events-none absolute -left-7 top-1/2 -translate-y-1/2 text-muted-foreground opacity-0"
+        >
+          <Reply className="h-4 w-4" />
+        </span>
+      ) : null}
+      <div ref={swipeContentRef} className="flex flex-col min-w-0">
+        {children}
+      </div>
     </div>
   );
 };

@@ -51,7 +51,7 @@ export function ComposerInputRow({
         variant="ghost"
         size="icon"
         className={cn(
-          'h-11 w-11 shrink-0 rounded-full text-muted-foreground transition-colors',
+          'h-11 w-11 shrink-0 touch-manipulation rounded-full text-muted-foreground transition-colors',
           activePanel === 'emoji'
             ? 'bg-primary/10 text-primary'
             : 'hover:bg-primary/10 hover:text-primary'
@@ -86,7 +86,7 @@ export function ComposerInputRow({
             variant="ghost"
             size="icon"
             className={cn(
-              'mb-0.5 h-9 w-9 shrink-0 rounded-full text-muted-foreground transition-colors',
+              'mb-0.5 h-10 w-10 shrink-0 touch-manipulation rounded-full text-muted-foreground transition-colors',
               activePanel === 'attachments'
                 ? 'bg-primary/10 text-primary'
                 : 'hover:bg-primary/10 hover:text-primary'
@@ -104,7 +104,7 @@ export function ComposerInputRow({
         <Button
           size="icon"
           className={cn(
-            'h-11 w-11 rounded-full shadow-sm transition-colors',
+            'h-11 w-11 touch-manipulation rounded-full shadow-sm transition-colors',
             hasText ? 'bg-primary hover:bg-primary/90' : ''
           )}
           onPointerDown={hasText ? undefined : recorderTrigger.onPressStart}

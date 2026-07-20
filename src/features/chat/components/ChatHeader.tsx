@@ -57,7 +57,7 @@ export function ChatHeader({
         <Button
           variant="ghost"
           size="icon"
-          className="md:hidden -ml-2 h-10 w-10 rounded-full"
+          className="md:hidden -ml-2 h-11 w-11 rounded-full"
           onClick={onCloseConversation}
         >
           <ArrowLeft className="h-5 w-5" />
@@ -93,7 +93,7 @@ export function ChatHeader({
               type="button"
               variant="ghost"
               size="icon"
-              className="h-10 w-10 rounded-full"
+              className="h-11 w-11 rounded-full"
               onClick={onStartAudioCall}
               disabled={!canCall || isCallBusy}
               title="Start audio call"
@@ -106,7 +106,7 @@ export function ChatHeader({
               type="button"
               variant="ghost"
               size="icon"
-              className="h-10 w-10 rounded-full"
+              className="h-11 w-11 rounded-full"
               onClick={onStartVideoCall}
               disabled={!canCall || isCallBusy}
               title="Start video call"

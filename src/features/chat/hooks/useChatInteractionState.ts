@@ -1,5 +1,6 @@
 import { useEffect, useState, type MouseEvent as ReactMouseEvent } from 'react';
 import type { SendMediaInput, SendTextInput } from '@/hooks/useChat';
+import { triggerHaptic } from '@/utils/haptics';
 import { ConversationMenuState } from '../components/ConversationActionsMenu';
 import { MessageMenuAnchor } from '../components/MessageShell';
 import { getCallSummaryText } from '../utils/callPresentation';
@@ -170,6 +171,15 @@ export function useChatInteractionState({
     closeMessageMenu();
   };
 
+  const handleSwipeReply = (message: ChatMessage, surface: ActiveMessageSurface) => {
+    if (surface === 'thread') {
+      setThreadReplyTarget(createReplyTarget(message, 'thread'));
+      return;
+    }
+
+    setReplyTarget(createReplyTarget(message, 'quote'));
+  };
+
   const openThreadForMessage = (message: ChatMessage) => {
     if (!selectedUser) {
       return;
@@ -189,6 +199,7 @@ export function useChatInteractionState({
       reply_mode: replyTarget?.mode,
       reply_to_message_id: replyTarget?.messageId,
     });
+    triggerHaptic('send');
     setReplyTarget(null);
   };
 
@@ -199,6 +210,7 @@ export function useChatInteractionState({
       reply_mode: 'thread',
       reply_to_message_id: threadReplyTarget?.messageId || selectedThreadRootId,
     });
+    triggerHaptic('send');
     setThreadReplyTarget(null);
   };
 
@@ -234,6 +246,7 @@ export function useChatInteractionState({
 
   const handleToggleReaction = async (messageId: string, emoji: string) => {
     await toggleReaction({ messageId, emoji });
+    triggerHaptic('reaction');
   };
 
   const openImageViewer = (items: MediaViewerImageItem[], initialItemId: string) => {
@@ -327,6 +340,7 @@ export function useChatInteractionState({
     closeMessageMenu,
     openMessageMenu,
     handleSelectReplyMode,
+    handleSwipeReply,
     openThreadForMessage,
     handleSendText,
     handleSendThreadText,
