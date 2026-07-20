@@ -21,6 +21,7 @@ interface MainChatPaneProps {
   isFetchingNextPage: boolean;
   onVisibleMessageIdsChange: (messageIds: string[]) => void;
   onOpenMenu: (message: ChatMessage, anchor: MessageMenuAnchor) => void;
+  onSwipeReply?: (message: ChatMessage) => void;
   onToggleReaction: (messageId: string, emoji: string) => Promise<void>;
   isTogglingReaction: boolean;
   onMediaClick: (payload: {
@@ -58,6 +59,7 @@ export function MainChatPane({
   isFetchingNextPage,
   onVisibleMessageIdsChange,
   onOpenMenu,
+  onSwipeReply,
   onToggleReaction,
   isTogglingReaction,
   onMediaClick,
@@ -162,6 +164,7 @@ export function MainChatPane({
               currentUserId={currentUserId}
               highlightedMessageIds={highlightedMessageIds}
               onOpenMenu={onOpenMenu}
+              onSwipeReply={onSwipeReply}
               onToggleReaction={onToggleReaction}
               isTogglingReaction={isTogglingReaction}
               onMediaClick={onMediaClick}

@@ -219,12 +219,15 @@ export type {
   RecoverySource,
 } from '@/features/calls/callController';
 
+export const continueAcknowledgedRecovery = rootCallController.continueAcknowledgedRecovery;
 export const expandCallView = rootCallController.expandCallView;
 export const handleAnswerSignal = rootCallController.handleAnswerSignal;
 export const handleIceCandidateSignal = rootCallController.handleIceCandidateSignal;
 export const handleIncomingSession = rootCallController.handleIncomingSession;
 export const handleOfferSignal = rootCallController.handleOfferSignal;
+export const handleParticipantUpdated = rootCallController.handleParticipantUpdated;
 export const handleReconnectingCall = rootCallController.handleReconnectingCall;
+export const handleRecoverySocketError = rootCallController.handleRecoverySocketError;
 export const hydrateRecoverableCall = rootCallController.hydrateRecoverableCall;
 export const minimizeCallView = rootCallController.minimizeCallView;
 export const registerCallRemoteAudioElement =
