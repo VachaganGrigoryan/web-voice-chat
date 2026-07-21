@@ -1,5 +1,5 @@
 // Generated from openapi/openapi.json. Do not edit manually.
-export const OPENAPI_MESSAGE_TYPES = ["text", "media", "file", "call"] as const;
+export const OPENAPI_MESSAGE_TYPES = ["text", "media", "file", "call", "system", "poll", "sticker", "voice", "location", "contact", "link_preview"] as const;
 export type OpenApiMessageType = (typeof OPENAPI_MESSAGE_TYPES)[number];
 
 export const OPENAPI_MEDIA_UPLOAD_TYPES = ["media", "file"] as const;
@@ -14,8 +14,8 @@ export type OpenApiPreviewMediaKind = (typeof OPENAPI_PREVIEW_MEDIA_KINDS)[numbe
 export const OPENAPI_REPLY_MODES = ["quote", "thread"] as const;
 export type OpenApiReplyMode = (typeof OPENAPI_REPLY_MODES)[number];
 
-export const OPENAPI_MESSAGE_STATUSES = ["sent", "delivered", "read"] as const;
-export type OpenApiMessageStatus = (typeof OPENAPI_MESSAGE_STATUSES)[number];
+export const OPENAPI_MESSAGE_STATES = ["sent", "scheduled"] as const;
+export type OpenApiMessageState = (typeof OPENAPI_MESSAGE_STATES)[number];
 
 export const OPENAPI_PING_STATUSES = ["pending", "accepted", "declined", "cancelled", "expired", "blocked"] as const;
 export type OpenApiPingStatus = (typeof OPENAPI_PING_STATUSES)[number];

@@ -4,6 +4,7 @@ import type {
   OpenApiDiscoveryVia,
   OpenApiMediaKind,
   OpenApiMediaUploadType,
+  OpenApiMessageState,
   OpenApiMessageType,
   OpenApiPingStatus,
   OpenApiPreviewMediaKind,
@@ -30,6 +31,14 @@ export interface User {
   default_discovery_enabled: boolean;
   last_seen_at: string | null;
   username_updated_at: string | null;
+  status_emoji?: string | null;
+  status_text?: string | null;
+  status_expires_at?: string | null;
+  pronouns?: string | null;
+  timezone?: string | null;
+  dnd_from?: string | null;
+  dnd_to?: string | null;
+  notification_keywords?: string[];
   created_at: string;
   updated_at: string;
 }
@@ -40,6 +49,11 @@ export interface SelectedUserProfile {
   display_name: string | null;
   bio: string | null;
   avatar: AvatarMeta | null;
+  status_emoji?: string | null;
+  status_text?: string | null;
+  status_expires_at?: string | null;
+  pronouns?: string | null;
+  timezone?: string | null;
   is_online: boolean;
 }
 
@@ -120,6 +134,7 @@ export interface MediaMeta {
 }
 
 export type MessageType = OpenApiMessageType;
+export type MessageState = OpenApiMessageState;
 export type MediaKind = OpenApiMediaKind;
 export type MediaUploadType = OpenApiMediaUploadType;
 export type PreviewMediaKind = OpenApiPreviewMediaKind;
@@ -179,8 +194,21 @@ export interface MessageContent {
   encryption: EncryptionMode;
   type: ContentType;
   plaintext: MessagePlaintext | null;
+  attachments: MediaMeta[];
   ciphertext: string | null;
   envelope: Record<string, unknown> | null;
+}
+
+export interface ForwardedFrom {
+  conversation_id: string;
+  message_id: string;
+  sender_id: string;
+  forwarded_at: string;
+}
+
+export interface MessageEdit {
+  content: MessageContent;
+  edited_at: string;
 }
 
 export interface MessageDoc {
@@ -202,6 +230,12 @@ export interface MessageDoc {
   thread_reply_count: number;
   thread_unread_count?: number;
   last_thread_reply_at: string | null;
+  mention_user_ids: string[];
+  mention_scope: 'here' | 'all' | null;
+  forwarded_from: ForwardedFrom | null;
+  edit_history: MessageEdit[];
+  scheduled_for: string | null;
+  state: MessageState;
   reactions: MessageReactionGroup[];
   edited_at: string | null;
   is_deleted?: boolean;
@@ -272,18 +306,29 @@ export interface DeleteCallHistoryResponse {
   hidden_count: number;
 }
 
-export type ConversationType = 'dm' | 'group';
+export type ConversationType = 'dm' | 'group' | 'channel' | 'thread';
 
-export type ParticipantRole = 'owner' | 'admin' | 'member';
+export type ParticipantRole = 'owner' | 'admin' | 'member' | 'subscriber';
+export type NotificationLevel = 'all' | 'mentions' | 'none';
+export type ConversationVisibility = 'private' | 'public';
+export type PostingPolicy = 'everyone' | 'admins';
 
 /** Group membership record returned by GET /conversations/{id}/members. */
 export interface ParticipantView {
   conversation_id: string;
   user_id: string;
   role: ParticipantRole;
+  permissions: Record<string, boolean> | null;
   joined_at: string;
   last_read_at: string | null;
   last_read_message_id: string | null;
+  notification_level: NotificationLevel;
+  muted_until: string | null;
+  archived: boolean;
+  pinned: boolean;
+  folder: string | null;
+  invited_by: string | null;
+  draft_updated_at: string | null;
   muted: boolean;
   hidden: boolean;
 }
@@ -310,6 +355,16 @@ export interface Conversation {
   created_by: string;
   title: string | null;
   image?: AvatarMeta | null;
+  visibility: ConversationVisibility;
+  posting_policy: PostingPolicy;
+  space_id: string | null;
+  parent_conversation_id: string | null;
+  root_message_id: string | null;
+  slug: string | null;
+  description: string | null;
+  member_count: number;
+  pinned_message_ids: string[];
+  settings: Record<string, unknown>;
   last_message_preview: {
     message_id: string;
     sender_id: string;
@@ -329,6 +384,16 @@ export interface ConversationEntity {
   participant_ids: string[];
   created_by: string;
   title: string | null;
+  visibility: ConversationVisibility;
+  posting_policy: PostingPolicy;
+  space_id: string | null;
+  parent_conversation_id: string | null;
+  root_message_id: string | null;
+  slug: string | null;
+  description: string | null;
+  member_count: number;
+  pinned_message_ids: string[];
+  settings: Record<string, unknown>;
   last_message_at: string | null;
   last_message_preview: {
     message_id: string;

@@ -18,22 +18,22 @@ const enumValues = (value, fallbackName) => {
 
 const messageTypeEnum = enumValues(schema('MessageDoc')?.properties?.type?.enum, 'MessageDoc.type');
 const uploadTypeEnum = enumValues(
-  schema('Body_upload_media_messages_media_post')?.properties?.type?.enum,
-  'Body_upload_media_messages_media_post.type'
+  schema('Body_send_media_conversations__conversation_id__messages_media_post')?.properties?.type?.enum,
+  'Body_send_media_conversations__conversation_id__messages_media_post.type'
 );
 const mediaKindEnum = enumValues(
   schema('MediaMeta')?.properties?.kind?.enum,
   'MediaMeta.kind'
 );
 const previewMediaKindEnum = enumValues(
-  schema('Body_upload_media_messages_media_post')?.properties?.media_kind?.anyOf?.[0]?.enum,
-  'Body_upload_media_messages_media_post.media_kind'
+  schema('Body_send_media_conversations__conversation_id__messages_media_post')?.properties?.media_kind?.anyOf?.[0]?.enum,
+  'Body_send_media_conversations__conversation_id__messages_media_post.media_kind'
 );
 const replyModeEnum = enumValues(
-  schema('SendTextMessageRequest')?.properties?.reply_mode?.anyOf?.[0]?.enum,
-  'SendTextMessageRequest.reply_mode'
+  schema('ConversationSendTextRequest')?.properties?.reply_mode?.anyOf?.[0]?.enum,
+  'ConversationSendTextRequest.reply_mode'
 );
-const messageStatusEnum = enumValues(schema('MessageDoc')?.properties?.status?.enum, 'MessageDoc.status');
+const messageStateEnum = enumValues(schema('MessageDoc')?.properties?.state?.enum, 'MessageDoc.state');
 const pingStatusEnum = enumValues(schema('PingResponse')?.properties?.status?.enum, 'PingResponse.status');
 const callTypeEnum = enumValues(schema('CallDoc')?.properties?.type?.enum, 'CallDoc.type');
 const callStatusEnum = enumValues(schema('CallDoc')?.properties?.status?.enum, 'CallDoc.status');
@@ -58,8 +58,8 @@ export type OpenApiPreviewMediaKind = (typeof OPENAPI_PREVIEW_MEDIA_KINDS)[numbe
 export const OPENAPI_REPLY_MODES = [${replyModeEnum}] as const;
 export type OpenApiReplyMode = (typeof OPENAPI_REPLY_MODES)[number];
 
-export const OPENAPI_MESSAGE_STATUSES = [${messageStatusEnum}] as const;
-export type OpenApiMessageStatus = (typeof OPENAPI_MESSAGE_STATUSES)[number];
+export const OPENAPI_MESSAGE_STATES = [${messageStateEnum}] as const;
+export type OpenApiMessageState = (typeof OPENAPI_MESSAGE_STATES)[number];
 
 export const OPENAPI_PING_STATUSES = [${pingStatusEnum}] as const;
 export type OpenApiPingStatus = (typeof OPENAPI_PING_STATUSES)[number];

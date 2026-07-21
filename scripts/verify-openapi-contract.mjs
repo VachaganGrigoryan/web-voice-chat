@@ -32,7 +32,7 @@ const operationCount = Object.values(spec.paths).reduce(
   0
 );
 
-assert.equal(operationCount, 68, 'Unexpected number of OpenAPI operations');
+assert.equal(operationCount, 73, 'Unexpected number of OpenAPI operations');
 
 assert.equal(
   getJsonResponseRef('get', '/auth/passkeys', '200'),
@@ -47,15 +47,15 @@ assert.equal(
   '#/components/schemas/SuccessResponse_SelectedUserProfileResponse_'
 );
 assert.equal(
-  getJsonResponseRef('get', '/messages/{message_id}/thread', '200'),
+  getJsonResponseRef('get', '/conversations/{conversation_id}/messages/{message_id}/thread', '200'),
   '#/components/schemas/SuccessResponse_list_MessageDoc__'
 );
 assert.equal(
-  getJsonResponseRef('delete', '/messages/{message_id}', '200'),
+  getJsonResponseRef('delete', '/conversations/{conversation_id}/messages/{message_id}', '200'),
   '#/components/schemas/SuccessResponse_DeleteMessageResponse_'
 );
 assert.equal(
-  getJsonResponseRef('post', '/messages/{message_id}/reactions', '200'),
+  getJsonResponseRef('post', '/conversations/{conversation_id}/messages/{message_id}/reactions', '200'),
   '#/components/schemas/SuccessResponse_MessageDoc_'
 );
 assert.equal(
@@ -77,10 +77,10 @@ assert.equal(
 
 assert.deepEqual(
   getSchema('MessageDoc').properties.type.enum,
-  ['text', 'media', 'file', 'call']
+  ['text', 'media', 'file', 'call', 'system', 'poll', 'sticker', 'voice', 'location', 'contact', 'link_preview']
 );
 assert.deepEqual(
-  getSchema('Body_upload_media_messages_media_post').properties.type.enum,
+  getSchema('Body_send_media_conversations__conversation_id__messages_media_post').properties.type.enum,
   ['media', 'file']
 );
 assert.deepEqual(
@@ -88,16 +88,20 @@ assert.deepEqual(
   ['voice', 'audio', 'image', 'video', 'file']
 );
 assert.deepEqual(
-  getSchema('Body_upload_media_messages_media_post').properties.media_kind.anyOf[0].enum,
+  getSchema('Body_send_media_conversations__conversation_id__messages_media_post').properties.media_kind.anyOf[0].enum,
   ['voice', 'audio', 'image', 'video']
 );
 assert.deepEqual(
   getSchema('ReplyPreview').properties.type.enum,
-  ['text', 'media', 'file', 'call']
+  ['text', 'media', 'file', 'call', 'system', 'poll', 'sticker', 'voice', 'location', 'contact', 'link_preview']
 );
 assert.deepEqual(
   getSchema('ReplyPreview').properties.media_kind.anyOf[0].enum,
   ['voice', 'audio', 'image', 'video', 'file']
+);
+assert.deepEqual(
+  getSchema('MessageDoc').properties.state.enum,
+  ['sent', 'scheduled']
 );
 
 console.log('OpenAPI contract checks passed');
