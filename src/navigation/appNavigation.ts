@@ -139,7 +139,7 @@ const resolveDefaultBackFallback = (path: string) => {
 
   const threadMatch = pathname.match(/^\/chat\/([^/]+)\/thread\/[^/]+$/);
   if (threadMatch) {
-    return APP_ROUTES.chatPeer(threadMatch[1]);
+    return APP_ROUTES.chatConversation(threadMatch[1]);
   }
 
   if (/^\/chat\/[^/]+$/.test(pathname)) {

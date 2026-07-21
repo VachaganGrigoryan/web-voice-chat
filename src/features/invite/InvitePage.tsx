@@ -1,6 +1,7 @@
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { discoveryApi } from '@/api/endpoints';
+import { conversationsApi, discoveryApi } from '@/api/endpoints';
+import { extractApiError } from '@/api/errors';
 import { APP_ROUTES } from '@/app/routes';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/Avatar';
 import { Button } from '@/components/ui/Button';
@@ -9,6 +10,7 @@ import { BRAND } from '@/shared/branding/brand';
 import { Logo } from '@/shared/branding/Logo';
 import { LogoSymbol } from '@/shared/branding/LogoSymbol';
 import { AlertTriangle, Bell, Loader2, MessageSquare, UserPlus } from 'lucide-react';
+import { toast } from 'sonner';
 
 export default function InvitePage() {
   const { token } = useParams<{ token: string }>();
@@ -21,6 +23,15 @@ export default function InvitePage() {
     enabled: !!token,
     retry: false,
   });
+
+  const openChat = async (userId: string) => {
+    try {
+      const conversation = await conversationsApi.createOrGetDm(userId);
+      navigate(APP_ROUTES.chatConversation(conversation.id));
+    } catch (error) {
+      toast.error(extractApiError(error, 'Failed to open chat'));
+    }
+  };
 
   if (isLoading) {
     return (
@@ -82,7 +93,7 @@ export default function InvitePage() {
         <div className="pt-4">
           {isAuthenticated ? (
             <Button
-              onClick={() => navigate(APP_ROUTES.chatPeer(user.id))}
+              onClick={() => void openChat(user.id)}
               className="h-12 w-full text-base"
               disabled={user.ping_status === 'outgoing_pending' || (user.ping_status === 'none' && !user.can_ping)}
             >
@@ -111,7 +122,7 @@ export default function InvitePage() {
           ) : (
             <Button
               onClick={() =>
-                navigate(`${APP_ROUTES.auth}?redirect=${encodeURIComponent(APP_ROUTES.chatPeer(user.id))}`)
+                navigate(`${APP_ROUTES.auth}?redirect=${encodeURIComponent(APP_ROUTES.invite(token || ''))}`)
               }
               className="h-12 w-full text-base"
             >

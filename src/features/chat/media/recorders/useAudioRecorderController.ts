@@ -36,12 +36,12 @@ export function useAudioRecorderController({
 
   const emitTypingStart = () => {
     const socket = getSocket();
-    socket?.emit(EVENTS.CLIENT_TYPING_START, { to: receiverId, receiver_id: receiverId });
+    socket?.emit(EVENTS.CLIENT_TYPING_START, { conversation_id: receiverId });
   };
 
   const emitTypingStop = () => {
     const socket = getSocket();
-    socket?.emit(EVENTS.CLIENT_TYPING_STOP, { to: receiverId, receiver_id: receiverId });
+    socket?.emit(EVENTS.CLIENT_TYPING_STOP, { conversation_id: receiverId });
   };
 
   useEffect(() => {
@@ -216,7 +216,7 @@ export function useAudioRecorderController({
       await onSendMedia({
         type: 'media',
         media_kind: 'voice',
-        receiver_id: receiverId,
+        conversation_id: receiverId,
         file,
         duration_ms: durationSec * 1000,
         reply_mode: replyTarget?.mode,

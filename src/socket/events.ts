@@ -33,6 +33,7 @@ export const EVENTS = {
   MESSAGE_REACTED: 'message_reacted',
   THREAD_REPLY_CREATED: 'thread_reply_created',
   THREAD_SUMMARY_UPDATED: 'thread_summary_updated',
+  CONVERSATION_HISTORY_CLEARED: 'conversation_history_cleared',
   PRESENCE_UPDATE: 'presence_update',
   USER_ONLINE: 'user_online', // Keeping these if they are part of presence_update or separate
   USER_OFFLINE: 'user_offline',

@@ -29,12 +29,12 @@ export function useComposerTextInput({
 
   const emitTypingStart = () => {
     const socket = getSocket();
-    socket?.emit(EVENTS.CLIENT_TYPING_START, { to: receiverId, receiver_id: receiverId });
+    socket?.emit(EVENTS.CLIENT_TYPING_START, { conversation_id: receiverId });
   };
 
   const emitTypingStop = () => {
     const socket = getSocket();
-    socket?.emit(EVENTS.CLIENT_TYPING_STOP, { to: receiverId, receiver_id: receiverId });
+    socket?.emit(EVENTS.CLIENT_TYPING_STOP, { conversation_id: receiverId });
   };
 
   const resetTypingTimeout = () => {
@@ -95,7 +95,7 @@ export function useComposerTextInput({
 
     setIsSendingText(true);
     try {
-      await onSendText({ receiver_id: receiverId, text: trimmedText });
+      await onSendText({ conversation_id: receiverId, text: trimmedText });
       setText('');
       onClearReplyTarget?.();
       if (textareaRef.current) {

@@ -40,7 +40,7 @@ interface VideoRecorderModalProps {
   onSendVideo: (data: {
     type: 'media';
     media_kind: 'video';
-    receiver_id: string;
+    conversation_id: string;
     file: File;
     text?: string;
     duration_ms?: number;
@@ -661,7 +661,7 @@ export default function VideoRecorderModal({
       await onSendVideo({
         type: 'media',
         media_kind: 'video',
-        receiver_id: receiverId,
+        conversation_id: receiverId,
         file,
         duration_ms: recordingDurationSec * 1000,
         reply_mode: replyTarget?.mode,

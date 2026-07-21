@@ -51,7 +51,10 @@ export function useChatReadState({
 
     if (socket) {
       messageIds.forEach((messageId) => {
-        socket.emit(EVENTS.MESSAGE_READ, { message_id: messageId });
+        socket.emit(EVENTS.MESSAGE_READ, {
+          conversation_id: payload.conversation_id,
+          message_id: messageId,
+        });
       });
     }
 
@@ -76,7 +79,7 @@ export function useChatReadState({
     }, 3000);
   };
 
-  const resetConversationUnreadCount = (peerUserId: string) => {
+  const resetConversationUnreadCount = (conversationId: string) => {
     queryClient.setQueryData(['conversations'], (old: any) => {
       if (!old?.pages) return old;
 
@@ -85,7 +88,7 @@ export function useChatReadState({
         pages: old.pages.map((page: any) => ({
           ...page,
           data: page.data.map((conversation: Conversation) =>
-            conversation.peer_user.id === peerUserId
+            conversation.conversation_id === conversationId || conversation.id === conversationId
               ? { ...conversation, unread_count: 0 }
               : conversation
           ),
@@ -107,10 +110,11 @@ export function useChatReadState({
         const pages = data?.pages || [];
         pages.forEach((page: any) => {
           (page.data || []).forEach((message: MessageDoc) => {
+            const summary = message.receipt_summary;
             if (
               message.conversation_id === conversationId &&
-              message.receiver_id === userId &&
-              message.status !== 'read'
+              message.sender_id !== userId &&
+              (!summary || summary.read_count < summary.recipient_count)
             ) {
               collectedIds.add(message.id);
             }
@@ -127,7 +131,6 @@ export function useChatReadState({
         conversation_id: conversationId,
         message_ids: [...collectedIds],
         status: 'read',
-        read_at: new Date().toISOString(),
         scope: 'main',
       });
     }
@@ -159,15 +162,17 @@ export function useChatReadState({
     });
   };
 
-  const handleMarkConversationAsRead = async (peerUserId: string) => {
-    const conversation = contacts.find((item) => item.peer_user.id === peerUserId);
+  const handleMarkConversationAsRead = async (conversationId: string) => {
+    const conversation = contacts.find(
+      (item) => item.conversation_id === conversationId || item.id === conversationId
+    );
     if (!conversation) return;
 
-    await messagesApi.markConversationRead(peerUserId);
+    await messagesApi.markConversationRead(conversationId);
     socket?.emit(EVENTS.CONVERSATION_READ, {
-      peer_user_id: peerUserId,
+      conversation_id: conversationId,
     });
-    resetConversationUnreadCount(peerUserId);
+    resetConversationUnreadCount(conversationId);
     markConversationCachesAsRead(conversation.conversation_id);
   };
 
@@ -180,7 +185,7 @@ export function useChatReadState({
     const unreadVisibleMessages = mainChatMessages.filter(
       (message) =>
         visibleIdSet.has(message.id) &&
-        message.receiverId === userId &&
+        message.senderId !== userId &&
         message.status !== 'read' &&
         !mainReadEmittedMessagesRef.current.has(message.id)
     );
@@ -194,12 +199,10 @@ export function useChatReadState({
 
     emitMessageRead(visibleIds, {
       conversation_id: unreadVisibleMessages[0]?.chatId,
-      peer_user_id: selectedUser,
       message_ids: visibleIds,
       status: 'read',
       scope: 'main',
-      read_at: new Date().toISOString(),
-    } as MessageStatusPayload & { peer_user_id: string });
+    });
 
     highlightReadMessages(visibleIds);
   };
@@ -214,7 +217,7 @@ export function useChatReadState({
       .filter(
         (message) =>
           visibleIdSet.has(message.id) &&
-          message.receiverId === userId &&
+          message.senderId !== userId &&
           message.status !== 'read' &&
           !threadReadEmittedMessagesRef.current.has(message.id)
       )
@@ -225,13 +228,11 @@ export function useChatReadState({
 
     emitMessageRead(unreadIds, {
       conversation_id: selectedThreadRootMessage?.chatId,
-      peer_user_id: selectedUser,
       thread_root_id: selectedThreadRootId,
       message_ids: unreadIds,
       status: 'read',
       scope: 'thread',
-      read_at: new Date().toISOString(),
-    } as MessageStatusPayload & { peer_user_id: string });
+    });
 
     highlightReadMessages(unreadIds);
   };

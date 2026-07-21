@@ -14,11 +14,15 @@ import {
   DeleteCallHistoryResponse,
   DeleteConversationResponse,
   DeleteMessageResponse,
+  DeviceView,
   DiscoveredUser,
   AuthChallengeResponse,
   MessageDoc,
   MessageResponse,
   PaginatedResponse,
+  ParticipantView,
+  PreKeyBundle,
+  PreKeyInput,
   PasskeyAuthenticationOptionsPayload,
   PasskeyDeleteResult,
   PasskeyRegistrationOptionsPayload,
@@ -118,7 +122,7 @@ export const usersApi = {
 
 export const messagesApi = {
   uploadMedia: async (data: {
-    receiver_id: string;
+    conversation_id: string;
     file: File;
     text?: string;
     duration_ms?: number;
@@ -138,7 +142,6 @@ export const messagesApi = {
   )) => {
     const formData = new FormData();
     formData.append('type', data.type);
-    formData.append('receiver_id', data.receiver_id);
     formData.append('file', data.file);
     if (data.type === 'media') {
       formData.append('media_kind', data.media_kind);
@@ -148,83 +151,240 @@ export const messagesApi = {
     if (data.reply_mode) formData.append('reply_mode', data.reply_mode);
     if (data.reply_to_message_id) formData.append('reply_to_message_id', data.reply_to_message_id);
 
-    const response = await apiClient.post<SuccessResponse<MessageDoc>>('/messages/media', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-      signal: data.signal,
-      onUploadProgress: data.onUploadProgress,
-    });
+    const response = await apiClient.post<SuccessResponse<MessageDoc>>(
+      `/conversations/${data.conversation_id}/messages/media`,
+      formData,
+      {
+        headers: { 'Content-Type': 'multipart/form-data' },
+        signal: data.signal,
+        onUploadProgress: data.onUploadProgress,
+      }
+    );
     return extractResponseData(response.data);
   },
-  sendText: (data: {
-    receiver_id: string;
+  sendText: async (data: {
+    conversation_id: string;
     text: string;
     reply_mode?: ReplyMode | null;
     reply_to_message_id?: string;
-  }) =>
+  }) => {
+    const response = await apiClient.post<SuccessResponse<MessageDoc>>(
+      `/conversations/${data.conversation_id}/messages/text`,
+      {
+        text: data.text,
+        reply_mode: data.reply_mode ?? null,
+        reply_to_message_id: data.reply_to_message_id,
+      }
+    );
+    return extractResponseData(response.data);
+  },
+  getHistory: async (conversationId: string, limit = 20, cursor?: string) => {
+    const response = await apiClient.get<PaginatedResponse<MessageDoc>>(
+      `/conversations/${conversationId}/messages`,
+      { params: { limit, cursor } }
+    );
+    return response.data;
+  },
+  markDelivered: (conversationId: string, messageId: string) =>
     apiClient
-      .post<SuccessResponse<MessageDoc>>('/messages/text', data)
-      .then((res) => extractResponseData(res.data)),
-  getHistory: (userId: string, limit = 20, cursor?: string) =>
-    apiClient
-      .get<PaginatedResponse<MessageDoc>>(`/messages/conversations/${userId}`, {
-        params: { limit, cursor },
-      })
-      .then((res) => res.data),
-  markDelivered: (messageId: string) =>
-    apiClient
-      .post<SuccessResponse<MessageDoc>>(`/messages/${messageId}/delivered`)
-      .then((res) => extractResponseData(res.data)),
-  markRead: (messageId: string) =>
-    apiClient
-      .post<SuccessResponse<MessageDoc>>(`/messages/${messageId}/read`)
-      .then((res) => extractResponseData(res.data)),
-  editMessage: (messageId: string, text: string) =>
-    apiClient
-      .patch<SuccessResponse<MessageDoc>>(`/messages/${messageId}`, { text })
-      .then((res) => extractResponseData(res.data)),
-  deleteMessage: (messageId: string) =>
-    apiClient
-      .delete<SuccessResponse<DeleteMessageResponse>>(`/messages/${messageId}`)
-      .then((res) => extractResponseData(res.data)),
-  getThreadMessages: (messageId: string) =>
-    apiClient
-      .get<SuccessResponse<MessageDoc[]>>(`/messages/${messageId}/thread`)
-      .then((res) => extractResponseData(res.data)),
-  getThreadSummary: (messageId: string) =>
-    apiClient
-      .get<SuccessResponse<ThreadSummary>>(`/messages/${messageId}/thread-summary`)
-      .then((res) => extractResponseData(res.data)),
-  toggleReaction: (messageId: string, emoji: string) =>
-    apiClient
-      .post<SuccessResponse<MessageDoc>>(`/messages/${messageId}/reactions`, { emoji })
-      .then((res) => extractResponseData(res.data)),
-  removeOwnReaction: (messageId: string, emoji: string) =>
-    apiClient
-      .delete<SuccessResponse<MessageDoc>>(
-        `/messages/${messageId}/reactions/${encodeURIComponent(emoji)}/me`
+      .post<SuccessResponse<MessageDoc>>(
+        `/conversations/${conversationId}/messages/${messageId}/delivered`
       )
       .then((res) => extractResponseData(res.data)),
-  markConversationRead: (userId: string) =>
+  markRead: (conversationId: string, messageId: string) =>
     apiClient
-      .post<SuccessResponse<ConversationReadUpdate>>(`/messages/conversations/${userId}/read`)
+      .post<SuccessResponse<MessageDoc>>(
+        `/conversations/${conversationId}/messages/${messageId}/read`
+      )
       .then((res) => extractResponseData(res.data)),
-  clearConversation: (userId: string) =>
+  editMessage: (conversationId: string, messageId: string, text: string) =>
     apiClient
-      .delete<SuccessResponse<ClearConversationResponse>>(`/messages/conversations/${userId}/messages`)
+      .patch<SuccessResponse<MessageDoc>>(
+        `/conversations/${conversationId}/messages/${messageId}`,
+        { text }
+      )
       .then((res) => extractResponseData(res.data)),
-  deleteConversation: (userId: string) =>
+  deleteMessage: (conversationId: string, messageId: string) =>
     apiClient
-      .delete<SuccessResponse<DeleteConversationResponse>>(`/messages/conversations/${userId}`)
+      .delete<SuccessResponse<DeleteMessageResponse>>(
+        `/conversations/${conversationId}/messages/${messageId}`
+      )
       .then((res) => extractResponseData(res.data)),
+  getThreadMessages: (conversationId: string, messageId: string) =>
+    apiClient
+      .get<SuccessResponse<MessageDoc[]>>(
+        `/conversations/${conversationId}/messages/${messageId}/thread`
+      )
+      .then((res) => extractResponseData(res.data)),
+  getThreadSummary: (conversationId: string, messageId: string) =>
+    apiClient
+      .get<SuccessResponse<ThreadSummary>>(
+        `/conversations/${conversationId}/messages/${messageId}/thread-summary`
+      )
+      .then((res) => extractResponseData(res.data)),
+  toggleReaction: (conversationId: string, messageId: string, emoji: string) =>
+    apiClient
+      .post<SuccessResponse<MessageDoc>>(
+        `/conversations/${conversationId}/messages/${messageId}/reactions`,
+        { emoji }
+      )
+      .then((res) => extractResponseData(res.data)),
+  removeOwnReaction: (conversationId: string, messageId: string, emoji: string) =>
+    apiClient
+      .delete<SuccessResponse<MessageDoc>>(
+        `/conversations/${conversationId}/messages/${messageId}/reactions/${encodeURIComponent(
+          emoji
+        )}/me`
+      )
+      .then((res) => extractResponseData(res.data)),
+  markConversationRead: async (conversationId: string): Promise<ConversationReadUpdate> => {
+    await apiClient.post(`/conversations/${conversationId}/read`);
+    return {};
+  },
+  clearConversation: async (conversationId: string) => {
+    const response = await apiClient.delete<SuccessResponse<ClearConversationResponse>>(
+      `/conversations/${conversationId}/messages`
+    );
+    return extractResponseData(response.data);
+  },
+  deleteConversation: async (conversationId: string) => {
+    const response = await apiClient.delete<SuccessResponse<DeleteConversationResponse>>(
+      `/conversations/${conversationId}`
+    );
+    return extractResponseData(response.data);
+  },
 };
+
+const normalizeConversation = (conversation: Conversation): Conversation => ({
+  ...conversation,
+  conversation_id: conversation.conversation_id ?? conversation.id,
+  last_message: conversation.last_message ?? (
+    conversation.last_message_preview
+      ? {
+          id: conversation.last_message_preview.message_id,
+          type: conversation.last_message_preview.type,
+          text: conversation.last_message_preview.text,
+          media: null,
+          call: null,
+          created_at: conversation.last_message_preview.created_at,
+        }
+      : null
+  ),
+});
 
 export const conversationsApi = {
   getConversations: (limit = 20, cursor?: string) =>
     apiClient
-      .get<PaginatedResponse<Conversation>>('/messages/conversations', {
+      .get<PaginatedResponse<Conversation>>('/conversations', {
         params: { limit, cursor },
       })
-      .then((res) => res.data),
+      .then((res) => ({
+        ...res.data,
+        data: res.data.data.map(normalizeConversation),
+      })),
+  createOrGetDm: (peerUserId: string) =>
+    apiClient
+      .post<SuccessResponse<Conversation>>('/conversations', { peer_user_id: peerUserId })
+      .then((res) => normalizeConversation(extractResponseData(res.data))),
+  createGroup: (data: { title: string; participant_ids: string[] }) =>
+    apiClient
+      .post<SuccessResponse<Conversation>>('/conversations/groups', data)
+      .then((res) => normalizeConversation(extractResponseData(res.data))),
+  listMembers: (conversationId: string) =>
+    apiClient
+      .get<SuccessResponse<ParticipantView[]>>(`/conversations/${conversationId}/members`)
+      .then((res) => extractResponseData(res.data)),
+  addMembers: (conversationId: string, participantIds: string[]) =>
+    apiClient
+      .post<SuccessResponse<ParticipantView[]>>(
+        `/conversations/${conversationId}/members`,
+        { participant_ids: participantIds }
+      )
+      .then((res) => extractResponseData(res.data)),
+  removeMember: (conversationId: string, memberUserId: string) =>
+    apiClient
+      .delete(`/conversations/${conversationId}/members/${memberUserId}`)
+      .then(() => undefined),
+  updateMemberRole: (
+    conversationId: string,
+    memberUserId: string,
+    role: 'admin' | 'member'
+  ) =>
+    apiClient
+      .patch<SuccessResponse<ParticipantView>>(
+        `/conversations/${conversationId}/members/${memberUserId}/role`,
+        { role }
+      )
+      .then((res) => extractResponseData(res.data)),
+  transferOwnership: (conversationId: string, userId: string) =>
+    apiClient
+      .post<SuccessResponse<ParticipantView[]>>(
+        `/conversations/${conversationId}/ownership`,
+        { user_id: userId }
+      )
+      .then((res) => extractResponseData(res.data)),
+  leaveGroup: (conversationId: string) =>
+    apiClient
+      .post(`/conversations/${conversationId}/leave`)
+      .then(() => undefined),
+  deleteGroup: (conversationId: string) =>
+    apiClient
+      .delete(`/conversations/groups/${conversationId}`)
+      .then(() => undefined),
+  updateGroup: (conversationId: string, data: { title: string }) =>
+    apiClient
+      .patch<SuccessResponse<Conversation>>(
+        `/conversations/groups/${conversationId}`,
+        data
+      )
+      .then((res) => normalizeConversation(extractResponseData(res.data))),
+  uploadGroupAvatar: (conversationId: string, formData: FormData) =>
+    apiClient
+      .patch<SuccessResponse<Conversation>>(
+        `/conversations/groups/${conversationId}/avatar`,
+        formData,
+        { headers: { 'Content-Type': 'multipart/form-data' } }
+      )
+      .then((res) => normalizeConversation(extractResponseData(res.data))),
+  deleteGroupAvatar: (conversationId: string) =>
+    apiClient
+      .delete<SuccessResponse<Conversation>>(
+        `/conversations/groups/${conversationId}/avatar`
+      )
+      .then((res) => normalizeConversation(extractResponseData(res.data))),
+  clearGroupForEveryone: (conversationId: string) =>
+    apiClient
+      .delete<SuccessResponse<ClearConversationResponse>>(
+        `/conversations/${conversationId}/messages/all`
+      )
+      .then((res) => extractResponseData(res.data)),
+};
+
+export const devicesApi = {
+  register: (data: {
+    device_id: string;
+    name?: string;
+    platform?: string;
+    identity_public_key?: string;
+    signing_public_key?: string;
+    registration_id?: number;
+  }) =>
+    apiClient
+      .post<SuccessResponse<DeviceView>>('/devices', data)
+      .then((res) => extractResponseData(res.data)),
+  uploadPreKeys: (deviceId: string, prekeys: PreKeyInput[]) =>
+    apiClient
+      .post<SuccessResponse<{ device_id: string; uploaded: number }>>(
+        `/devices/${deviceId}/prekeys`,
+        { prekeys }
+      )
+      .then((res) => extractResponseData(res.data)),
+  getPreKeyBundle: (userId: string, deviceId?: string) =>
+    apiClient
+      .get<SuccessResponse<PreKeyBundle>>(`/users/${userId}/prekey-bundle`, {
+        params: deviceId ? { device_id: deviceId } : undefined,
+      })
+      .then((res) => extractResponseData(res.data)),
 };
 
 export const realtimeApi = {

@@ -7,7 +7,7 @@ import { usePings } from '@/hooks/usePings';
 import { APP_ROUTES } from '@/app/routes';
 import { extractApiError } from '@/api/errors';
 import { useAuthStore } from '@/store/authStore';
-import { authApi } from '@/api/endpoints';
+import { authApi, conversationsApi } from '@/api/endpoints';
 import { toast } from 'sonner';
 import { triggerHaptic } from '@/utils/haptics';
 import ChatComposer from './composer';
@@ -15,6 +15,7 @@ import { useChatAudioPlayerStore } from './media/players/audioPlayerStore';
 import { MediaViewer } from './media/MediaViewer';
 import { CallHistoryActionsMenu, CallHistoryMenuState } from './components/CallHistoryActionsMenu';
 import { ConfirmDestructiveActionDialog } from './components/ConfirmDestructiveActionDialog';
+import { GroupInfoPanel } from './components/GroupInfoPanel';
 import { MessageActionsDialog } from './components/MessageActionsDialog';
 import { ThreadPanel } from './components/ThreadPanel';
 import { ChatSidebar } from './components/ChatSidebar';
@@ -51,17 +52,18 @@ function formatCount(count: number, singular: string, plural = `${singular}s`) {
 }
 
 export default function ChatLayout() {
-  const { peerUserId, rootMessageId } = useParams<{
-    peerUserId?: string;
+  const { conversationId, rootMessageId } = useParams<{
+    conversationId?: string;
     rootMessageId?: string;
   }>();
-  const selectedUser = peerUserId || null;
+  const selectedUser = conversationId || null;
   const selectedThreadRootId = rootMessageId || null;
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [sidebarView, setSidebarView] = useState<'chats' | 'calls'>('chats');
   const [callHistoryMenu, setCallHistoryMenu] = useState<CallHistoryMenuState | null>(null);
   const [pendingDestructiveAction, setPendingDestructiveAction] = useState<SidebarDestructiveAction | null>(null);
+  const [isGroupInfoOpen, setIsGroupInfoOpen] = useState(false);
 
   const {
     onlineUsers,
@@ -132,6 +134,8 @@ export default function ChatLayout() {
     incomingPing,
     pingStatus,
     isPingAccepted,
+    selectedPeerUserId,
+    selectedConversation,
     selectedConversationUser,
     displaySelectedUser,
     isSelectedConversationGhost,
@@ -149,7 +153,7 @@ export default function ChatLayout() {
     hasNextPage: hasNextThreadPage,
     isFetchingNextPage: isFetchingNextThreadPage,
     isLoading: isLoadingThread,
-  } = useThreadMessages(selectedThreadRootId);
+  } = useThreadMessages(selectedUser, selectedThreadRootId);
 
   const {
     mainChatMessages,
@@ -218,9 +222,11 @@ export default function ChatLayout() {
     isMobileViewport,
     mainImageGallery,
     threadImageGallery,
-    navigateToConversation: (peerId, threadRootId) =>
+    navigateToConversation: (conversationId, threadRootId) =>
       navigate(
-        threadRootId ? APP_ROUTES.chatThread(peerId, threadRootId) : APP_ROUTES.chatPeer(peerId)
+        threadRootId
+          ? APP_ROUTES.chatConversationThread(conversationId, threadRootId)
+          : APP_ROUTES.chatConversation(conversationId)
       ),
     openThreadPanelInFullMode: () => setThreadPanelMode('full'),
     sendText,
@@ -288,7 +294,31 @@ export default function ChatLayout() {
       return;
     }
 
-    navigate(APP_ROUTES.chatPeer(selectedUser));
+    navigate(APP_ROUTES.chatConversation(selectedUser));
+  };
+
+  const openDmConversationForUser = async (userId: string) => {
+    try {
+      const conversation = await conversationsApi.createOrGetDm(userId);
+      await queryClient.invalidateQueries({ queryKey: ['conversations'] });
+      navigate(APP_ROUTES.chatConversation(conversation.id));
+    } catch (error) {
+      toast.error(extractApiError(error, 'Failed to open chat'));
+    }
+  };
+
+  const handleCreateGroup = async (data: { title: string; participantIds: string[] }) => {
+    try {
+      const conversation = await conversationsApi.createGroup({
+        title: data.title,
+        participant_ids: data.participantIds,
+      });
+      await queryClient.invalidateQueries({ queryKey: ['conversations'] });
+      navigate(APP_ROUTES.chatConversation(conversation.id));
+    } catch (error) {
+      toast.error(extractApiError(error, 'Failed to create group'));
+      throw error;
+    }
   };
 
   const handleConversationMenuMarkAsRead = async (peerUserId: string) => {
@@ -297,12 +327,17 @@ export default function ChatLayout() {
   };
 
   const getConversationLabel = (peerUserId: string) => {
-    const conversation = contacts.find((item) => item.peer_user.id === peerUserId);
-    if (conversation?.peer_user.is_ghost) {
+    const conversation = contacts.find(
+      (item) => item.conversation_id === peerUserId || item.id === peerUserId
+    );
+    if (conversation?.type === 'group') {
+      return conversation.title || 'Group chat';
+    }
+    if (conversation?.peer_user?.is_ghost) {
       return 'Ghost chat';
     }
 
-    return conversation?.peer_user.display_name || conversation?.peer_user.username || peerUserId;
+    return conversation?.peer_user?.display_name || conversation?.peer_user?.username || peerUserId;
   };
 
   const getCallHistoryLabel = (peerUserId: string) => {
@@ -416,7 +451,7 @@ export default function ChatLayout() {
           const result = await clearConversation(pendingDestructiveAction.peerUserId);
 
           if (selectedUser === pendingDestructiveAction.peerUserId && selectedThreadRootId) {
-            navigate(APP_ROUTES.chatPeer(pendingDestructiveAction.peerUserId));
+            navigate(APP_ROUTES.chatConversation(pendingDestructiveAction.peerUserId));
           }
 
           toast.success(
@@ -545,6 +580,17 @@ export default function ChatLayout() {
         onConfirm={handleConfirmDestructiveAction}
       />
 
+      {selectedConversation?.type === 'group' ? (
+        <GroupInfoPanel
+          open={isGroupInfoOpen}
+          onOpenChange={setIsGroupInfoOpen}
+          conversation={selectedConversation}
+          currentUserId={userId}
+          contacts={contacts}
+          onExitConversation={closeActiveConversation}
+        />
+      ) : null}
+
       <ChatSidebar
         profile={profile}
         userEmail={userEmail}
@@ -567,14 +613,14 @@ export default function ChatLayout() {
         onSidebarViewChange={setSidebarView}
         onLoadMoreCallHistory={() => void fetchNextCallHistoryPage()}
         onClearAllCallHistory={handleRequestClearAllCallHistory}
-        onSelectSearchUser={(id) => navigate(APP_ROUTES.chatPeer(id))}
-        onSelectConversation={(peerUserId) => {
-          navigate(APP_ROUTES.chatPeer(peerUserId));
-          resetConversationUnreadCount(peerUserId);
+        onCreateGroup={handleCreateGroup}
+        onSelectSearchUser={(id) => void openDmConversationForUser(id)}
+        onSelectConversation={(conversationId) => {
+          navigate(APP_ROUTES.chatConversation(conversationId));
+          resetConversationUnreadCount(conversationId);
         }}
         onSelectCallHistoryPeer={(peerUserId) => {
-          navigate(APP_ROUTES.chatPeer(peerUserId));
-          resetConversationUnreadCount(peerUserId);
+          void openDmConversationForUser(peerUserId);
         }}
         onOpenConversationMenu={openConversationMenu}
         onOpenConversationMenuAtPoint={openConversationMenuAtPoint}
@@ -591,62 +637,76 @@ export default function ChatLayout() {
         {selectedUser ? (
           <>
             <ChatHeader
-              selectedUser={selectedUser}
+              selectedUser={selectedPeerUserId || ''}
               displaySelectedUser={displaySelectedUser}
               selectedConversationUserAvatarUrl={selectedConversationUser?.avatar?.url}
               isTyping={isTyping}
-              isOnline={onlineUsers?.includes(selectedUser) || false}
+              isOnline={!!selectedPeerUserId && (onlineUsers?.includes(selectedPeerUserId) || false)}
               isGhost={isSelectedConversationGhost}
+              isGroup={selectedConversation?.type === 'group'}
               isPingAccepted={isPingAccepted}
               pingStatus={pingStatus}
               isSendingPing={isSendingPing}
-              canPing={!selectedUserSummary || selectedUserSummary.can_ping}
-              canCall={isPingAccepted && selectedUser !== userId}
+              canPing={!!selectedPeerUserId && (!selectedUserSummary || selectedUserSummary.can_ping !== false)}
+              canCall={!!selectedPeerUserId && isPingAccepted && selectedPeerUserId !== userId}
               isCallBusy={isCallBusy}
               onCloseConversation={closeActiveConversation}
-              onOpenProfile={() => navigate(APP_ROUTES.profile(selectedUser))}
-              onSendPing={() => sendPing(selectedUser)}
+              onOpenProfile={() => {
+                if (selectedPeerUserId) {
+                  navigate(APP_ROUTES.profile(selectedPeerUserId));
+                }
+              }}
+              onOpenGroupInfo={() => setIsGroupInfoOpen(true)}
+              onSendPing={() => {
+                if (selectedPeerUserId) {
+                  sendPing(selectedPeerUserId);
+                }
+              }}
               onStartAudioCall={() =>
-                void startCall({
-                  peerUserId: selectedUser,
-                  type: 'audio',
-                  peerUser: {
-                    id: selectedUser,
-                    username: selectedConversationUser?.username || selectedUserSummary?.username || '',
-                    display_name:
-                      selectedConversationUser?.display_name ||
-                      selectedUserSummary?.display_name ||
-                      displaySelectedUser ||
-                      null,
-                    avatar: selectedConversationUser?.avatar || selectedUserSummary?.avatar || null,
-                    is_online:
-                      onlineUsers?.includes(selectedUser) ||
-                      selectedConversationUser?.is_online ||
-                      selectedUserSummary?.is_online ||
-                      false,
-                  },
-                })
+                selectedPeerUserId
+                  ? void startCall({
+                      peerUserId: selectedPeerUserId,
+                      type: 'audio',
+                      peerUser: {
+                        id: selectedPeerUserId,
+                        username: selectedConversationUser?.username || selectedUserSummary?.username || '',
+                        display_name:
+                          selectedConversationUser?.display_name ||
+                          selectedUserSummary?.display_name ||
+                          displaySelectedUser ||
+                          null,
+                        avatar: selectedConversationUser?.avatar || selectedUserSummary?.avatar || null,
+                        is_online:
+                          onlineUsers?.includes(selectedPeerUserId) ||
+                          selectedConversationUser?.is_online ||
+                          selectedUserSummary?.is_online ||
+                          false,
+                      },
+                    })
+                  : undefined
               }
               onStartVideoCall={() =>
-                void startCall({
-                  peerUserId: selectedUser,
-                  type: 'video',
-                  peerUser: {
-                    id: selectedUser,
-                    username: selectedConversationUser?.username || selectedUserSummary?.username || '',
-                    display_name:
-                      selectedConversationUser?.display_name ||
-                      selectedUserSummary?.display_name ||
-                      displaySelectedUser ||
-                      null,
-                    avatar: selectedConversationUser?.avatar || selectedUserSummary?.avatar || null,
-                    is_online:
-                      onlineUsers?.includes(selectedUser) ||
-                      selectedConversationUser?.is_online ||
-                      selectedUserSummary?.is_online ||
-                      false,
-                  },
-                })
+                selectedPeerUserId
+                  ? void startCall({
+                      peerUserId: selectedPeerUserId,
+                      type: 'video',
+                      peerUser: {
+                        id: selectedPeerUserId,
+                        username: selectedConversationUser?.username || selectedUserSummary?.username || '',
+                        display_name:
+                          selectedConversationUser?.display_name ||
+                          selectedUserSummary?.display_name ||
+                          displaySelectedUser ||
+                          null,
+                        avatar: selectedConversationUser?.avatar || selectedUserSummary?.avatar || null,
+                        is_online:
+                          onlineUsers?.includes(selectedPeerUserId) ||
+                          selectedConversationUser?.is_online ||
+                          selectedUserSummary?.is_online ||
+                          false,
+                      },
+                    })
+                  : undefined
               }
             />
 
@@ -766,10 +826,18 @@ export default function ChatLayout() {
                 isAcceptingPing={isAcceptingPing}
                 isDecliningPing={isDecliningPing}
                 isSendingPing={isSendingPing}
-                canSendPing={!isSendingPing && !(selectedUserSummary && !selectedUserSummary.can_ping)}
+                canSendPing={
+                  !!selectedPeerUserId &&
+                  !isSendingPing &&
+                  !(selectedUserSummary && selectedUserSummary.can_ping === false)
+                }
                 onAcceptPing={(pingId) => acceptPing(pingId)}
                 onDeclinePing={(pingId) => declinePing(pingId)}
-                onSendPing={() => sendPing(selectedUser)}
+                onSendPing={() => {
+                  if (selectedPeerUserId) {
+                    sendPing(selectedPeerUserId);
+                  }
+                }}
               />
             )}
           </>
