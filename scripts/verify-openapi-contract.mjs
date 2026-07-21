@@ -32,7 +32,7 @@ const operationCount = Object.values(spec.paths).reduce(
   0
 );
 
-assert.equal(operationCount, 54, 'Unexpected number of OpenAPI operations');
+assert.equal(operationCount, 68, 'Unexpected number of OpenAPI operations');
 
 assert.equal(
   getJsonResponseRef('get', '/auth/passkeys', '200'),
@@ -77,7 +77,7 @@ assert.equal(
 
 assert.deepEqual(
   getSchema('MessageDoc').properties.type.enum,
-  ['text', 'media', 'file']
+  ['text', 'media', 'file', 'call']
 );
 assert.deepEqual(
   getSchema('Body_upload_media_messages_media_post').properties.type.enum,
@@ -93,7 +93,7 @@ assert.deepEqual(
 );
 assert.deepEqual(
   getSchema('ReplyPreview').properties.type.enum,
-  ['text', 'media', 'file']
+  ['text', 'media', 'file', 'call']
 );
 assert.deepEqual(
   getSchema('ReplyPreview').properties.media_kind.anyOf[0].enum,

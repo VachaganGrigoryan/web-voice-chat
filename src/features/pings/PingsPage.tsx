@@ -7,8 +7,11 @@ import { APP_ROUTES, isPingsTab, PingsTab } from '@/app/routes';
 import { PanelPageLayout, PanelSection } from '@/components/panel/PanelPageLayout';
 import { usePings } from '@/hooks/usePings';
 import { PingItem } from '@/api/types';
+import { conversationsApi } from '@/api/endpoints';
+import { extractApiError } from '@/api/errors';
 import { cn } from '@/lib/utils';
 import { useAppNavigation } from '@/navigation/appNavigation';
+import { toast } from 'sonner';
 import {
   Bell,
   Check,
@@ -207,8 +210,13 @@ export default function PingsPage() {
     navigate(APP_ROUTES.pingsTab(value));
   };
 
-  const openChat = (userId: string) => {
-    navigate(APP_ROUTES.chatPeer(userId));
+  const openChat = async (userId: string) => {
+    try {
+      const conversation = await conversationsApi.createOrGetDm(userId);
+      navigate(APP_ROUTES.chatConversation(conversation.id));
+    } catch (error) {
+      toast.error(extractApiError(error, 'Failed to open chat'));
+    }
   };
 
   return (

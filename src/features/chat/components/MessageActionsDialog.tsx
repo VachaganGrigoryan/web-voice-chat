@@ -387,8 +387,6 @@ function MessageDetailsPanel({
   const timingFields: DetailFieldConfig[] = [
     { label: 'Created', value: formatDateValue(message.createdAt) },
     { label: 'Updated', value: formatDateValue(message.updatedAt) },
-    { label: 'Delivered', value: formatDateValue(message.deliveredAt) },
-    { label: 'Read', value: formatDateValue(message.readAt) },
     { label: 'Edited', value: formatDateValue(message.editedAt) },
     { label: 'Deleted', value: formatDateValue(message.deletedAt) },
   ];
@@ -407,7 +405,11 @@ function MessageDetailsPanel({
     { label: 'Message ID', value: message.id, mono: true, fullWidth: true },
     { label: 'Conversation ID', value: message.chatId, mono: true, fullWidth: true },
     { label: 'Sender ID', value: message.senderId, mono: true, fullWidth: true },
-    { label: 'Receiver ID', value: message.receiverId, mono: true, fullWidth: true },
+    {
+      label: 'Receipts',
+      value: `${message.raw.receipt_summary.read_count}/${message.raw.receipt_summary.recipient_count} read, ${message.raw.receipt_summary.delivered_count}/${message.raw.receipt_summary.recipient_count} delivered`,
+      fullWidth: true,
+    },
     { label: 'Client Batch ID', value: message.clientBatchId || '—', mono: true, fullWidth: true },
   ];
 

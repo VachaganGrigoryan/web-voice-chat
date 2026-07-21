@@ -20,20 +20,17 @@ export type MessageKind =
   | 'sticker'
   | 'unknown';
 
-export type MessageStatus = MessageDoc['status'] | 'sending' | 'failed';
+export type MessageStatus = 'sent' | 'delivered' | 'read' | 'sending' | 'failed';
 
 export interface BaseMessage {
   id: string;
   raw: MessageDoc;
   chatId: string;
   senderId: string;
-  receiverId: string;
   createdAt: string;
   updatedAt?: string;
   editedAt?: string;
   deletedAt?: string;
-  deliveredAt?: string;
-  readAt?: string;
   kind: MessageKind;
   status: MessageStatus;
   isOwn: boolean;

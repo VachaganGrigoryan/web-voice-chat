@@ -6,23 +6,21 @@ import { getMessageTypeLabel, getPresentedMessageKind } from '@/features/chat/ut
 import { useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { MessageDeletedEvent, MessageDoc, MessageReactionsUpdate, ThreadSummary } from '@/api/types';
+import { resolveMessageContent } from '@/api/messageContent';
 import { socketClient } from './socketClient';
 import { useAuthStore } from '@/store/authStore';
 
 export type MessageStatusScope = 'main' | 'thread';
 
 interface MessageStatusPayloadBase {
-  status: 'sent' | 'delivered' | 'read';
+  status?: 'sent' | 'delivered' | 'read';
+  receipt_summary?: MessageDoc['receipt_summary'];
   conversation_id?: string;
   peer_user_id?: string;
   scope?: MessageStatusScope;
   thread_root_id?: string | null;
   /** Fallback timestamp used when status-specific timestamps are absent. */
   updated_at?: string;
-  /** Set when status is 'delivered'. */
-  delivered_at?: string | null;
-  /** Set when status is 'read'. */
-  read_at?: string | null;
   user_id?: string;
 }
 
@@ -54,6 +52,18 @@ export const useSocketStore = create<SocketState>((set) => ({
       typingUsers: { ...state.typingUsers, [userId]: isTyping },
     })),
 }));
+
+const buildLastMessagePreview = (message: MessageDoc) => {
+  const resolved = resolveMessageContent(message);
+  return {
+    id: message.id,
+    type: message.type,
+    text: message.is_deleted ? 'Message deleted' : resolved.text,
+    media: message.is_deleted ? null : resolved.media,
+    call: message.is_deleted ? null : resolved.call,
+    created_at: message.created_at,
+  };
+};
 
 // Sync socket events to store
 const setupSocketSync = () => {
@@ -102,13 +112,13 @@ const setupSocketSync = () => {
     });
 
     socket.on(EVENTS.SERVER_TYPING_START, (payload: any) => {
-      const from = payload.from || payload.sender_id;
-      if (from) setTypingUser(from, true);
+      const typingKey = payload.conversation_id || payload.from || payload.sender_id;
+      if (typingKey) setTypingUser(typingKey, true);
     });
 
     socket.on(EVENTS.SERVER_TYPING_STOP, (payload: any) => {
-      const from = payload.from || payload.sender_id;
-      if (from) setTypingUser(from, false);
+      const typingKey = payload.conversation_id || payload.from || payload.sender_id;
+      if (typingKey) setTypingUser(typingKey, false);
     });
   });
 };
@@ -230,19 +240,9 @@ const findCachedMessage = (
   return null;
 };
 
-const getPeerIdForConversation = (
-  queryClient: ReturnType<typeof useQueryClient>,
-  conversationId: string
-) => {
-  const conversationsData = queryClient.getQueryData<any>(['conversations']);
-  const conversations = conversationsData?.pages?.flatMap((page: any) => page.data || []) || [];
-  const conversation = conversations.find((item: any) => item?.conversation_id === conversationId);
-  return conversation?.peer_user?.id || null;
-};
-
 const updateConversationLastMessage = (
   queryClient: ReturnType<typeof useQueryClient>,
-  conversationPartnerId: string,
+  conversationId: string,
   message: MessageDoc,
   currentUserId?: string | null,
   selectedUser?: string | null
@@ -252,7 +252,9 @@ const updateConversationLastMessage = (
 
     const newPages = [...old.pages];
     const allConversations = newPages.flatMap((page) => page.data);
-    const existingConvIndex = allConversations.findIndex((conversation) => conversation.peer_user.id === conversationPartnerId);
+    const existingConvIndex = allConversations.findIndex(
+      (conversation) => conversation.conversation_id === conversationId
+    );
 
     if (existingConvIndex === -1) {
       return old;
@@ -261,18 +263,10 @@ const updateConversationLastMessage = (
     const conversation = allConversations[existingConvIndex];
     const updatedConversation = {
       ...conversation,
-      last_message: {
-        id: message.id,
-        type: message.type,
-        text: message.text,
-        media: message.media,
-        call: message.call,
-        status: message.status,
-        created_at: message.created_at,
-      },
+      last_message: buildLastMessagePreview(message),
       last_message_at: message.created_at,
       unread_count:
-        message.sender_id !== currentUserId && selectedUser !== conversationPartnerId
+        message.sender_id !== currentUserId && selectedUser !== conversationId
           ? (conversation.unread_count ?? 0) + 1
           : conversation.unread_count ?? 0,
     };
@@ -359,15 +353,7 @@ const updateConversationPreview = (
 
           return {
             ...conversation,
-            last_message: {
-              ...conversation.last_message,
-              type: message.type,
-              text: message.is_deleted ? 'Message deleted' : message.text,
-              media: message.is_deleted ? null : message.media,
-              call: message.is_deleted ? null : message.call,
-              status: message.status,
-              created_at: message.created_at,
-            },
+            last_message: buildLastMessagePreview(message),
             last_message_at: message.updated_at || conversation.last_message_at,
           };
         }),
@@ -392,10 +378,7 @@ const rebuildConversationPreview = (
         }
 
         changed = true;
-        const peerUserId = conversation.peer_user?.id;
-        const messageHistory = peerUserId
-          ? queryClient.getQueryData<any>(['messages', peerUserId])
-          : null;
+        const messageHistory = queryClient.getQueryData<any>(['messages', conversationId]);
         const latestVisibleMessage =
           messageHistory?.pages
             ?.flatMap((historyPage: any) => historyPage.data || [])
@@ -403,17 +386,7 @@ const rebuildConversationPreview = (
 
         return {
           ...conversation,
-          last_message: latestVisibleMessage
-            ? {
-                id: latestVisibleMessage.id,
-                type: latestVisibleMessage.type,
-                text: latestVisibleMessage.is_deleted ? 'Message deleted' : latestVisibleMessage.text,
-                media: latestVisibleMessage.is_deleted ? null : latestVisibleMessage.media,
-                call: latestVisibleMessage.is_deleted ? null : latestVisibleMessage.call,
-                status: latestVisibleMessage.status,
-                created_at: latestVisibleMessage.created_at,
-              }
-            : null,
+          last_message: latestVisibleMessage ? buildLastMessagePreview(latestVisibleMessage) : null,
           last_message_at: latestVisibleMessage
             ? latestVisibleMessage.updated_at || latestVisibleMessage.created_at
             : null,
@@ -483,38 +456,6 @@ const updateThreadUnreadCount = (
   );
 };
 
-const updateConversationStatuses = (
-  queryClient: ReturnType<typeof useQueryClient>,
-  messageIds: string[],
-  status: MessageStatusPayload['status']
-) => {
-  const messageIdSet = new Set(messageIds);
-  queryClient.setQueryData(['conversations'], (old: any) => {
-    if (!old?.pages) return old;
-
-    let changed = false;
-    const pages = old.pages.map((page: any) => ({
-      ...page,
-      data: (page.data || []).map((conversation: any) => {
-        if (!conversation.last_message?.id || !messageIdSet.has(conversation.last_message.id)) {
-          return conversation;
-        }
-
-        changed = true;
-        return {
-          ...conversation,
-          last_message: {
-            ...conversation.last_message,
-            status,
-          },
-        };
-      }),
-    }));
-
-    return changed ? { ...old, pages } : old;
-  });
-};
-
 const getMessageStatusIds = (payload: MessageStatusPayload) => {
   const ids = new Set<string>();
   if (payload.message_id) {
@@ -538,21 +479,29 @@ export const applyMessageStatusUpdateToCaches = (
   }
 
   const messageIdSet = new Set(messageIds);
-  const statusAt =
-    payload.status === 'read'
-      ? payload.read_at || payload.updated_at || new Date().toISOString()
-      : payload.delivered_at || payload.updated_at || new Date().toISOString();
+  const updatedAt = payload.updated_at || new Date().toISOString();
 
-  const updateStatus = (message: MessageDoc): MessageDoc => ({
-    ...message,
-    status: payload.status,
-    delivered_at:
-      payload.status === 'delivered'
-        ? payload.delivered_at || payload.updated_at || message.delivered_at
-        : message.delivered_at,
-    read_at: payload.status === 'read' ? payload.read_at || payload.updated_at || message.read_at : message.read_at,
-    updated_at: statusAt,
-  });
+  const updateStatus = (message: MessageDoc): MessageDoc => {
+    const current = message.receipt_summary;
+    const fallback =
+      payload.status === 'read'
+        ? {
+            ...current,
+            delivered_count: current.recipient_count,
+            read_count: current.recipient_count,
+          }
+        : payload.status === 'delivered'
+          ? {
+              ...current,
+              delivered_count: current.recipient_count,
+            }
+          : current;
+    return {
+      ...message,
+      receipt_summary: payload.receipt_summary || fallback,
+      updated_at: updatedAt,
+    };
+  };
 
   updateMessageAcrossCacheGroup(
     queryClient,
@@ -571,8 +520,6 @@ export const applyMessageStatusUpdateToCaches = (
   if (payload.status === 'read' && payload.scope === 'thread' && payload.thread_root_id) {
     updateThreadUnreadCount(queryClient, payload.thread_root_id, () => 0);
   }
-
-  updateConversationStatuses(queryClient, messageIds, payload.status);
 
   return true;
 };
@@ -649,18 +596,6 @@ export const applyMessageDeletedEventToCaches = (
   const shouldMarkDeleted = payload.deleted_for_everyone || preserveContentForOwnerSoftDelete;
   const applyDeleteMutation = (message: MessageDoc) => ({
     ...message,
-    text:
-      preserveContentForOwnerSoftDelete
-        ? message.text
-        : payload.deleted_for_everyone
-          ? null
-          : message.text,
-    media:
-      preserveContentForOwnerSoftDelete
-        ? message.media
-        : payload.deleted_media
-          ? null
-          : message.media,
     is_deleted: shouldMarkDeleted ? true : message.is_deleted,
     deleted_at: shouldMarkDeleted ? updatedAt : message.deleted_at,
     edited_at: shouldMarkDeleted && !preserveContentForOwnerSoftDelete ? null : message.edited_at,
@@ -718,7 +653,7 @@ const routeIncomingThreadMessage = (
     queryClient,
     message.conversation_id,
     message.created_at,
-    message.sender_id !== currentUserId && selectedUser !== message.sender_id ? 1 : 0
+    message.sender_id !== currentUserId && selectedUser !== message.conversation_id ? 1 : 0
   );
 };
 
@@ -728,21 +663,18 @@ const routeIncomingMainChatMessage = (
   currentUserId?: string | null,
   selectedUser?: string | null
 ) => {
-  const conversationPartnerId = message.sender_id === currentUserId
-    ? message.receiver_id
-    : message.sender_id;
-
   queryClient.setQueryData(
-    ['messages', conversationPartnerId],
+    ['messages', message.conversation_id],
     (old: any) => prependMessageToMessageCache(old, message)
   );
 
-  const peerId = getPeerIdForConversation(queryClient, message.conversation_id);
-  if (peerId) {
-    updateConversationLastMessage(queryClient, peerId, message, currentUserId, selectedUser);
-  } else {
-    queryClient.invalidateQueries({ queryKey: ['conversations'] });
-  }
+  updateConversationLastMessage(
+    queryClient,
+    message.conversation_id,
+    message,
+    currentUserId,
+    selectedUser
+  );
 };
 
 const extractThreadReplyEvent = (
@@ -793,12 +725,12 @@ export const useTypingIndicator = (userId?: string) => {
   
   const isTyping = userId ? !!typingUsers[userId] : false;
   
-  const startTyping = (receiverId: string) => {
-    socket?.emit(EVENTS.CLIENT_TYPING_START, { to: receiverId });
+  const startTyping = (conversationId: string) => {
+    socket?.emit(EVENTS.CLIENT_TYPING_START, { conversation_id: conversationId });
   };
 
-  const stopTyping = (receiverId: string) => {
-    socket?.emit(EVENTS.CLIENT_TYPING_STOP, { to: receiverId });
+  const stopTyping = (conversationId: string) => {
+    socket?.emit(EVENTS.CLIENT_TYPING_STOP, { conversation_id: conversationId });
   };
 
   return { isTyping, typingUsers, startTyping, stopTyping };
@@ -835,8 +767,11 @@ export const useRealtimeMessages = (
           selectedUser
         );
 
-        if (!alreadyCached && message.receiver_id === currentUserId) {
-          socket.emit(EVENTS.MESSAGE_DELIVERED, { message_id: message.id });
+        if (!alreadyCached && message.sender_id !== currentUserId) {
+          socket.emit(EVENTS.MESSAGE_DELIVERED, {
+            conversation_id: message.conversation_id,
+            message_id: message.id,
+          });
         }
 
         return;
@@ -844,8 +779,11 @@ export const useRealtimeMessages = (
 
       routeIncomingMainChatMessage(queryClient, message, currentUserId, selectedUser);
 
-      if (message.receiver_id === currentUserId) {
-        socket.emit(EVENTS.MESSAGE_DELIVERED, { message_id: message.id });
+      if (message.sender_id !== currentUserId) {
+        socket.emit(EVENTS.MESSAGE_DELIVERED, {
+          conversation_id: message.conversation_id,
+          message_id: message.id,
+        });
         
         if (document.hidden || message.sender_id !== selectedUser) {
           // Try to find sender name from conversations
@@ -854,30 +792,37 @@ export const useRealtimeMessages = (
           
           if (conversationsData?.pages) {
             const allConversations = conversationsData.pages.flatMap((p: any) => p.data);
-            const conv = allConversations.find((c: any) => c.peer_user.id === message.sender_id);
+            const conv = allConversations.find(
+              (c: any) => c.conversation_id === message.conversation_id
+            );
             if (conv) {
-              senderName = conv.peer_user.display_name || conv.peer_user.username || message.sender_id;
+              senderName =
+                conv.type === 'group'
+                  ? conv.title || 'Group chat'
+                  : conv.peer_user?.display_name || conv.peer_user?.username || message.sender_id;
             }
           }
           
           const title = senderName ? `New message from ${senderName}` : 'New Message';
-          const presentedKind = getPresentedMessageKind(message.type, message.media?.kind);
+          // Read the body through the decrypt/normalize boundary (E2EE-ready).
+          const resolved = resolveMessageContent(message);
+          const presentedKind = getPresentedMessageKind(message.type, resolved.media?.kind);
           const body =
-            message.type === 'call' && message.call
+            message.type === 'call' && resolved.call
               ? getCallSummaryText({
-                  direction: getCallDirectionFromMeta(message.call, currentUserId),
-                  type: message.call.type,
-                  status: message.call.status,
-                  durationMs: message.call.duration_ms,
+                  direction: getCallDirectionFromMeta(resolved.call, currentUserId),
+                  type: resolved.call.type,
+                  status: resolved.call.status,
+                  durationMs: resolved.call.duration_ms,
                 })
-              : message.text?.trim() ||
-                (presentedKind === 'audio' && message.media?.kind === 'voice'
+              : resolved.text?.trim() ||
+                (presentedKind === 'audio' && resolved.media?.kind === 'voice'
                   ? '🎤 Voice message'
-                  : presentedKind === 'audio' && message.media?.kind === 'audio'
+                  : presentedKind === 'audio' && resolved.media?.kind === 'audio'
                     ? '🎵 Audio'
                     : presentedKind === 'file'
                       ? '📎 File'
-                      : getMessageTypeLabel(message.type, message.media?.kind));
+                      : getMessageTypeLabel(message.type, resolved.media?.kind));
           sendNotification(title, body);
         }
       }
@@ -933,8 +878,11 @@ export const useRealtimeMessages = (
         updateThreadSummaryCaches(queryClient, summary);
       }
 
-      if (!alreadyCached && message.receiver_id === currentUserId) {
-        socket.emit(EVENTS.MESSAGE_DELIVERED, { message_id: message.id });
+      if (!alreadyCached && message.sender_id !== currentUserId) {
+        socket.emit(EVENTS.MESSAGE_DELIVERED, {
+          conversation_id: message.conversation_id,
+          message_id: message.id,
+        });
       }
     };
 

@@ -1,6 +1,7 @@
-import { type MouseEvent as ReactMouseEvent } from 'react';
+import { useMemo, useState, type MouseEvent as ReactMouseEvent } from 'react';
 import {
   Bell,
+  Check,
   Image as ImageIcon,
   Loader2,
   LogOut,
@@ -9,11 +10,21 @@ import {
   Music,
   Paperclip,
   Phone,
+  Users,
   Video,
 } from 'lucide-react';
 import { CallHistoryItem, Conversation, User } from '@/api/types';
 import { Button } from '@/components/ui/Button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/Avatar';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/Dialog';
+import { Input } from '@/components/ui/Input';
 import { ProfileTriggerButton } from '@/features/chat/components/ProfileTriggerButton';
 import { UserSearch } from '@/features/discovery/UserSearch';
 import { cn } from '@/lib/utils';
@@ -49,6 +60,7 @@ interface ChatSidebarProps {
   onSidebarViewChange: (view: SidebarView) => void;
   onLoadMoreCallHistory: () => void;
   onClearAllCallHistory: () => void;
+  onCreateGroup: (data: { title: string; participantIds: string[] }) => Promise<void>;
   onSelectSearchUser: (peerUserId: string) => void;
   onSelectConversation: (peerUserId: string) => void;
   onSelectCallHistoryPeer: (peerUserId: string) => void;
@@ -72,7 +84,16 @@ function formatConversationTimestamp(value: string | null) {
   return isSameLocalDay(value, new Date()) ? formatMessageTime(value) : formatMessageDay(value);
 }
 
-function getConversationPeerLabel(peer: Conversation['peer_user']) {
+function getConversationLabel(conversation: Conversation) {
+  if (conversation.type === 'group') {
+    return conversation.title || 'Group chat';
+  }
+
+  const peer = conversation.peer_user;
+  if (!peer) {
+    return 'Conversation';
+  }
+
   if (peer.is_ghost) {
     return 'Ghost chat';
   }
@@ -96,7 +117,7 @@ function PreviewIcon({ icon: Icon, label }: { icon: typeof Music; label: string 
 function getConversationPreview(conversation: Conversation, currentUserId: string | null) {
   const lastMessage = conversation.last_message;
   if (!lastMessage) {
-    return conversation.peer_user.is_ghost ? 'Send a ping to reconnect' : 'Click to chat';
+    return conversation.peer_user?.is_ghost ? 'Send a ping to reconnect' : 'Click to chat';
   }
 
   if (lastMessage.type === 'call' && lastMessage.call) {
@@ -106,6 +127,10 @@ function getConversationPreview(conversation: Conversation, currentUserId: strin
       status: lastMessage.call.status,
       durationMs: lastMessage.call.duration_ms,
     });
+  }
+
+  if (lastMessage.type === 'system') {
+    return shortenMessageText(lastMessage.text);
   }
 
   switch (getPresentedMessageKind(lastMessage.type, lastMessage.media?.kind)) {
@@ -244,7 +269,10 @@ function ConversationListItem({
   onOpenMenu: (event: ReactMouseEvent<HTMLElement>) => void;
   onOpenMenuAtPoint: (event: ReactMouseEvent<HTMLElement>) => void;
 }) {
-  const peerLabel = getConversationPeerLabel(conversation.peer_user);
+  const conversationLabel = getConversationLabel(conversation);
+  const avatarUrl = conversation.peer_user?.avatar?.url;
+  const isOnline = conversation.type === 'dm' && !!conversation.peer_user?.is_online;
+  const isGhost = !!conversation.peer_user?.is_ghost;
 
   return (
     <div
@@ -267,12 +295,12 @@ function ConversationListItem({
       >
         <div className="relative shrink-0">
           <Avatar className="h-10 w-10 border border-border/60 bg-background">
-            {conversation.peer_user.avatar ? <AvatarImage src={conversation.peer_user.avatar.url} /> : null}
+            {avatarUrl ? <AvatarImage src={avatarUrl} /> : null}
             <AvatarFallback>
-              {(peerLabel[0] || '?').toUpperCase()}
+              {(conversationLabel[0] || '?').toUpperCase()}
             </AvatarFallback>
           </Avatar>
-          {conversation.peer_user.is_online ? (
+          {isOnline ? (
             <span className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full bg-green-500 ring-2 ring-background" />
           ) : null}
         </div>
@@ -284,9 +312,9 @@ function ConversationListItem({
                 conversation.unread_count > 0 ? 'font-semibold text-foreground' : 'font-medium text-foreground/90'
               )}
             >
-              {peerLabel}
+              {conversationLabel}
             </span>
-            {conversation.peer_user.is_ghost ? (
+            {isGhost ? (
               <span className="shrink-0 rounded-full border border-border/70 bg-muted/60 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
                 Ghost
               </span>
@@ -359,6 +387,7 @@ export function ChatSidebar({
   onSidebarViewChange,
   onLoadMoreCallHistory,
   onClearAllCallHistory,
+  onCreateGroup,
   onSelectSearchUser,
   onSelectConversation,
   onSelectCallHistoryPeer,
@@ -367,6 +396,56 @@ export function ChatSidebar({
   onOpenCallHistoryMenu,
   onOpenCallHistoryMenuAtPoint,
 }: ChatSidebarProps) {
+  const [isGroupDialogOpen, setIsGroupDialogOpen] = useState(false);
+  const [groupTitle, setGroupTitle] = useState('');
+  const [selectedGroupMemberIds, setSelectedGroupMemberIds] = useState<string[]>([]);
+  const [isCreatingGroup, setIsCreatingGroup] = useState(false);
+  const groupCandidates = useMemo(
+    () =>
+      contacts
+        .filter(
+          (conversation) =>
+            conversation.type === 'dm' &&
+            conversation.peer_user &&
+            !conversation.peer_user.is_ghost &&
+            conversation.peer_user.id !== currentUserId
+        )
+        .map((conversation) => conversation.peer_user!)
+        .filter(
+          (peer, index, peers) => peers.findIndex((candidate) => candidate.id === peer.id) === index
+        ),
+    [contacts, currentUserId]
+  );
+
+  const toggleGroupMember = (userId: string) => {
+    setSelectedGroupMemberIds((current) =>
+      current.includes(userId)
+        ? current.filter((selectedId) => selectedId !== userId)
+        : [...current, userId]
+    );
+  };
+
+  const closeGroupDialog = () => {
+    setIsGroupDialogOpen(false);
+    setGroupTitle('');
+    setSelectedGroupMemberIds([]);
+  };
+
+  const submitGroup = async () => {
+    const title = groupTitle.trim();
+    if (!title || selectedGroupMemberIds.length === 0 || isCreatingGroup) {
+      return;
+    }
+
+    setIsCreatingGroup(true);
+    try {
+      await onCreateGroup({ title, participantIds: selectedGroupMemberIds });
+      closeGroupDialog();
+    } finally {
+      setIsCreatingGroup(false);
+    }
+  };
+
   return (
     <div
       className={cn(
@@ -391,11 +470,98 @@ export function ChatSidebar({
                 <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-destructive" />
               ) : null}
             </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setIsGroupDialogOpen(true)}
+              title="New group"
+              aria-label="New group"
+            >
+              <Users className="h-4 w-4" />
+            </Button>
             <Button variant="ghost" size="icon" onClick={onLogout}>
               <LogOut className="h-4 w-4" />
             </Button>
           </div>
         </div>
+
+        <Dialog open={isGroupDialogOpen} onOpenChange={(open) => (open ? setIsGroupDialogOpen(true) : closeGroupDialog())}>
+          <DialogContent className="max-w-md rounded-2xl p-5">
+            <DialogHeader>
+              <DialogTitle>New group</DialogTitle>
+              <DialogDescription>Select members from existing chats.</DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-4">
+              <Input
+                value={groupTitle}
+                onChange={(event) => setGroupTitle(event.target.value)}
+                placeholder="Group title"
+                maxLength={80}
+              />
+
+              <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
+                {groupCandidates.length === 0 ? (
+                  <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
+                    No available contacts
+                  </div>
+                ) : (
+                  groupCandidates.map((peer) => {
+                    const isSelected = selectedGroupMemberIds.includes(peer.id);
+                    const label = peer.display_name || peer.username || peer.id;
+                    return (
+                      <button
+                        key={peer.id}
+                        type="button"
+                        onClick={() => toggleGroupMember(peer.id)}
+                        className={cn(
+                          'flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-left transition-colors',
+                          isSelected
+                            ? 'border-primary/40 bg-primary/5'
+                            : 'border-border bg-background hover:bg-muted/50'
+                        )}
+                      >
+                        <Avatar className="h-9 w-9 border">
+                          {peer.avatar ? <AvatarImage src={peer.avatar.url} /> : null}
+                          <AvatarFallback>{(label[0] || '?').toUpperCase()}</AvatarFallback>
+                        </Avatar>
+                        <span className="min-w-0 flex-1 truncate text-sm font-medium">
+                          {label}
+                        </span>
+                        {isSelected ? <Check className="h-4 w-4 text-primary" /> : null}
+                      </button>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={closeGroupDialog}
+                disabled={isCreatingGroup}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                onClick={() => void submitGroup()}
+                disabled={!groupTitle.trim() || selectedGroupMemberIds.length === 0 || isCreatingGroup}
+              >
+                {isCreatingGroup ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Creating
+                  </>
+                ) : (
+                  'Create'
+                )}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         <div className="flex min-h-0 flex-1 flex-col">
           <div className="shrink-0 px-4 pt-4">
@@ -471,15 +637,17 @@ export function ChatSidebar({
                     <ConversationListItem
                       key={conversation.conversation_id}
                       conversation={conversation}
-                      isSelected={selectedUser === conversation.peer_user.id}
-                      isCurrentUserConversation={conversation.peer_user.id === currentUserId}
+                      isSelected={selectedUser === conversation.conversation_id}
+                      isCurrentUserConversation={
+                        conversation.type === 'dm' && conversation.peer_user?.id === currentUserId
+                      }
                       currentUserId={currentUserId}
-                      isTyping={!!typingUsers[conversation.peer_user.id]}
-                      isMenuOpen={activeConversationMenuPeerUserId === conversation.peer_user.id}
-                      onSelect={() => onSelectConversation(conversation.peer_user.id)}
-                      onOpenMenu={(event) => onOpenConversationMenu(event, conversation.peer_user.id, conversation.unread_count ?? 0)}
+                      isTyping={!!typingUsers[conversation.conversation_id]}
+                      isMenuOpen={activeConversationMenuPeerUserId === conversation.conversation_id}
+                      onSelect={() => onSelectConversation(conversation.conversation_id)}
+                      onOpenMenu={(event) => onOpenConversationMenu(event, conversation.conversation_id, conversation.unread_count ?? 0)}
                       onOpenMenuAtPoint={(event) =>
-                        onOpenConversationMenuAtPoint(event, conversation.peer_user.id, conversation.unread_count ?? 0)
+                        onOpenConversationMenuAtPoint(event, conversation.conversation_id, conversation.unread_count ?? 0)
                       }
                     />
                   ))}

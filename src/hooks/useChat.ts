@@ -13,9 +13,10 @@ import {
   ReplyMode,
 } from '@/api/types';
 import { useAuthStore } from '@/store/authStore';
+import { resolveMessageContent } from '@/api/messageContent';
 
 interface BaseSendMediaInput {
-  receiver_id: string;
+  conversation_id: string;
   file: File;
   text?: string;
   duration_ms?: number;
@@ -37,14 +38,14 @@ export type SendMediaInput =
     });
 
 export interface SendTextInput {
-  receiver_id: string;
+  conversation_id: string;
   text: string;
   reply_mode?: ReplyMode | null;
   reply_to_message_id?: string;
 }
 
-const prependMessageToCache = (queryClient: ReturnType<typeof useQueryClient>, peerUserId: string, message: MessageDoc) => {
-  queryClient.setQueryData(['messages', peerUserId], (old: any) => {
+const prependMessageToCache = (queryClient: ReturnType<typeof useQueryClient>, conversationId: string, message: MessageDoc) => {
+  queryClient.setQueryData(['messages', conversationId], (old: any) => {
     if (!old) {
       return {
         pages: [{ data: [message], meta: { next_cursor: null, limit: 20, total: 1 }, success: true }],
@@ -112,10 +113,10 @@ const createEmptyInfiniteData = () => ({
 
 const clearConversationMessageCaches = (
   queryClient: ReturnType<typeof useQueryClient>,
-  peerUserId: string,
+  cacheConversationId: string,
   conversationId: string
 ) => {
-  queryClient.setQueryData(['messages', peerUserId], () => createEmptyInfiniteData());
+  queryClient.setQueryData(['messages', cacheConversationId], () => createEmptyInfiniteData());
 
   queryClient.setQueriesData({ queryKey: ['threadMessages'] }, (old: any) => {
     if (!old?.pages) return old;
@@ -172,15 +173,17 @@ const updateConversationPreview = (
 
           return {
             ...conversation,
-            last_message: {
-              ...conversation.last_message,
-              type: message.type,
-              text: message.is_deleted ? 'Message deleted' : message.text,
-              media: message.is_deleted ? null : message.media,
-              call: message.is_deleted ? null : message.call,
-              status: message.status,
-              created_at: message.created_at,
-            },
+            last_message: (() => {
+              const resolved = resolveMessageContent(message);
+              return {
+                ...conversation.last_message,
+                type: message.type,
+                text: message.is_deleted ? 'Message deleted' : resolved.text,
+                media: message.is_deleted ? null : resolved.media,
+                call: message.is_deleted ? null : resolved.call,
+                created_at: message.created_at,
+              };
+            })(),
             last_message_at: message.updated_at || conversation.last_message_at,
           };
         }),
@@ -323,10 +326,10 @@ const integrateCreatedMessage = (
   prependMessageToCache(queryClient, selectedUser, message);
 };
 
-const emitOutgoingMessage = (message: MessageDoc, type: string, selectedUser: string) => {
+const emitOutgoingMessage = (message: MessageDoc, type: string, conversationId: string) => {
   const { socket } = useSocketStore.getState();
   socket?.emit('send_message', {
-    to: selectedUser,
+    conversation_id: conversationId,
     message_id: message.id,
     type,
     reply_mode: message.reply_mode,
@@ -345,17 +348,17 @@ export const useConversations = () => {
   });
 };
 
-export const useThreadMessages = (threadRootId: string | null) => {
+export const useThreadMessages = (conversationId: string | null, threadRootId: string | null) => {
   return useInfiniteQuery({
-    queryKey: ['threadMessages', threadRootId],
+    queryKey: ['threadMessages', conversationId, threadRootId],
     queryFn: async () => {
-      if (!threadRootId) {
+      if (!conversationId || !threadRootId) {
         return toSinglePageResponse([], 0);
       }
-      return toSinglePageResponse(await messagesApi.getThreadMessages(threadRootId));
+      return toSinglePageResponse(await messagesApi.getThreadMessages(conversationId, threadRootId));
     },
     getNextPageParam: (lastPage) => lastPage.meta?.next_cursor,
-    enabled: !!threadRootId,
+    enabled: !!conversationId && !!threadRootId,
     initialPageParam: undefined,
   });
 };
@@ -435,7 +438,9 @@ export const useChat = (selectedUser: string | null = null, openThreadRootId: st
 
   const editMessageMutation = useMutation({
     mutationFn: ({ messageId, text }: { messageId: string; text: string }) =>
-      messagesApi.editMessage(messageId, text),
+      selectedUser
+        ? messagesApi.editMessage(selectedUser, messageId, text)
+        : Promise.reject(new Error('No conversation selected')),
     onSuccess: (updatedMessage) => {
       updateMessageAcrossCacheGroup(queryClient, 'messages', updatedMessage.id, () => updatedMessage);
       updateMessageAcrossCacheGroup(queryClient, 'threadMessages', updatedMessage.id, () => updatedMessage);
@@ -444,7 +449,10 @@ export const useChat = (selectedUser: string | null = null, openThreadRootId: st
   });
 
   const deleteMessageMutation = useMutation({
-    mutationFn: (messageId: string) => messagesApi.deleteMessage(messageId),
+    mutationFn: (messageId: string) =>
+      selectedUser
+        ? messagesApi.deleteMessage(selectedUser, messageId)
+        : Promise.reject(new Error('No conversation selected')),
     onSuccess: (deletedMessage) => {
       applyMessageDeletedEventToCaches(
         queryClient,
@@ -458,9 +466,9 @@ export const useChat = (selectedUser: string | null = null, openThreadRootId: st
   });
 
   const clearConversationMutation = useMutation({
-    mutationFn: (userId: string) => messagesApi.clearConversation(userId),
-    onSuccess: (result, userId) => {
-      clearConversationMessageCaches(queryClient, userId, result.conversation_id);
+    mutationFn: (conversationId: string) => messagesApi.clearConversation(conversationId),
+    onSuccess: (result, conversationId) => {
+      clearConversationMessageCaches(queryClient, conversationId, result.conversation_id);
 
       queryClient.setQueryData(['conversations'], (old: any) => {
         if (!old?.pages) return old;
@@ -471,7 +479,7 @@ export const useChat = (selectedUser: string | null = null, openThreadRootId: st
             ...page,
             data: page.data.map((conversation: any) =>
               conversation.conversation_id === result.conversation_id ||
-              conversation.peer_user?.id === userId
+              conversation.id === conversationId
                 ? { ...conversation, last_message: null, last_message_at: null, unread_count: 0 }
                 : conversation
             ),
@@ -482,9 +490,9 @@ export const useChat = (selectedUser: string | null = null, openThreadRootId: st
   });
 
   const deleteConversationMutation = useMutation({
-    mutationFn: (userId: string) => messagesApi.deleteConversation(userId),
-    onSuccess: (result, userId) => {
-      clearConversationMessageCaches(queryClient, userId, result.conversation_id);
+    mutationFn: (conversationId: string) => messagesApi.deleteConversation(conversationId),
+    onSuccess: (result, conversationId) => {
+      clearConversationMessageCaches(queryClient, conversationId, result.conversation_id);
 
       queryClient.setQueryData(['conversations'], (old: any) => {
         if (!old?.pages) return old;
@@ -496,7 +504,7 @@ export const useChat = (selectedUser: string | null = null, openThreadRootId: st
             data: page.data.filter(
               (conversation: any) =>
                 conversation.conversation_id !== result.conversation_id &&
-                conversation.peer_user?.id !== userId
+                conversation.id !== conversationId
             ),
           })),
         };
@@ -509,7 +517,9 @@ export const useChat = (selectedUser: string | null = null, openThreadRootId: st
 
   const toggleReactionMutation = useMutation({
     mutationFn: ({ messageId, emoji }: { messageId: string; emoji: string }) =>
-      messagesApi.toggleReaction(messageId, emoji),
+      selectedUser
+        ? messagesApi.toggleReaction(selectedUser, messageId, emoji)
+        : Promise.reject(new Error('No conversation selected')),
     onMutate: async ({ messageId, emoji }) => {
       if (!currentUserId) {
         return;
@@ -571,8 +581,8 @@ export const useChat = (selectedUser: string | null = null, openThreadRootId: st
     sendText: sendTextMutation.mutateAsync as (data: SendTextInput) => Promise<any>,
     editMessage: editMessageMutation.mutateAsync as (data: { messageId: string; text: string }) => Promise<any>,
     deleteMessage: deleteMessageMutation.mutateAsync as (messageId: string) => Promise<any>,
-    clearConversation: clearConversationMutation.mutateAsync as (userId: string) => Promise<ClearConversationResponse>,
-    deleteConversation: deleteConversationMutation.mutateAsync as (userId: string) => Promise<DeleteConversationResponse>,
+    clearConversation: clearConversationMutation.mutateAsync as (conversationId: string) => Promise<ClearConversationResponse>,
+    deleteConversation: deleteConversationMutation.mutateAsync as (conversationId: string) => Promise<DeleteConversationResponse>,
     toggleReaction: toggleReactionMutation.mutateAsync as (data: { messageId: string; emoji: string }) => Promise<any>,
     isSending: sendMessageMutation.isPending || sendTextMutation.isPending,
     isEditingMessage: editMessageMutation.isPending,

@@ -4,7 +4,6 @@ import type {
   OpenApiDiscoveryVia,
   OpenApiMediaKind,
   OpenApiMediaUploadType,
-  OpenApiMessageStatus,
   OpenApiMessageType,
   OpenApiPingStatus,
   OpenApiPreviewMediaKind,
@@ -163,15 +162,38 @@ export interface ThreadSummary {
   last_thread_reply_at: string | null;
 }
 
+export type EncryptionMode = 'none' | 'e2ee';
+export type ContentType = MessageType | 'system';
+
+export interface MessagePlaintext {
+  text: string | null;
+  media: MediaMeta | null;
+  call: CallMeta | null;
+}
+
+/**
+ * Encryption-ready message body envelope. When `encryption === 'none'` the body
+ * lives in `plaintext`; `ciphertext`/`envelope` are reserved for future E2EE.
+ */
+export interface MessageContent {
+  encryption: EncryptionMode;
+  type: ContentType;
+  plaintext: MessagePlaintext | null;
+  ciphertext: string | null;
+  envelope: Record<string, unknown> | null;
+}
+
 export interface MessageDoc {
   id: string;
   conversation_id: string;
   sender_id: string;
-  receiver_id: string;
   type: MessageType;
-  text: string | null;
-  media: MediaMeta | null;
-  call: CallMeta | null;
+  content?: MessageContent | null;
+  receipt_summary: {
+    recipient_count: number;
+    delivered_count: number;
+    read_count: number;
+  };
   reply_mode: ReplyMode | null;
   reply_to_message_id: string | null;
   thread_root_id: string | null;
@@ -181,12 +203,9 @@ export interface MessageDoc {
   thread_unread_count?: number;
   last_thread_reply_at: string | null;
   reactions: MessageReactionGroup[];
-  status: OpenApiMessageStatus;
   edited_at: string | null;
   is_deleted?: boolean;
   deleted_at?: string | null;
-  delivered_at: string | null;
-  read_at: string | null;
   client_batch_id?: string | null;
   created_at: string;
   updated_at: string;
@@ -253,20 +272,90 @@ export interface DeleteCallHistoryResponse {
   hidden_count: number;
 }
 
+export type ConversationType = 'dm' | 'group';
+
 export interface Conversation {
   conversation_id: string;
-  peer_user: UserSummary;
+  peer_user?: UserSummary | null;
   last_message: {
     id: string;
-    type: MessageType;
+    type: ContentType;
     text: string | null;
     media: MediaMeta | null;
     call: CallMeta | null;
-    status: OpenApiMessageStatus;
     created_at: string;
   } | null;
   last_message_at: string | null;
   unread_count: number;
+  /** First-class conversation entity fields (present from the /conversations inbox). */
+  id: string;
+  type: ConversationType;
+  encryption: EncryptionMode;
+  participant_ids: string[];
+  participant_users: UserSummary[];
+  created_by: string;
+  title: string | null;
+  last_message_preview: {
+    message_id: string;
+    sender_id: string;
+    type: ContentType;
+    text: string | null;
+    created_at: string;
+  } | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Lean conversation entity returned by POST /conversations (create-or-get DM). */
+export interface ConversationEntity {
+  id: string;
+  type: ConversationType;
+  encryption: EncryptionMode;
+  participant_ids: string[];
+  created_by: string;
+  title: string | null;
+  last_message_at: string | null;
+  last_message_preview: {
+    message_id: string;
+    sender_id: string;
+    type: ContentType;
+    text: string | null;
+    created_at: string;
+  } | null;
+  unread_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+// --- E2EE scaffolding (device + prekey distribution; no crypto yet) ---
+
+export interface DeviceView {
+  id: string;
+  user_id: string;
+  device_id: string;
+  name: string | null;
+  platform: string | null;
+  identity_public_key: string | null;
+  signing_public_key: string | null;
+  registration_id: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PreKeyInput {
+  key_id: number;
+  public_key: string;
+  signature?: string | null;
+  one_time: boolean;
+}
+
+export interface PreKeyBundle {
+  user_id: string;
+  device_id: string;
+  identity_public_key: string | null;
+  signing_public_key: string | null;
+  registration_id: number | null;
+  one_time_prekey: PreKeyInput | null;
 }
 
 export interface DiscoveredUser extends UserSummary {

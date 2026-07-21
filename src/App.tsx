@@ -53,8 +53,8 @@ export default function App() {
 
             <Route element={<ProtectedRoute />}>
               <Route path={APP_ROUTES.chat} element={<ChatLayout />} />
-              <Route path="/chat/:peerUserId" element={<ChatLayout />} />
-              <Route path="/chat/:peerUserId/thread/:rootMessageId" element={<ChatLayout />} />
+              <Route path="/chat/:conversationId" element={<ChatLayout />} />
+              <Route path="/chat/:conversationId/thread/:rootMessageId" element={<ChatLayout />} />
               <Route path={APP_ROUTES.pings} element={<Navigate to={APP_ROUTES.pingsTab('incoming')} replace />} />
               <Route path="/pings/:tab" element={<PingsPage />} />
               <Route path={APP_ROUTES.settings} element={<Navigate to={APP_ROUTES.settingsTab('profile')} replace />} />

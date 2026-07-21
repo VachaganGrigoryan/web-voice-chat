@@ -51,10 +51,10 @@ interface UseChatInteractionStateParams {
   isMobileViewport: boolean;
   mainImageGallery: MediaViewerImageItem[];
   threadImageGallery: MediaViewerImageItem[];
-  navigateToConversation: (peerId: string, threadRootId?: string | null) => void;
+  navigateToConversation: (conversationId: string, threadRootId?: string | null) => void;
   openThreadPanelInFullMode: () => void;
   sendText: (data: {
-    receiver_id: string;
+    conversation_id: string;
     text: string;
     reply_mode?: ComposerReplyTarget['mode'] | null;
     reply_to_message_id?: string;

@@ -24,9 +24,9 @@ export const APP_ROUTES = {
   auth: '/auth',
   legacyLogin: '/login',
   chat: '/chat',
-  chatPeer: (peerUserId: string) => `/chat/${peerUserId}`,
-  chatThread: (peerUserId: string, rootMessageId: string) =>
-    `/chat/${peerUserId}/thread/${rootMessageId}`,
+  chatConversation: (conversationId: string) => `/chat/${conversationId}`,
+  chatConversationThread: (conversationId: string, rootMessageId: string) =>
+    `/chat/${conversationId}/thread/${rootMessageId}`,
   pings: '/pings',
   pingsTab: (tab: PingsTab = 'incoming') => `/pings/${tab}`,
   settings: '/settings',
