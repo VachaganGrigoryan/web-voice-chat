@@ -19,6 +19,7 @@ interface ChatHeaderProps {
   isTyping: boolean;
   isOnline: boolean;
   isGhost?: boolean;
+  isGroup?: boolean;
   isPingAccepted: boolean;
   pingStatus: string;
   isSendingPing: boolean;
@@ -27,6 +28,7 @@ interface ChatHeaderProps {
   isCallBusy: boolean;
   onCloseConversation: () => void;
   onOpenProfile: () => void;
+  onOpenGroupInfo?: () => void;
   onSendPing: () => void;
   onStartAudioCall: () => void;
   onStartVideoCall: () => void;
@@ -39,6 +41,7 @@ export function ChatHeader({
   isTyping,
   isOnline,
   isGhost = false,
+  isGroup = false,
   isPingAccepted,
   pingStatus,
   isSendingPing,
@@ -47,6 +50,7 @@ export function ChatHeader({
   isCallBusy,
   onCloseConversation,
   onOpenProfile,
+  onOpenGroupInfo,
   onSendPing,
   onStartAudioCall,
   onStartVideoCall,
@@ -78,16 +82,16 @@ export function ChatHeader({
           }
           avatarUrl={selectedConversationUserAvatarUrl}
           fallback={(displaySelectedUser || '?')[0].toUpperCase()}
-          onClick={onOpenProfile}
-          disabled={!selectedUser || isGhost}
-          online={!isGhost && isOnline}
+          onClick={isGroup ? onOpenGroupInfo : onOpenProfile}
+          disabled={isGroup ? false : !selectedUser || isGhost}
+          online={!isGroup && !isGhost && isOnline}
           avatarClassName="h-9 w-9 border"
           className="max-w-full"
         />
       </div>
 
       <div className="flex items-center">
-        {isPingAccepted ? (
+        {isGroup ? null : isPingAccepted ? (
           <div className="flex items-center gap-2">
             <Button
               type="button"

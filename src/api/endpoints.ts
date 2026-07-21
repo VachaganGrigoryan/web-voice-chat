@@ -20,6 +20,7 @@ import {
   MessageDoc,
   MessageResponse,
   PaginatedResponse,
+  ParticipantView,
   PreKeyBundle,
   PreKeyInput,
   PasskeyAuthenticationOptionsPayload,
@@ -289,6 +290,74 @@ export const conversationsApi = {
     apiClient
       .post<SuccessResponse<Conversation>>('/conversations/groups', data)
       .then((res) => normalizeConversation(extractResponseData(res.data))),
+  listMembers: (conversationId: string) =>
+    apiClient
+      .get<SuccessResponse<ParticipantView[]>>(`/conversations/${conversationId}/members`)
+      .then((res) => extractResponseData(res.data)),
+  addMembers: (conversationId: string, participantIds: string[]) =>
+    apiClient
+      .post<SuccessResponse<ParticipantView[]>>(
+        `/conversations/${conversationId}/members`,
+        { participant_ids: participantIds }
+      )
+      .then((res) => extractResponseData(res.data)),
+  removeMember: (conversationId: string, memberUserId: string) =>
+    apiClient
+      .delete(`/conversations/${conversationId}/members/${memberUserId}`)
+      .then(() => undefined),
+  updateMemberRole: (
+    conversationId: string,
+    memberUserId: string,
+    role: 'admin' | 'member'
+  ) =>
+    apiClient
+      .patch<SuccessResponse<ParticipantView>>(
+        `/conversations/${conversationId}/members/${memberUserId}/role`,
+        { role }
+      )
+      .then((res) => extractResponseData(res.data)),
+  transferOwnership: (conversationId: string, userId: string) =>
+    apiClient
+      .post<SuccessResponse<ParticipantView[]>>(
+        `/conversations/${conversationId}/ownership`,
+        { user_id: userId }
+      )
+      .then((res) => extractResponseData(res.data)),
+  leaveGroup: (conversationId: string) =>
+    apiClient
+      .post(`/conversations/${conversationId}/leave`)
+      .then(() => undefined),
+  deleteGroup: (conversationId: string) =>
+    apiClient
+      .delete(`/conversations/groups/${conversationId}`)
+      .then(() => undefined),
+  updateGroup: (conversationId: string, data: { title: string }) =>
+    apiClient
+      .patch<SuccessResponse<Conversation>>(
+        `/conversations/groups/${conversationId}`,
+        data
+      )
+      .then((res) => normalizeConversation(extractResponseData(res.data))),
+  uploadGroupAvatar: (conversationId: string, formData: FormData) =>
+    apiClient
+      .patch<SuccessResponse<Conversation>>(
+        `/conversations/groups/${conversationId}/avatar`,
+        formData,
+        { headers: { 'Content-Type': 'multipart/form-data' } }
+      )
+      .then((res) => normalizeConversation(extractResponseData(res.data))),
+  deleteGroupAvatar: (conversationId: string) =>
+    apiClient
+      .delete<SuccessResponse<Conversation>>(
+        `/conversations/groups/${conversationId}/avatar`
+      )
+      .then((res) => normalizeConversation(extractResponseData(res.data))),
+  clearGroupForEveryone: (conversationId: string) =>
+    apiClient
+      .delete<SuccessResponse<ClearConversationResponse>>(
+        `/conversations/${conversationId}/messages/all`
+      )
+      .then((res) => extractResponseData(res.data)),
 };
 
 export const devicesApi = {

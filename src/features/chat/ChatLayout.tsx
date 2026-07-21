@@ -15,6 +15,7 @@ import { useChatAudioPlayerStore } from './media/players/audioPlayerStore';
 import { MediaViewer } from './media/MediaViewer';
 import { CallHistoryActionsMenu, CallHistoryMenuState } from './components/CallHistoryActionsMenu';
 import { ConfirmDestructiveActionDialog } from './components/ConfirmDestructiveActionDialog';
+import { GroupInfoPanel } from './components/GroupInfoPanel';
 import { MessageActionsDialog } from './components/MessageActionsDialog';
 import { ThreadPanel } from './components/ThreadPanel';
 import { ChatSidebar } from './components/ChatSidebar';
@@ -62,6 +63,7 @@ export default function ChatLayout() {
   const [sidebarView, setSidebarView] = useState<'chats' | 'calls'>('chats');
   const [callHistoryMenu, setCallHistoryMenu] = useState<CallHistoryMenuState | null>(null);
   const [pendingDestructiveAction, setPendingDestructiveAction] = useState<SidebarDestructiveAction | null>(null);
+  const [isGroupInfoOpen, setIsGroupInfoOpen] = useState(false);
 
   const {
     onlineUsers,
@@ -133,6 +135,7 @@ export default function ChatLayout() {
     pingStatus,
     isPingAccepted,
     selectedPeerUserId,
+    selectedConversation,
     selectedConversationUser,
     displaySelectedUser,
     isSelectedConversationGhost,
@@ -577,6 +580,17 @@ export default function ChatLayout() {
         onConfirm={handleConfirmDestructiveAction}
       />
 
+      {selectedConversation?.type === 'group' ? (
+        <GroupInfoPanel
+          open={isGroupInfoOpen}
+          onOpenChange={setIsGroupInfoOpen}
+          conversation={selectedConversation}
+          currentUserId={userId}
+          contacts={contacts}
+          onExitConversation={closeActiveConversation}
+        />
+      ) : null}
+
       <ChatSidebar
         profile={profile}
         userEmail={userEmail}
@@ -629,6 +643,7 @@ export default function ChatLayout() {
               isTyping={isTyping}
               isOnline={!!selectedPeerUserId && (onlineUsers?.includes(selectedPeerUserId) || false)}
               isGhost={isSelectedConversationGhost}
+              isGroup={selectedConversation?.type === 'group'}
               isPingAccepted={isPingAccepted}
               pingStatus={pingStatus}
               isSendingPing={isSendingPing}
@@ -641,6 +656,7 @@ export default function ChatLayout() {
                   navigate(APP_ROUTES.profile(selectedPeerUserId));
                 }
               }}
+              onOpenGroupInfo={() => setIsGroupInfoOpen(true)}
               onSendPing={() => {
                 if (selectedPeerUserId) {
                   sendPing(selectedPeerUserId);

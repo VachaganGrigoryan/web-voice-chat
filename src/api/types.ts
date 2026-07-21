@@ -274,6 +274,20 @@ export interface DeleteCallHistoryResponse {
 
 export type ConversationType = 'dm' | 'group';
 
+export type ParticipantRole = 'owner' | 'admin' | 'member';
+
+/** Group membership record returned by GET /conversations/{id}/members. */
+export interface ParticipantView {
+  conversation_id: string;
+  user_id: string;
+  role: ParticipantRole;
+  joined_at: string;
+  last_read_at: string | null;
+  last_read_message_id: string | null;
+  muted: boolean;
+  hidden: boolean;
+}
+
 export interface Conversation {
   conversation_id: string;
   peer_user?: UserSummary | null;
@@ -295,6 +309,7 @@ export interface Conversation {
   participant_users: UserSummary[];
   created_by: string;
   title: string | null;
+  image?: AvatarMeta | null;
   last_message_preview: {
     message_id: string;
     sender_id: string;

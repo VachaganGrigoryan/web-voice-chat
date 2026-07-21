@@ -890,6 +890,15 @@ export const useRealtimeMessages = (
       updateThreadSummaryCaches(queryClient, payload);
     };
 
+    const handleConversationHistoryCleared = (payload: { conversation_id: string }) => {
+      const conversationId = payload?.conversation_id;
+      if (!conversationId) return;
+      queryClient.invalidateQueries({ queryKey: ['messages', conversationId] });
+      queryClient.invalidateQueries({ queryKey: ['threadMessages', conversationId] });
+      queryClient.invalidateQueries({ queryKey: ['conversations'] });
+      queryClient.invalidateQueries({ queryKey: ['members', conversationId] });
+    };
+
     socket.on(EVENTS.RECEIVE_MESSAGE, handleReceiveMessage);
     socket.on(EVENTS.MESSAGE_STATUS, handleMessageStatus);
     socket.on(EVENTS.MESSAGE_EDITED, handleMessageEdited);
@@ -897,6 +906,7 @@ export const useRealtimeMessages = (
     socket.on(EVENTS.MESSAGE_REACTED, handleMessageReacted);
     socket.on(EVENTS.THREAD_REPLY_CREATED, handleThreadReplyCreated);
     socket.on(EVENTS.THREAD_SUMMARY_UPDATED, handleThreadSummaryUpdated);
+    socket.on(EVENTS.CONVERSATION_HISTORY_CLEARED, handleConversationHistoryCleared);
 
     return () => {
       socket.off(EVENTS.RECEIVE_MESSAGE, handleReceiveMessage);
@@ -906,6 +916,7 @@ export const useRealtimeMessages = (
       socket.off(EVENTS.MESSAGE_REACTED, handleMessageReacted);
       socket.off(EVENTS.THREAD_REPLY_CREATED, handleThreadReplyCreated);
       socket.off(EVENTS.THREAD_SUMMARY_UPDATED, handleThreadSummaryUpdated);
+      socket.off(EVENTS.CONVERSATION_HISTORY_CLEARED, handleConversationHistoryCleared);
     };
   }, [queryClient, currentUserId, socket, selectedUser, openThreadRootId]);
 };
