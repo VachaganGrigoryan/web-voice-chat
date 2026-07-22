@@ -40,6 +40,12 @@ export default function SettingsPage() {
     isUpdatingUsername,
     isUploadingAvatar,
     isDeletingAvatar,
+    updateStatus,
+    clearStatus,
+    isUpdatingStatus,
+    isClearingStatus,
+    updateNotificationPreferences,
+    isUpdatingNotificationPreferences,
   } = useProfile();
   const { mode, setMode, theme, setTheme, fontSize, setFontSize, density, setDensity } = useTheme();
   const soundEnabled = useNotificationSoundStore((state) => state.soundEnabled);
@@ -56,6 +62,14 @@ export default function SettingsPage() {
   const [username, setUsername] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [bio, setBio] = useState('');
+  const [pronouns, setPronouns] = useState('');
+  const [timezone, setTimezone] = useState('');
+  const [statusEmoji, setStatusEmoji] = useState('');
+  const [statusText, setStatusText] = useState('');
+  const [statusExpiresAt, setStatusExpiresAt] = useState('');
+  const [dndFrom, setDndFrom] = useState('');
+  const [dndTo, setDndTo] = useState('');
+  const [notificationKeywords, setNotificationKeywords] = useState('');
   const [isPrivate, setIsPrivate] = useState(false);
   const [discoveryEnabled, setDiscoveryEnabled] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -70,6 +84,14 @@ export default function SettingsPage() {
     setUsername(profile.username || '');
     setDisplayName(profile.display_name || '');
     setBio(profile.bio || '');
+    setPronouns(profile.pronouns || '');
+    setTimezone(profile.timezone || '');
+    setStatusEmoji(profile.status_emoji || '');
+    setStatusText(profile.status_text || '');
+    setStatusExpiresAt(profile.status_expires_at ? profile.status_expires_at.slice(0, 16) : '');
+    setDndFrom(profile.dnd_from || '');
+    setDndTo(profile.dnd_to || '');
+    setNotificationKeywords((profile.notification_keywords || []).join(', '));
     setIsPrivate(profile.is_private || false);
     setDiscoveryEnabled(profile.default_discovery_enabled ?? true);
   }, [profile]);
@@ -104,6 +126,8 @@ export default function SettingsPage() {
       await updateProfile({
         display_name: displayName,
         bio,
+        pronouns,
+        timezone,
         is_private: isPrivate,
         default_discovery_enabled: discoveryEnabled,
       });
@@ -142,6 +166,41 @@ export default function SettingsPage() {
       setError(message);
     } finally {
       event.target.value = '';
+    }
+  };
+
+  const handleUpdateStatus = async () => {
+    setError(null);
+    setSuccess(null);
+
+    try {
+      await updateStatus({
+        status_emoji: statusEmoji,
+        status_text: statusText,
+        status_expires_at: statusExpiresAt ? new Date(statusExpiresAt).toISOString() : null,
+      });
+      setSuccess('Status updated successfully.');
+      window.setTimeout(() => setSuccess(null), 3000);
+    } catch (err: any) {
+      const errorData = err.response?.data?.error;
+      setError(errorData?.message || 'Failed to update status');
+    }
+  };
+
+  const handleClearStatus = async () => {
+    setError(null);
+    setSuccess(null);
+
+    try {
+      await clearStatus();
+      setStatusEmoji('');
+      setStatusText('');
+      setStatusExpiresAt('');
+      setSuccess('Status cleared successfully.');
+      window.setTimeout(() => setSuccess(null), 3000);
+    } catch (err: any) {
+      const errorData = err.response?.data?.error;
+      setError(errorData?.message || 'Failed to clear status');
     }
   };
 
@@ -219,6 +278,28 @@ export default function SettingsPage() {
     window.setTimeout(() => setError(null), 3000);
   };
 
+  const handleSaveNotificationPreferences = async () => {
+    setError(null);
+    setSuccess(null);
+
+    try {
+      await updateNotificationPreferences({
+        timezone,
+        dnd_from: dndFrom || null,
+        dnd_to: dndTo || null,
+        notification_keywords: notificationKeywords
+          .split(',')
+          .map((keyword) => keyword.trim())
+          .filter(Boolean),
+      });
+      setSuccess('Notification preferences updated successfully.');
+      window.setTimeout(() => setSuccess(null), 3000);
+    } catch (err: any) {
+      const errorData = err.response?.data?.error;
+      setError(errorData?.message || 'Failed to update notification preferences');
+    }
+  };
+
   const sectionContent = (
     <>
       {activeTab === 'profile' ? (
@@ -230,11 +311,25 @@ export default function SettingsPage() {
           setDisplayName={setDisplayName}
           bio={bio}
           setBio={setBio}
+          pronouns={pronouns}
+          setPronouns={setPronouns}
+          timezone={timezone}
+          setTimezone={setTimezone}
+          statusEmoji={statusEmoji}
+          setStatusEmoji={setStatusEmoji}
+          statusText={statusText}
+          setStatusText={setStatusText}
+          statusExpiresAt={statusExpiresAt}
+          setStatusExpiresAt={setStatusExpiresAt}
+          handleUpdateStatus={handleUpdateStatus}
+          handleClearStatus={handleClearStatus}
           fileInputRef={fileInputRef}
           handleAvatarUpload={handleAvatarUpload}
           handleDeleteAvatar={handleDeleteAvatar}
           isUploadingAvatar={isUploadingAvatar}
           isDeletingAvatar={isDeletingAvatar}
+          isUpdatingStatus={isUpdatingStatus}
+          isClearingStatus={isClearingStatus}
         />
       ) : null}
 
@@ -261,6 +356,14 @@ export default function SettingsPage() {
           isRequestingBrowserNotifications={isRequestingBrowserNotifications}
           onTestSound={handleTestSound}
           onEnableBrowserNotifications={handleEnableBrowserNotifications}
+          dndFrom={dndFrom}
+          setDndFrom={setDndFrom}
+          dndTo={dndTo}
+          setDndTo={setDndTo}
+          notificationKeywords={notificationKeywords}
+          setNotificationKeywords={setNotificationKeywords}
+          onSaveNotificationPreferences={handleSaveNotificationPreferences}
+          isSavingNotificationPreferences={isUpdatingNotificationPreferences}
         />
       ) : null}
 

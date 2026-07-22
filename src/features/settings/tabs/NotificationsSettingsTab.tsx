@@ -1,11 +1,13 @@
 import { PanelSection } from '@/components/panel/PanelPageLayout';
 import { Button } from '@/components/ui/Button';
+import { Input } from '@/components/ui/Input';
+import { Label } from '@/components/ui/Label';
 import SettingsToggleField from '@/features/settings/components/SettingsToggleField';
 import {
   BrowserNotificationState,
   SoundCapability,
 } from '@/utils/notificationSound';
-import { Bell, Volume2 } from 'lucide-react';
+import { Bell, Loader2, Save, Volume2 } from 'lucide-react';
 
 interface NotificationsSettingsTabProps {
   soundEnabled: boolean;
@@ -16,6 +18,14 @@ interface NotificationsSettingsTabProps {
   isRequestingBrowserNotifications: boolean;
   onTestSound: () => Promise<void>;
   onEnableBrowserNotifications: () => Promise<void>;
+  dndFrom: string;
+  setDndFrom: (value: string) => void;
+  dndTo: string;
+  setDndTo: (value: string) => void;
+  notificationKeywords: string;
+  setNotificationKeywords: (value: string) => void;
+  onSaveNotificationPreferences: () => Promise<void>;
+  isSavingNotificationPreferences: boolean;
 }
 
 const getSoundStatusText = (soundEnabled: boolean, soundCapability: SoundCapability) => {
@@ -59,6 +69,14 @@ export default function NotificationsSettingsTab({
   isRequestingBrowserNotifications,
   onTestSound,
   onEnableBrowserNotifications,
+  dndFrom,
+  setDndFrom,
+  dndTo,
+  setDndTo,
+  notificationKeywords,
+  setNotificationKeywords,
+  onSaveNotificationPreferences,
+  isSavingNotificationPreferences,
 }: NotificationsSettingsTabProps) {
   return (
     <div className="space-y-6">
@@ -108,6 +126,60 @@ export default function NotificationsSettingsTab({
             {isRequestingBrowserNotifications
               ? 'Requesting browser permission...'
               : 'Enable browser notifications'}
+          </Button>
+        </div>
+      </PanelSection>
+
+      <PanelSection
+        title="Chat Delivery"
+        description="Set quiet hours and keywords that override muted conversations."
+      >
+        <div className="max-w-xl space-y-5">
+          <div className="grid gap-5 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="settings-dnd-from">Do Not Disturb From</Label>
+              <Input
+                id="settings-dnd-from"
+                type="time"
+                value={dndFrom}
+                onChange={(event) => setDndFrom(event.target.value)}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="settings-dnd-to">Do Not Disturb To</Label>
+              <Input
+                id="settings-dnd-to"
+                type="time"
+                value={dndTo}
+                onChange={(event) => setDndTo(event.target.value)}
+              />
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="settings-notification-keywords">Keyword Alerts</Label>
+            <Input
+              id="settings-notification-keywords"
+              value={notificationKeywords}
+              onChange={(event) => setNotificationKeywords(event.target.value)}
+              placeholder="deploy, urgent, release"
+              autoComplete="off"
+            />
+          </div>
+
+          <Button
+            type="button"
+            className="gap-2"
+            onClick={() => void onSaveNotificationPreferences()}
+            disabled={isSavingNotificationPreferences}
+          >
+            {isSavingNotificationPreferences ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Save className="h-4 w-4" />
+            )}
+            Save notification preferences
           </Button>
         </div>
       </PanelSection>
