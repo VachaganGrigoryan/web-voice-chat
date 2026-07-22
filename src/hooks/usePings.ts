@@ -16,11 +16,13 @@ export function usePings() {
     const handlePingUpdate = () => {
       queryClient.invalidateQueries({ queryKey: ['pings', 'incoming'] });
       queryClient.invalidateQueries({ queryKey: ['pings', 'outgoing'] });
+      queryClient.invalidateQueries({ queryKey: ['pings', 'contacts'] });
     };
 
     const handleChatPermission = () => {
       queryClient.invalidateQueries({ queryKey: ['pings', 'incoming'] });
       queryClient.invalidateQueries({ queryKey: ['pings', 'outgoing'] });
+      queryClient.invalidateQueries({ queryKey: ['pings', 'contacts'] });
       queryClient.invalidateQueries({ queryKey: ['conversations'] });
     };
 
@@ -51,6 +53,11 @@ export function usePings() {
     queryFn: () => pingsApi.getOutgoing().then(res => res.data),
   });
 
+  const contactsQuery = useQuery({
+    queryKey: ['pings', 'contacts'],
+    queryFn: () => pingsApi.getContacts().then(res => res.data),
+  });
+
   const sendPingMutation = useMutation({
     mutationFn: (userId: string) => pingsApi.sendPing(userId),
     onSuccess: () => {
@@ -71,6 +78,7 @@ export function usePings() {
     mutationFn: (pingId: string) => pingsApi.acceptPing(pingId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['pings', 'incoming'] });
+      queryClient.invalidateQueries({ queryKey: ['pings', 'contacts'] });
       queryClient.invalidateQueries({ queryKey: ['conversations'] });
       toast.success('Ping accepted');
     },
@@ -108,6 +116,7 @@ export function usePings() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['pings', 'incoming'] });
       queryClient.invalidateQueries({ queryKey: ['pings', 'outgoing'] });
+      queryClient.invalidateQueries({ queryKey: ['pings', 'contacts'] });
       queryClient.invalidateQueries({ queryKey: ['conversations'] });
       toast.success('User blocked');
     },
@@ -116,19 +125,37 @@ export function usePings() {
     }
   });
 
+  const unblockUserMutation = useMutation({
+    mutationFn: (peerUserId: string) => pingsApi.unblockUser(peerUserId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['pings', 'incoming'] });
+      queryClient.invalidateQueries({ queryKey: ['pings', 'outgoing'] });
+      queryClient.invalidateQueries({ queryKey: ['pings', 'contacts'] });
+      queryClient.invalidateQueries({ queryKey: ['conversations'] });
+      toast.success('User unblocked');
+    },
+    onError: (error: any) => {
+      toast.error(extractApiError(error, 'Failed to unblock user'));
+    }
+  });
+
   return {
     incoming: Array.isArray(incomingQuery.data) ? incomingQuery.data : [],
     outgoing: Array.isArray(outgoingQuery.data) ? outgoingQuery.data : [],
+    contacts: Array.isArray(contactsQuery.data) ? contactsQuery.data : [],
     isLoading: incomingQuery.isLoading || outgoingQuery.isLoading,
+    isLoadingContacts: contactsQuery.isLoading,
     sendPing: sendPingMutation.mutateAsync,
     acceptPing: acceptPingMutation.mutateAsync,
     declinePing: declinePingMutation.mutateAsync,
     cancelPing: cancelPingMutation.mutateAsync,
     blockUser: blockUserMutation.mutateAsync,
+    unblockUser: unblockUserMutation.mutateAsync,
     isSending: sendPingMutation.isPending,
     isAccepting: acceptPingMutation.isPending,
     isDeclining: declinePingMutation.isPending,
     isCancelling: cancelPingMutation.isPending,
     isBlocking: blockUserMutation.isPending,
+    isUnblocking: unblockUserMutation.isPending,
   };
 }

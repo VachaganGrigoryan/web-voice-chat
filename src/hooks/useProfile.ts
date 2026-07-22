@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { usersApi } from '@/api/endpoints';
+import { notificationsApi, usersApi } from '@/api/endpoints';
 import { useAuthStore } from '@/store/authStore';
 
 export function useProfile() {
@@ -13,7 +13,14 @@ export function useProfile() {
   });
 
   const updateProfileMutation = useMutation({
-    mutationFn: (data: { display_name?: string; bio?: string; is_private?: boolean; default_discovery_enabled?: boolean }) =>
+    mutationFn: (data: {
+      display_name?: string;
+      bio?: string;
+      pronouns?: string;
+      timezone?: string;
+      is_private?: boolean;
+      default_discovery_enabled?: boolean;
+    }) =>
       usersApi.updateProfile(data),
     onSuccess: (data) => {
       queryClient.setQueryData(['profile', data.id], data);
@@ -45,6 +52,36 @@ export function useProfile() {
     },
   });
 
+  const updateStatusMutation = useMutation({
+    mutationFn: (data: {
+      status_emoji?: string | null;
+      status_text?: string | null;
+      status_expires_at?: string | null;
+    }) => usersApi.updateStatus(data),
+    onSuccess: (data) => {
+      queryClient.setQueryData(['profile', data.id], data);
+    },
+  });
+
+  const clearStatusMutation = useMutation({
+    mutationFn: () => usersApi.clearStatus(),
+    onSuccess: (data) => {
+      queryClient.setQueryData(['profile', data.id], data);
+    },
+  });
+
+  const updateNotificationPreferencesMutation = useMutation({
+    mutationFn: (data: {
+      timezone?: string | null;
+      dnd_from?: string | null;
+      dnd_to?: string | null;
+      notification_keywords?: string[];
+    }) => notificationsApi.updatePreferences(data),
+    onSuccess: (data) => {
+      queryClient.setQueryData(['profile', data.id], data);
+    },
+  });
+
   return {
     profile: profileQuery.data,
     isLoading: profileQuery.isLoading,
@@ -56,5 +93,11 @@ export function useProfile() {
     isUploadingAvatar: uploadAvatarMutation.isPending,
     deleteAvatar: deleteAvatarMutation.mutateAsync,
     isDeletingAvatar: deleteAvatarMutation.isPending,
+    updateStatus: updateStatusMutation.mutateAsync,
+    isUpdatingStatus: updateStatusMutation.isPending,
+    clearStatus: clearStatusMutation.mutateAsync,
+    isClearingStatus: clearStatusMutation.isPending,
+    updateNotificationPreferences: updateNotificationPreferencesMutation.mutateAsync,
+    isUpdatingNotificationPreferences: updateNotificationPreferencesMutation.isPending,
   };
 }

@@ -1,4 +1,4 @@
-import { ReactNode } from 'react';
+import { ReactNode, useState } from 'react';
 import { Navigate, useNavigate, useParams } from 'react-router-dom';
 import { formatDistanceToNow } from 'date-fns';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/Avatar';
@@ -17,10 +17,12 @@ import {
   Check,
   Loader2,
   MessageSquare,
+  KeyRound,
   ShieldAlert,
   UserPlus,
   X,
 } from 'lucide-react';
+import { JoinByInviteDialog } from '@/features/chat/components/JoinByInviteDialog';
 
 type PingMetaLabel = {
   desktop: string;
@@ -170,6 +172,7 @@ function EmptyState({
 
 export default function PingsPage() {
   const navigate = useNavigate();
+  const [isJoinByCodeOpen, setIsJoinByCodeOpen] = useState(false);
   const { goBack, goTo } = useAppNavigation();
   const { tab } = useParams<{ tab?: string }>();
   const routeTab = isPingsTab(tab) ? tab : null;
@@ -226,7 +229,7 @@ export default function PingsPage() {
       onBack={handleBack}
       onClose={handleClose}
       nav={
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {(['incoming', 'outgoing'] as const).map((value) => (
             <button
               key={value}
@@ -247,10 +250,25 @@ export default function PingsPage() {
               ) : null}
             </button>
           ))}
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="ml-auto rounded-full"
+            onClick={() => setIsJoinByCodeOpen(true)}
+          >
+            <KeyRound className="mr-2 h-4 w-4" />
+            Join by code
+          </Button>
         </div>
       }
       contentClassName="space-y-4"
     >
+      <JoinByInviteDialog
+        open={isJoinByCodeOpen}
+        onOpenChange={setIsJoinByCodeOpen}
+        onJoined={(conversationId) => navigate(APP_ROUTES.chatConversation(conversationId))}
+      />
       {isLoading ? (
         <PanelSection>
           <div className="flex flex-col items-center justify-center gap-3 py-14 text-center">

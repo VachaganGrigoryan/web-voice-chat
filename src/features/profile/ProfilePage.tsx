@@ -1,12 +1,15 @@
 import { useQuery } from '@tanstack/react-query';
 import { Navigate, useParams } from 'react-router-dom';
 import { usersApi } from '@/api/endpoints';
+import { getApiErrorStatus } from '@/api/errors';
 import { User, UserSummary } from '@/api/types';
 import { APP_ROUTES } from '@/app/routes';
 import { PanelPageLayout, PanelSection } from '@/components/panel/PanelPageLayout';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/Avatar';
-import { Loader2, Lock, User as UserIcon } from 'lucide-react';
+import { Button } from '@/components/ui/Button';
+import { Loader2, Lock, ShieldOff, User as UserIcon, UserPlus } from 'lucide-react';
 import { useAppNavigation } from '@/navigation/appNavigation';
+import { usePings } from '@/hooks/usePings';
 
 function getDisplayName(
   user?:
@@ -17,9 +20,16 @@ function getDisplayName(
   return user?.display_name || user?.username || user?.id || 'Unknown User';
 }
 
-function isUnavailableError(error: any) {
-  const status = error?.response?.status;
-  return status === 403 || status === 404;
+function isUnavailableError(error: unknown) {
+  return getApiErrorStatus(error) === 404;
+}
+
+function formatLastSeen(value: string | null | undefined) {
+  if (!value) return null;
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  }).format(new Date(value));
 }
 
 interface ProfileInfoItemProps {
@@ -42,12 +52,14 @@ function ProfileInfoItem({ label, value, mono = false }: ProfileInfoItemProps) {
 export default function ProfilePage() {
   const { goBack, goTo } = useAppNavigation();
   const { userId } = useParams<{ userId?: string }>();
+  const { sendPing, blockUser, unblockUser, isSending, isBlocking, isUnblocking } = usePings();
 
   const {
     data: profile,
     error,
     isLoading,
     isFetching,
+    refetch,
   } = useQuery({
     queryKey: ['user-profile', userId],
     queryFn: async () => {
@@ -68,9 +80,30 @@ export default function ProfilePage() {
   const bio = profile?.bio || null;
   const infoUsername = username ? `@${username}` : 'Not provided';
   const infoDisplayName = profile?.display_name || 'Not provided';
-  const profileError = error as any;
-  const showUnavailableMessage = isUnavailableError(profileError);
-  const showGenericError = !!profileError && !showUnavailableMessage;
+  const relationship = profile?.relationship || null;
+  const statusLabel = [profile?.status_emoji, profile?.status_text].filter(Boolean).join(' ');
+  const lastSeenLabel = formatLastSeen(profile?.last_seen_at);
+  const showUnavailableMessage = isUnavailableError(error);
+  const showGenericError = !!error && !showUnavailableMessage;
+  const isLimited = profile?.profile_visibility === 'limited';
+
+  const handleSendPing = async () => {
+    if (!profile) return;
+    await sendPing(profile.id);
+    await refetch();
+  };
+
+  const handleBlock = async () => {
+    if (!profile) return;
+    await blockUser(profile.id);
+    await refetch();
+  };
+
+  const handleUnblock = async () => {
+    if (!profile) return;
+    await unblockUser(profile.id);
+    await refetch();
+  };
 
   return (
     <PanelPageLayout
@@ -91,13 +124,32 @@ export default function ProfilePage() {
 
           <div className="space-y-3 pt-2 text-center sm:text-left">
             <div className="inline-flex rounded-full border border-border/70 bg-muted/40 px-3 py-1 text-xs font-medium text-muted-foreground">
-              Public profile
+              {isLimited ? 'Limited profile' : relationship?.chat_allowed ? 'Contact' : 'Public profile'}
             </div>
             <h2 className="text-xl font-semibold">{displayName}</h2>
             <p className="text-sm text-muted-foreground">{username ? `@${username}` : userId}</p>
-            <p className="max-w-sm pt-2 text-sm text-muted-foreground">
-              Shared profile information for this conversation partner.
-            </p>
+            {statusLabel ? <p className="max-w-sm pt-2 text-sm text-foreground">{statusLabel}</p> : null}
+            {relationship && !relationship.blocks_me ? (
+              <div className="flex flex-wrap justify-center gap-2 pt-2 sm:justify-start">
+                {relationship.can_ping ? (
+                  <Button type="button" size="sm" onClick={handleSendPing} disabled={isSending}>
+                    {isSending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <UserPlus className="mr-2 h-4 w-4" />}
+                    Send ping
+                  </Button>
+                ) : null}
+                {relationship.blocked_by_me ? (
+                  <Button type="button" variant="outline" size="sm" onClick={handleUnblock} disabled={isUnblocking}>
+                    {isUnblocking ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ShieldOff className="mr-2 h-4 w-4" />}
+                    Unblock
+                  </Button>
+                ) : (
+                  <Button type="button" variant="outline" size="sm" onClick={handleBlock} disabled={isBlocking}>
+                    {isBlocking ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Lock className="mr-2 h-4 w-4" />}
+                    Block
+                  </Button>
+                )}
+              </div>
+            ) : null}
           </div>
         </div>
       </PanelSection>
@@ -139,13 +191,21 @@ export default function ProfilePage() {
             <dl className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
               <ProfileInfoItem label="Username" value={infoUsername} />
               <ProfileInfoItem label="Display Name" value={infoDisplayName} />
+              {profile?.pronouns ? <ProfileInfoItem label="Pronouns" value={profile.pronouns} /> : null}
+              {profile?.timezone ? <ProfileInfoItem label="Timezone" value={profile.timezone} /> : null}
+              {lastSeenLabel ? <ProfileInfoItem label="Last Seen" value={lastSeenLabel} /> : null}
               <ProfileInfoItem label="User ID" value={userId} mono />
             </dl>
           </PanelSection>
 
           <PanelSection title="About" description="Short personal details shared through the messaging system.">
             <div className="rounded-2xl border border-border/70 bg-muted/20 p-4 sm:p-5">
-              {bio ? (
+              {isLimited ? (
+                <div className="flex items-start gap-3 text-sm text-muted-foreground">
+                  <Lock className="mt-0.5 h-4 w-4 shrink-0" />
+                  <span>Private profile details are hidden.</span>
+                </div>
+              ) : bio ? (
                 <p className="whitespace-pre-wrap text-sm leading-6 text-foreground">{bio}</p>
               ) : (
                 <p className="text-sm text-muted-foreground">No bio provided.</p>
