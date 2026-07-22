@@ -43,6 +43,29 @@ export interface User {
   updated_at: string;
 }
 
+export interface NotificationView {
+  id: string;
+  user_id: string;
+  kind: string;
+  source_type: string | null;
+  source_id: string | null;
+  conversation_id: string | null;
+  read_at: string | null;
+  data: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PushTokenView {
+  id: string;
+  user_id: string;
+  device_id: string | null;
+  platform: 'ios' | 'android' | 'web';
+  token: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface SelectedUserProfile {
   id: string;
   username: string;
@@ -55,6 +78,10 @@ export interface SelectedUserProfile {
   pronouns?: string | null;
   timezone?: string | null;
   is_online: boolean;
+  presence_state?: PresenceState;
+  last_seen_at?: string | null;
+  profile_visibility: 'full' | 'limited';
+  relationship: ContactState;
 }
 
 export interface TokenPair {
@@ -211,6 +238,22 @@ export interface MessageEdit {
   edited_at: string;
 }
 
+/** A user's private bookmark of a message (GET/POST /me/saved-messages). */
+export interface SavedMessageView {
+  id: string;
+  user_id: string;
+  message_id: string;
+  conversation_id: string;
+  saved_at: string;
+  message: MessageDoc | null;
+}
+
+/** Paginated result envelope for GET /search/messages. */
+export interface MessageSearchResults {
+  items: MessageDoc[];
+  has_more: boolean;
+}
+
 export interface MessageDoc {
   id: string;
   conversation_id: string;
@@ -284,10 +327,29 @@ export interface UserSummary {
   display_name: string | null;
   avatar: AvatarMeta | null;
   is_online: boolean | null;
+  presence_state?: PresenceState;
+  last_seen_at?: string | null;
   can_ping?: boolean;
   chat_allowed?: boolean;
   ping_status?: PingStatus;
   is_ghost?: boolean;
+}
+
+export type PresenceState = 'online' | 'away' | 'dnd' | 'offline';
+
+export interface PresenceStatus {
+  user_id: string;
+  state: PresenceState;
+  is_online: boolean;
+  last_seen_at: string | null;
+}
+
+export interface ContactState {
+  can_ping: boolean;
+  chat_allowed: boolean;
+  ping_status: PingStatus;
+  blocked_by_me: boolean;
+  blocks_me: boolean;
 }
 
 export interface ClearConversationResponse {
@@ -328,9 +390,45 @@ export interface ParticipantView {
   pinned: boolean;
   folder: string | null;
   invited_by: string | null;
+  draft_text: string | null;
   draft_updated_at: string | null;
   muted: boolean;
   hidden: boolean;
+}
+
+export type JoinRequestStatus = 'pending' | 'approved' | 'rejected';
+
+/** Invite link to a conversation (POST /conversations/{id}/invites). */
+export interface ConversationInviteLink {
+  id: string;
+  conversation_id: string;
+  code: string;
+  created_by: string;
+  expires_at: string | null;
+  max_uses: number | null;
+  use_count: number;
+  requires_approval: boolean;
+  revoked: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Pending/resolved request to join a conversation. */
+export interface ConversationJoinRequest {
+  id: string;
+  conversation_id: string;
+  user_id: string;
+  status: JoinRequestStatus;
+  invite_code: string | null;
+  responded_at: string | null;
+  created_at: string;
+}
+
+/** Result of redeeming an invite code. */
+export interface RedeemInviteResult {
+  status: 'joined' | 'pending';
+  conversation: Conversation | null;
+  join_request: ConversationJoinRequest | null;
 }
 
 export interface Conversation {
@@ -372,6 +470,12 @@ export interface Conversation {
     text: string | null;
     created_at: string;
   } | null;
+  notification_level: NotificationLevel;
+  muted_until: string | null;
+  /** Viewer-relative inbox flags (the requesting user's own participant state). */
+  pinned: boolean;
+  archived: boolean;
+  folder: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -465,6 +569,10 @@ export interface PingListItem {
 
 export type PingItem = PingListItem;
 export type PingResponse = Ping;
+
+export interface ContactListItem extends PingListItem {
+  conversation_id: string | null;
+}
 
 export type CallType = OpenApiCallType;
 export type CallStatus = OpenApiCallStatus;

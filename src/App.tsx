@@ -8,6 +8,7 @@ import InvitePage from '@/features/invite/InvitePage';
 import LandingPage from '@/features/landing/LandingPage';
 import SettingsPage from '@/features/settings/SettingsPage';
 import PingsPage from '@/features/pings/PingsPage';
+import ContactsPage from '@/features/profile/ContactsPage';
 import ProfilePage from '@/features/profile/ProfilePage';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import PublicRoute from '@/components/PublicRoute';
@@ -57,6 +58,7 @@ export default function App() {
               <Route path="/chat/:conversationId/thread/:rootMessageId" element={<ChatLayout />} />
               <Route path={APP_ROUTES.pings} element={<Navigate to={APP_ROUTES.pingsTab('incoming')} replace />} />
               <Route path="/pings/:tab" element={<PingsPage />} />
+              <Route path={APP_ROUTES.contacts} element={<ContactsPage />} />
               <Route path={APP_ROUTES.settings} element={<Navigate to={APP_ROUTES.settingsTab('profile')} replace />} />
               <Route path="/settings/:tab" element={<SettingsPage />} />
               <Route path="/profile/:userId" element={<ProfilePage />} />

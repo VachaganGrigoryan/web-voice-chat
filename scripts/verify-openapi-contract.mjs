@@ -32,7 +32,7 @@ const operationCount = Object.values(spec.paths).reduce(
   0
 );
 
-assert.equal(operationCount, 73, 'Unexpected number of OpenAPI operations');
+assert.equal(operationCount, 88, 'Unexpected number of OpenAPI operations');
 
 assert.equal(
   getJsonResponseRef('get', '/auth/passkeys', '200'),
@@ -74,6 +74,10 @@ assert.equal(
   getJsonResponseRef('get', '/calls/active', '200'),
   '#/components/schemas/SuccessResponse_Union_CallSession__NoneType__'
 );
+assert.equal(
+  getJsonResponseRef('get', '/realtime/presence', '200'),
+  '#/components/schemas/SuccessResponse_dict_str__PresenceStatusResponse__'
+);
 
 assert.deepEqual(
   getSchema('MessageDoc').properties.type.enum,
@@ -102,6 +106,10 @@ assert.deepEqual(
 assert.deepEqual(
   getSchema('MessageDoc').properties.state.enum,
   ['sent', 'scheduled']
+);
+assert.deepEqual(
+  getSchema('PresenceStatusResponse').properties.state.enum,
+  ['online', 'away', 'dnd', 'offline']
 );
 
 console.log('OpenAPI contract checks passed');

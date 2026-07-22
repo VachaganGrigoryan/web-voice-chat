@@ -29,6 +29,7 @@ export const APP_ROUTES = {
     `/chat/${conversationId}/thread/${rootMessageId}`,
   pings: '/pings',
   pingsTab: (tab: PingsTab = 'incoming') => `/pings/${tab}`,
+  contacts: '/contacts',
   settings: '/settings',
   settingsTab: (tab: SettingsTab = 'profile') => `/settings/${tab}`,
   profile: (userId: string) => `/profile/${userId}`,
@@ -39,6 +40,7 @@ const LAST_APP_PATH_STORAGE_KEY = 'voca:last-app-path';
 
 const isProtectedAppPath = (path: string) =>
   path.startsWith(APP_ROUTES.chat) ||
+  path.startsWith(APP_ROUTES.contacts) ||
   path.startsWith(APP_ROUTES.settings) ||
   path.startsWith(APP_ROUTES.pings) ||
   path.startsWith('/profile/');

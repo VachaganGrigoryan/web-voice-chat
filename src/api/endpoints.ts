@@ -7,7 +7,10 @@ import {
   CallHistoryItem,
   CallSession,
   ClearConversationResponse,
+  ContactListItem,
   Conversation,
+  ConversationInviteLink,
+  ConversationJoinRequest,
   ConversationReadUpdate,
   CreateCallRequest,
   CreateInviteLinkResponse,
@@ -19,6 +22,9 @@ import {
   AuthChallengeResponse,
   MessageDoc,
   MessageResponse,
+  MessageSearchResults,
+  NotificationLevel,
+  NotificationView,
   PaginatedResponse,
   ParticipantView,
   PreKeyBundle,
@@ -29,9 +35,13 @@ import {
   PasskeyResponse,
   Ping,
   PingItem,
+  PushTokenView,
+  PresenceStatus,
   PreviewMediaKind,
+  RedeemInviteResult,
   ReplyMode,
   RegenerateCodeResponse,
+  SavedMessageView,
   SelectedUserProfile,
   SuccessResponse,
   ThreadSummary,
@@ -98,6 +108,8 @@ export const usersApi = {
   updateProfile: (data: {
     display_name?: string;
     bio?: string;
+    pronouns?: string;
+    timezone?: string;
     is_private?: boolean;
     default_discovery_enabled?: boolean;
   }) =>
@@ -108,6 +120,18 @@ export const usersApi = {
     apiClient
       .patch<SuccessResponse<User>>('/users/me/username', { username })
       .then((res) => extractResponseData(res.data)),
+  updateStatus: (data: {
+    status_emoji?: string | null;
+    status_text?: string | null;
+    status_expires_at?: string | null;
+  }) =>
+    apiClient
+      .patch<SuccessResponse<User>>('/users/me/status', data)
+      .then((res) => extractResponseData(res.data)),
+  clearStatus: () =>
+    apiClient
+      .delete<SuccessResponse<User>>('/users/me/status')
+      .then((res) => extractResponseData(res.data)),
   uploadAvatar: (formData: FormData) =>
     apiClient
       .patch<SuccessResponse<User>>('/users/me/avatar', formData, {
@@ -117,6 +141,46 @@ export const usersApi = {
   deleteAvatar: () =>
     apiClient
       .delete<SuccessResponse<User>>('/users/me/avatar')
+      .then((res) => extractResponseData(res.data)),
+};
+
+export const notificationsApi = {
+  list: (limit = 50) =>
+    apiClient
+      .get<SuccessResponse<NotificationView[]>>('/notifications', { params: { limit } })
+      .then((res) => extractResponseData(res.data)),
+  updatePreferences: (data: {
+    timezone?: string | null;
+    dnd_from?: string | null;
+    dnd_to?: string | null;
+    notification_keywords?: string[];
+  }) =>
+    apiClient
+      .patch<SuccessResponse<User>>('/notifications/preferences', data)
+      .then((res) => extractResponseData(res.data)),
+  updateConversationSettings: (
+    conversationId: string,
+    data: { notification_level?: NotificationLevel; muted_until?: string | null }
+  ) =>
+    apiClient
+      .patch<SuccessResponse<ParticipantView>>(
+        `/notifications/conversations/${conversationId}`,
+        data
+      )
+      .then((res) => extractResponseData(res.data)),
+  registerPushToken: (data: {
+    device_id?: string | null;
+    platform: 'ios' | 'android' | 'web';
+    token: string;
+  }) =>
+    apiClient
+      .post<SuccessResponse<PushTokenView>>('/notifications/push-tokens', data)
+      .then((res) => extractResponseData(res.data)),
+  removePushToken: (params: { device_id?: string; token?: string }) =>
+    apiClient
+      .delete<SuccessResponse<{ deleted: number }>>('/notifications/push-tokens', {
+        params,
+      })
       .then((res) => extractResponseData(res.data)),
 };
 
@@ -237,6 +301,58 @@ export const messagesApi = {
         )}/me`
       )
       .then((res) => extractResponseData(res.data)),
+  forwardMessage: (
+    conversationId: string,
+    messageId: string,
+    targetConversationId: string
+  ) =>
+    apiClient
+      .post<SuccessResponse<MessageDoc>>(
+        `/conversations/${conversationId}/messages/${messageId}/forward`,
+        { target_conversation_id: targetConversationId }
+      )
+      .then((res) => extractResponseData(res.data)),
+  pinMessage: (conversationId: string, messageId: string) =>
+    apiClient
+      .post<SuccessResponse<Conversation>>(
+        `/conversations/${conversationId}/messages/${messageId}/pin`
+      )
+      .then((res) => extractResponseData(res.data)),
+  unpinMessage: (conversationId: string, messageId: string) =>
+    apiClient
+      .delete<SuccessResponse<Conversation>>(
+        `/conversations/${conversationId}/messages/${messageId}/pin`
+      )
+      .then((res) => extractResponseData(res.data)),
+  getPinnedMessages: (conversationId: string) =>
+    apiClient
+      .get<SuccessResponse<MessageDoc[]>>(
+        `/conversations/${conversationId}/pinned-messages`
+      )
+      .then((res) => extractResponseData(res.data)),
+  scheduleMessage: (conversationId: string, text: string, scheduledForIso: string) =>
+    apiClient
+      .post<SuccessResponse<MessageDoc>>(
+        `/conversations/${conversationId}/messages/schedule`,
+        { text, scheduled_for: scheduledForIso }
+      )
+      .then((res) => extractResponseData(res.data)),
+  getScheduledMessages: (conversationId: string) =>
+    apiClient
+      .get<SuccessResponse<MessageDoc[]>>(
+        `/conversations/${conversationId}/messages/scheduled`
+      )
+      .then((res) => extractResponseData(res.data)),
+  cancelScheduledMessage: (conversationId: string, messageId: string) =>
+    apiClient.delete(
+      `/conversations/${conversationId}/messages/scheduled/${messageId}`
+    ),
+  searchMessages: (query: string, options?: { limit?: number; page?: number }) =>
+    apiClient
+      .get<SuccessResponse<MessageSearchResults>>('/search/messages', {
+        params: { q: query, limit: options?.limit, page: options?.page },
+      })
+      .then((res) => extractResponseData(res.data)),
   markConversationRead: async (conversationId: string): Promise<ConversationReadUpdate> => {
     await apiClient.post(`/conversations/${conversationId}/read`);
     return {};
@@ -258,6 +374,9 @@ export const messagesApi = {
 const normalizeConversation = (conversation: Conversation): Conversation => ({
   ...conversation,
   conversation_id: conversation.conversation_id ?? conversation.id,
+  pinned: conversation.pinned ?? false,
+  archived: conversation.archived ?? false,
+  folder: conversation.folder ?? null,
   last_message: conversation.last_message ?? (
     conversation.last_message_preview
       ? {
@@ -273,15 +392,114 @@ const normalizeConversation = (conversation: Conversation): Conversation => ({
 });
 
 export const conversationsApi = {
-  getConversations: (limit = 20, cursor?: string) =>
+  getConversations: (
+    limit = 20,
+    cursor?: string,
+    options?: { archived?: boolean; folder?: string }
+  ) =>
     apiClient
       .get<PaginatedResponse<Conversation>>('/conversations', {
-        params: { limit, cursor },
+        params: {
+          limit,
+          cursor,
+          archived: options?.archived ? true : undefined,
+          folder: options?.folder,
+        },
       })
       .then((res) => ({
         ...res.data,
         data: res.data.data.map(normalizeConversation),
       })),
+  createChannel: (data: {
+    title: string;
+    description?: string;
+    visibility?: 'private' | 'public';
+    posting_policy?: 'everyone' | 'admins';
+    slug?: string;
+    participant_ids?: string[];
+  }) =>
+    apiClient
+      .post<SuccessResponse<Conversation>>('/conversations/channels', data)
+      .then((res) => normalizeConversation(extractResponseData(res.data))),
+  getPublicBySlug: (slug: string) =>
+    apiClient
+      .get<SuccessResponse<Conversation>>(`/conversations/public/${encodeURIComponent(slug)}`)
+      .then((res) => normalizeConversation(extractResponseData(res.data))),
+  createInvite: (
+    conversationId: string,
+    data: { expires_at?: string | null; max_uses?: number | null; requires_approval?: boolean } = {}
+  ) =>
+    apiClient
+      .post<SuccessResponse<ConversationInviteLink>>(
+        `/conversations/${conversationId}/invites`,
+        data
+      )
+      .then((res) => extractResponseData(res.data)),
+  listInvites: (conversationId: string) =>
+    apiClient
+      .get<SuccessResponse<ConversationInviteLink[]>>(`/conversations/${conversationId}/invites`)
+      .then((res) => extractResponseData(res.data)),
+  revokeInvite: (conversationId: string, inviteId: string) =>
+    apiClient
+      .delete(`/conversations/${conversationId}/invites/${inviteId}`)
+      .then(() => undefined),
+  redeemInvite: (code: string) =>
+    apiClient
+      .post<SuccessResponse<RedeemInviteResult>>(
+        `/conversations/invites/${encodeURIComponent(code)}/redeem`
+      )
+      .then((res) => {
+        const result = extractResponseData(res.data);
+        return {
+          ...result,
+          conversation: result.conversation ? normalizeConversation(result.conversation) : null,
+        };
+      }),
+  listJoinRequests: (conversationId: string) =>
+    apiClient
+      .get<SuccessResponse<ConversationJoinRequest[]>>(
+        `/conversations/${conversationId}/join-requests`
+      )
+      .then((res) => extractResponseData(res.data)),
+  approveJoinRequest: (conversationId: string, requestId: string) =>
+    apiClient
+      .post<SuccessResponse<ConversationJoinRequest>>(
+        `/conversations/${conversationId}/join-requests/${requestId}/approve`
+      )
+      .then((res) => extractResponseData(res.data)),
+  rejectJoinRequest: (conversationId: string, requestId: string) =>
+    apiClient
+      .post<SuccessResponse<ConversationJoinRequest>>(
+        `/conversations/${conversationId}/join-requests/${requestId}/reject`
+      )
+      .then((res) => extractResponseData(res.data)),
+  updateInboxState: (
+    conversationId: string,
+    updates: { pinned?: boolean; archived?: boolean; folder?: string | null }
+  ) =>
+    apiClient
+      .patch<SuccessResponse<ParticipantView>>(
+        `/conversations/${conversationId}/inbox`,
+        updates
+      )
+      .then((res) => extractResponseData(res.data)),
+  updateMemberPermissions: (
+    conversationId: string,
+    memberUserId: string,
+    permissions: Record<string, boolean> | null
+  ) =>
+    apiClient
+      .patch<SuccessResponse<ParticipantView>>(
+        `/conversations/${conversationId}/members/${memberUserId}/permissions`,
+        { permissions }
+      )
+      .then((res) => extractResponseData(res.data)),
+  openThreadConversation: (conversationId: string, messageId: string) =>
+    apiClient
+      .post<SuccessResponse<Conversation>>(
+        `/conversations/${conversationId}/messages/${messageId}/thread-conversation`
+      )
+      .then((res) => normalizeConversation(extractResponseData(res.data))),
   createOrGetDm: (peerUserId: string) =>
     apiClient
       .post<SuccessResponse<Conversation>>('/conversations', { peer_user_id: peerUserId })
@@ -358,6 +576,37 @@ export const conversationsApi = {
         `/conversations/${conversationId}/messages/all`
       )
       .then((res) => extractResponseData(res.data)),
+  setDraft: (conversationId: string, text: string) =>
+    apiClient
+      .put<SuccessResponse<ParticipantView>>(
+        `/conversations/${conversationId}/draft`,
+        { text }
+      )
+      .then((res) => extractResponseData(res.data)),
+  getDraft: (conversationId: string) =>
+    apiClient
+      .get<SuccessResponse<ParticipantView>>(`/conversations/${conversationId}/draft`)
+      .then((res) => extractResponseData(res.data)),
+  clearDraft: (conversationId: string) =>
+    apiClient.delete(`/conversations/${conversationId}/draft`),
+};
+
+export const savedMessagesApi = {
+  save: (conversationId: string, messageId: string) =>
+    apiClient
+      .post<SuccessResponse<SavedMessageView>>('/me/saved-messages', {
+        conversation_id: conversationId,
+        message_id: messageId,
+      })
+      .then((res) => extractResponseData(res.data)),
+  list: (limit = 50) =>
+    apiClient
+      .get<SuccessResponse<SavedMessageView[]>>('/me/saved-messages', {
+        params: { limit },
+      })
+      .then((res) => extractResponseData(res.data)),
+  remove: (messageId: string) =>
+    apiClient.delete(`/me/saved-messages/${messageId}`),
 };
 
 export const devicesApi = {
@@ -394,7 +643,7 @@ export const realtimeApi = {
       .then((res) => extractResponseData(res.data)),
   getPresence: (userIds: string[]) =>
     apiClient
-      .get<SuccessResponse<Record<string, string>>>('/realtime/presence', {
+      .get<SuccessResponse<Record<string, PresenceStatus>>>('/realtime/presence', {
         params: { user_ids: userIds },
       })
       .then((res) => extractResponseData(res.data)),
@@ -463,6 +712,10 @@ export const pingsApi = {
     apiClient
       .get<SuccessResponse<Ping[]>>('/pings/blocked')
       .then((res) => extractResponseData(res.data)),
+  getContacts: (limit = 20, cursor?: string) =>
+    apiClient
+      .get<PaginatedResponse<ContactListItem>>('/pings/contacts', { params: { limit, cursor } })
+      .then((res) => res.data),
 };
 
 export const callsApi = {
