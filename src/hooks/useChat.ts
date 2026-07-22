@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { useInfiniteQuery, useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
+import { getApiErrorStatus } from '@/api/errors';
 import { messagesApi, realtimeApi, conversationsApi } from '@/api/endpoints';
 import { toSinglePageResponse } from '@/api/utils';
 import { applyMessageDeletedEventToCaches, useSocket, usePresence, useRealtimeMessages, useSocketStore } from '@/socket/socket';
@@ -9,6 +10,7 @@ import {
   MessageDoc,
   MessageReactionGroup,
   MessageReactionsUpdate,
+  PresenceStatus,
   PreviewMediaKind,
   ReplyMode,
 } from '@/api/types';
@@ -370,7 +372,7 @@ export const useChat = (selectedUser: string | null = null, openThreadRootId: st
   // Initialize socket and subscriptions
   useSocket();
   useRealtimeMessages(selectedUser, openThreadRootId);
-  const { onlineUsers, setOnlineUsers } = usePresence();
+  const { onlineUsers, presenceByUserId, setOnlineUsers, setPresence } = usePresence();
 
   // Initial fetch of online users (fallback/initial population)
   useQuery({
@@ -384,11 +386,35 @@ export const useChat = (selectedUser: string | null = null, openThreadRootId: st
     staleTime: Infinity, 
   });
 
+  useQuery({
+    queryKey: ['presence', selectedUser],
+    queryFn: async () => {
+      if (!selectedUser) return {};
+      const conversations = queryClient.getQueryData<any>(['conversations']);
+      const selectedConversation = conversations?.pages
+        ?.flatMap((page: any) => page.data || [])
+        ?.find((conversation: any) => conversation.conversation_id === selectedUser);
+      const userIds = [
+        selectedConversation?.peer_user?.id,
+        ...(selectedConversation?.participant_users || []).map((user: any) => user.id),
+      ].filter(Boolean);
+      const presence = await realtimeApi.getPresence(Array.from(new Set(userIds)));
+      Object.entries(presence).forEach(([userId, value]: [string, PresenceStatus]) => {
+        setPresence(userId, value);
+      });
+      return presence;
+    },
+    enabled: !!selectedUser,
+    staleTime: 30 * 1000,
+  });
+
   const {
     data: messages,
     fetchNextPage,
     hasNextPage,
     isFetchingNextPage,
+    error: messagesError,
+    isError: isMessagesError,
   } = useInfiniteQuery({
     queryKey: ['messages', selectedUser],
     queryFn: ({ pageParam }) => {
@@ -398,7 +424,9 @@ export const useChat = (selectedUser: string | null = null, openThreadRootId: st
     getNextPageParam: (lastPage) => lastPage.meta?.next_cursor,
     enabled: !!selectedUser,
     initialPageParam: undefined,
+    retry: (_count, error) => getApiErrorStatus(error) !== 404,
   });
+  const isSelectedConversationMissing = isMessagesError && getApiErrorStatus(messagesError) === 404;
 
   const sendMessageMutation = useMutation({
     mutationFn: (data: SendMediaInput) =>
@@ -573,10 +601,12 @@ export const useChat = (selectedUser: string | null = null, openThreadRootId: st
   return {
     selectedUser,
     onlineUsers,
+    presenceByUserId,
     messages,
     fetchNextPage,
     hasNextPage,
     isFetchingNextPage,
+    isSelectedConversationMissing,
     sendVoice: sendMessageMutation.mutateAsync as (data: SendMediaInput) => Promise<any>,
     sendText: sendTextMutation.mutateAsync as (data: SendTextInput) => Promise<any>,
     editMessage: editMessageMutation.mutateAsync as (data: { messageId: string; text: string }) => Promise<any>,

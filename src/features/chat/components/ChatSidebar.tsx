@@ -1,7 +1,14 @@
-import { useMemo, useState, type MouseEvent as ReactMouseEvent } from 'react';
 import {
+  useMemo,
+  useState,
+  type MouseEvent as ReactMouseEvent,
+  type ReactNode,
+} from 'react';
+import { useQuery } from '@tanstack/react-query';
+import {
+  Archive,
   Bell,
-  Check,
+  BellOff,
   Image as ImageIcon,
   Loader2,
   LogOut,
@@ -10,21 +17,14 @@ import {
   Music,
   Paperclip,
   Phone,
-  Users,
+  Pin,
   Video,
 } from 'lucide-react';
-import { CallHistoryItem, Conversation, User } from '@/api/types';
+import { CallHistoryItem, Conversation, PresenceStatus, User } from '@/api/types';
+import { conversationsApi } from '@/api/endpoints';
+import { InboxRowMenu } from '@/features/chat/components/InboxRowMenu';
 import { Button } from '@/components/ui/Button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/Avatar';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/Dialog';
-import { Input } from '@/components/ui/Input';
 import { ProfileTriggerButton } from '@/features/chat/components/ProfileTriggerButton';
 import { UserSearch } from '@/features/discovery/UserSearch';
 import { cn } from '@/lib/utils';
@@ -48,6 +48,7 @@ interface ChatSidebarProps {
   sidebarView: SidebarView;
   selectedUser: string | null;
   typingUsers: Record<string, boolean>;
+  presenceByUserId?: Record<string, PresenceStatus>;
   activeConversationMenuPeerUserId: string | null;
   activeCallHistoryMenuPeerUserId: string | null;
   isLoadingCallHistory: boolean;
@@ -60,7 +61,6 @@ interface ChatSidebarProps {
   onSidebarViewChange: (view: SidebarView) => void;
   onLoadMoreCallHistory: () => void;
   onClearAllCallHistory: () => void;
-  onCreateGroup: (data: { title: string; participantIds: string[] }) => Promise<void>;
   onSelectSearchUser: (peerUserId: string) => void;
   onSelectConversation: (peerUserId: string) => void;
   onSelectCallHistoryPeer: (peerUserId: string) => void;
@@ -87,6 +87,14 @@ function formatConversationTimestamp(value: string | null) {
 function getConversationLabel(conversation: Conversation) {
   if (conversation.type === 'group') {
     return conversation.title || 'Group chat';
+  }
+
+  if (conversation.type === 'channel') {
+    return conversation.title || 'Channel';
+  }
+
+  if (conversation.type === 'thread') {
+    return conversation.title || 'Thread';
   }
 
   const peer = conversation.peer_user;
@@ -255,6 +263,7 @@ function ConversationListItem({
   currentUserId,
   isTyping,
   isMenuOpen,
+  inboxMenu,
   onSelect,
   onOpenMenu,
   onOpenMenuAtPoint,
@@ -265,13 +274,24 @@ function ConversationListItem({
   currentUserId: string | null;
   isTyping: boolean;
   isMenuOpen: boolean;
+  inboxMenu?: ReactNode;
   onSelect: () => void;
   onOpenMenu: (event: ReactMouseEvent<HTMLElement>) => void;
   onOpenMenuAtPoint: (event: ReactMouseEvent<HTMLElement>) => void;
 }) {
   const conversationLabel = getConversationLabel(conversation);
   const avatarUrl = conversation.peer_user?.avatar?.url;
-  const isOnline = conversation.type === 'dm' && !!conversation.peer_user?.is_online;
+  const presenceState =
+    conversation.type === 'dm'
+      ? conversation.peer_user?.presence_state || (conversation.peer_user?.is_online ? 'online' : 'offline')
+      : 'offline';
+  const isOnline = presenceState !== 'offline';
+  const presenceClassName =
+    presenceState === 'dnd'
+      ? 'bg-rose-500'
+      : presenceState === 'away'
+        ? 'bg-amber-500'
+        : 'bg-green-500';
   const isGhost = !!conversation.peer_user?.is_ghost;
 
   return (
@@ -290,7 +310,7 @@ function ConversationListItem({
     >
       <button
         type="button"
-        className="flex w-full min-w-0 max-w-full items-center gap-3 rounded-[18px] px-2.5 py-2 pr-14 text-left transition-colors"
+        className="flex w-full min-w-0 max-w-full items-center gap-3 rounded-[18px] px-2.5 py-2 pr-24 text-left transition-colors"
         onClick={onSelect}
       >
         <div className="relative shrink-0">
@@ -301,7 +321,7 @@ function ConversationListItem({
             </AvatarFallback>
           </Avatar>
           {isOnline ? (
-            <span className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full bg-green-500 ring-2 ring-background" />
+            <span className={cn('absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full ring-2 ring-background', presenceClassName)} />
           ) : null}
         </div>
         <div className="min-w-0 flex-1">
@@ -312,6 +332,16 @@ function ConversationListItem({
                 conversation.unread_count > 0 ? 'font-semibold text-foreground' : 'font-medium text-foreground/90'
               )}
             >
+              {conversation.pinned ? (
+                <Pin className="mr-1 inline h-3 w-3 -translate-y-px fill-current text-primary" />
+              ) : null}
+              {conversation.notification_level === 'none' ||
+              (conversation.muted_until &&
+                new Date(conversation.muted_until).getTime() > Date.now()) ? (
+                <BellOff className="mr-1 inline h-3 w-3 -translate-y-px text-muted-foreground" />
+              ) : conversation.notification_level === 'mentions' ? (
+                <Bell className="mr-1 inline h-3 w-3 -translate-y-px text-primary" />
+              ) : null}
               {conversationLabel}
             </span>
             {isGhost ? (
@@ -345,22 +375,25 @@ function ConversationListItem({
         </div>
       </button>
 
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon"
-        className={cn(
-          'absolute right-1.5 top-1/2 h-11 w-11 -translate-y-1/2 rounded-full text-muted-foreground transition-opacity hover:bg-muted hover:text-foreground',
-          'opacity-100 md:opacity-0 md:group-hover:opacity-100',
-          isMenuOpen && 'bg-muted text-foreground opacity-100'
-        )}
-        onClick={(event) => {
-          event.stopPropagation();
-          onOpenMenu(event);
-        }}
-      >
-        <MoreVertical className="h-4 w-4" />
-      </Button>
+      <div className="absolute right-1.5 top-1/2 flex -translate-y-1/2 items-center">
+        {inboxMenu}
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className={cn(
+            'h-11 w-11 rounded-full text-muted-foreground transition-opacity hover:bg-muted hover:text-foreground',
+            'opacity-100 md:opacity-0 md:group-hover:opacity-100',
+            isMenuOpen && 'bg-muted text-foreground opacity-100'
+          )}
+          onClick={(event) => {
+            event.stopPropagation();
+            onOpenMenu(event);
+          }}
+        >
+          <MoreVertical className="h-4 w-4" />
+        </Button>
+      </div>
     </div>
   );
 }
@@ -375,6 +408,7 @@ export function ChatSidebar({
   sidebarView,
   selectedUser,
   typingUsers,
+  presenceByUserId = {},
   activeConversationMenuPeerUserId,
   activeCallHistoryMenuPeerUserId,
   isLoadingCallHistory,
@@ -387,7 +421,6 @@ export function ChatSidebar({
   onSidebarViewChange,
   onLoadMoreCallHistory,
   onClearAllCallHistory,
-  onCreateGroup,
   onSelectSearchUser,
   onSelectConversation,
   onSelectCallHistoryPeer,
@@ -396,54 +429,88 @@ export function ChatSidebar({
   onOpenCallHistoryMenu,
   onOpenCallHistoryMenuAtPoint,
 }: ChatSidebarProps) {
-  const [isGroupDialogOpen, setIsGroupDialogOpen] = useState(false);
-  const [groupTitle, setGroupTitle] = useState('');
-  const [selectedGroupMemberIds, setSelectedGroupMemberIds] = useState<string[]>([]);
-  const [isCreatingGroup, setIsCreatingGroup] = useState(false);
-  const groupCandidates = useMemo(
-    () =>
-      contacts
-        .filter(
-          (conversation) =>
-            conversation.type === 'dm' &&
-            conversation.peer_user &&
-            !conversation.peer_user.is_ghost &&
-            conversation.peer_user.id !== currentUserId
-        )
-        .map((conversation) => conversation.peer_user!)
-        .filter(
-          (peer, index, peers) => peers.findIndex((candidate) => candidate.id === peer.id) === index
-        ),
-    [contacts, currentUserId]
-  );
+  const [showArchived, setShowArchived] = useState(false);
+  const [activeFolder, setActiveFolder] = useState<string | null>(null);
+  const [openRowMenuId, setOpenRowMenuId] = useState<string | null>(null);
 
-  const toggleGroupMember = (userId: string) => {
-    setSelectedGroupMemberIds((current) =>
-      current.includes(userId)
-        ? current.filter((selectedId) => selectedId !== userId)
-        : [...current, userId]
+  const archivedQuery = useQuery({
+    queryKey: ['conversations', 'archived'],
+    queryFn: () => conversationsApi.getConversations(50, undefined, { archived: true }),
+    enabled: sidebarView === 'chats' && showArchived,
+  });
+
+  const folders = useMemo(() => {
+    const seen = new Set<string>();
+    for (const conversation of contacts) {
+      if (conversation.folder) {
+        seen.add(conversation.folder);
+      }
+    }
+    return Array.from(seen).sort();
+  }, [contacts]);
+
+  const archivedConversations = archivedQuery.data?.data ?? [];
+
+  const visibleConversations = useMemo(() => {
+    if (showArchived) {
+      return archivedConversations;
+    }
+    if (activeFolder) {
+      return contacts.filter((conversation) => conversation.folder === activeFolder);
+    }
+    return contacts;
+  }, [showArchived, archivedConversations, activeFolder, contacts]);
+
+  const pinnedConversations = showArchived
+    ? []
+    : visibleConversations.filter((conversation) => conversation.pinned);
+  const regularConversations = showArchived
+    ? visibleConversations
+    : visibleConversations.filter((conversation) => !conversation.pinned);
+  const renderConversation = (conversation: Conversation) => {
+    const peerId = conversation.peer_user?.id;
+    const livePresence = peerId ? presenceByUserId[peerId] : undefined;
+    const conversationWithPresence =
+      livePresence && conversation.peer_user
+        ? {
+            ...conversation,
+            peer_user: {
+              ...conversation.peer_user,
+              is_online: livePresence.is_online,
+              presence_state: livePresence.state,
+              last_seen_at: livePresence.last_seen_at,
+            },
+          }
+        : conversation;
+
+    return (
+      <ConversationListItem
+        key={conversation.conversation_id}
+        conversation={conversationWithPresence}
+        isSelected={selectedUser === conversation.conversation_id}
+        isCurrentUserConversation={
+          conversation.type === 'dm' && conversation.peer_user?.id === currentUserId
+        }
+        currentUserId={currentUserId}
+        isTyping={!!typingUsers[conversation.conversation_id]}
+        isMenuOpen={activeConversationMenuPeerUserId === conversation.conversation_id}
+        inboxMenu={
+          <InboxRowMenu
+            conversation={conversation}
+            folders={folders}
+            isOpen={openRowMenuId === conversation.id}
+            onOpenChange={(open) => setOpenRowMenuId(open ? conversation.id : null)}
+          />
+        }
+        onSelect={() => onSelectConversation(conversation.conversation_id)}
+        onOpenMenu={(event) =>
+          onOpenConversationMenu(event, conversation.conversation_id, conversation.unread_count ?? 0)
+        }
+        onOpenMenuAtPoint={(event) =>
+          onOpenConversationMenuAtPoint(event, conversation.conversation_id, conversation.unread_count ?? 0)
+        }
+      />
     );
-  };
-
-  const closeGroupDialog = () => {
-    setIsGroupDialogOpen(false);
-    setGroupTitle('');
-    setSelectedGroupMemberIds([]);
-  };
-
-  const submitGroup = async () => {
-    const title = groupTitle.trim();
-    if (!title || selectedGroupMemberIds.length === 0 || isCreatingGroup) {
-      return;
-    }
-
-    setIsCreatingGroup(true);
-    try {
-      await onCreateGroup({ title, participantIds: selectedGroupMemberIds });
-      closeGroupDialog();
-    } finally {
-      setIsCreatingGroup(false);
-    }
   };
 
   return (
@@ -464,104 +531,25 @@ export function ChatSidebar({
             className="max-w-[60%]"
           />
           <div className="flex items-center gap-1">
-            <Button variant="ghost" size="icon" onClick={onOpenPings} className="relative">
+            {/* Pings lives in the desktop rail; keep a mobile entry point here. */}
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={onOpenPings}
+              className="relative md:hidden"
+              title="Pings"
+              aria-label="Pings"
+            >
               <Bell className="h-4 w-4" />
               {pendingIncomingCount > 0 ? (
                 <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-destructive" />
               ) : null}
             </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => setIsGroupDialogOpen(true)}
-              title="New group"
-              aria-label="New group"
-            >
-              <Users className="h-4 w-4" />
-            </Button>
-            <Button variant="ghost" size="icon" onClick={onLogout}>
+            <Button variant="ghost" size="icon" onClick={onLogout} title="Log out" aria-label="Log out">
               <LogOut className="h-4 w-4" />
             </Button>
           </div>
         </div>
-
-        <Dialog open={isGroupDialogOpen} onOpenChange={(open) => (open ? setIsGroupDialogOpen(true) : closeGroupDialog())}>
-          <DialogContent className="max-w-md rounded-2xl p-5">
-            <DialogHeader>
-              <DialogTitle>New group</DialogTitle>
-              <DialogDescription>Select members from existing chats.</DialogDescription>
-            </DialogHeader>
-
-            <div className="space-y-4">
-              <Input
-                value={groupTitle}
-                onChange={(event) => setGroupTitle(event.target.value)}
-                placeholder="Group title"
-                maxLength={80}
-              />
-
-              <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
-                {groupCandidates.length === 0 ? (
-                  <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
-                    No available contacts
-                  </div>
-                ) : (
-                  groupCandidates.map((peer) => {
-                    const isSelected = selectedGroupMemberIds.includes(peer.id);
-                    const label = peer.display_name || peer.username || peer.id;
-                    return (
-                      <button
-                        key={peer.id}
-                        type="button"
-                        onClick={() => toggleGroupMember(peer.id)}
-                        className={cn(
-                          'flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-left transition-colors',
-                          isSelected
-                            ? 'border-primary/40 bg-primary/5'
-                            : 'border-border bg-background hover:bg-muted/50'
-                        )}
-                      >
-                        <Avatar className="h-9 w-9 border">
-                          {peer.avatar ? <AvatarImage src={peer.avatar.url} /> : null}
-                          <AvatarFallback>{(label[0] || '?').toUpperCase()}</AvatarFallback>
-                        </Avatar>
-                        <span className="min-w-0 flex-1 truncate text-sm font-medium">
-                          {label}
-                        </span>
-                        {isSelected ? <Check className="h-4 w-4 text-primary" /> : null}
-                      </button>
-                    );
-                  })
-                )}
-              </div>
-            </div>
-
-            <DialogFooter>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={closeGroupDialog}
-                disabled={isCreatingGroup}
-              >
-                Cancel
-              </Button>
-              <Button
-                type="button"
-                onClick={() => void submitGroup()}
-                disabled={!groupTitle.trim() || selectedGroupMemberIds.length === 0 || isCreatingGroup}
-              >
-                {isCreatingGroup ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Creating
-                  </>
-                ) : (
-                  'Create'
-                )}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
 
         <div className="flex min-h-0 flex-1 flex-col">
           <div className="shrink-0 px-4 pt-4">
@@ -588,8 +576,64 @@ export function ChatSidebar({
               ))}
             </div>
 
+            {sidebarView === 'chats' && (folders.length > 0 || showArchived) ? (
+              <div className="mb-3 flex flex-wrap items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowArchived(false);
+                    setActiveFolder(null);
+                  }}
+                  className={cn(
+                    'rounded-full border px-3 py-1 text-xs',
+                    !showArchived && !activeFolder
+                      ? 'border-primary/40 bg-primary/5 text-foreground'
+                      : 'border-border bg-background text-muted-foreground hover:bg-muted/50'
+                  )}
+                >
+                  All
+                </button>
+                {folders.map((folder) => (
+                  <button
+                    key={folder}
+                    type="button"
+                    onClick={() => {
+                      setShowArchived(false);
+                      setActiveFolder(folder);
+                    }}
+                    className={cn(
+                      'rounded-full border px-3 py-1 text-xs',
+                      !showArchived && activeFolder === folder
+                        ? 'border-primary/40 bg-primary/5 text-foreground'
+                        : 'border-border bg-background text-muted-foreground hover:bg-muted/50'
+                    )}
+                  >
+                    {folder}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+
             <div className="mb-2 flex items-center justify-between px-0.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              <span>{sidebarView === 'calls' ? 'Calls' : 'Chats'}</span>
+              <span>{sidebarView === 'calls' ? 'Calls' : showArchived ? 'Archived' : 'Chats'}</span>
+              {sidebarView === 'chats' ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowArchived((current) => !current);
+                    setActiveFolder(null);
+                  }}
+                  className={cn(
+                    'flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide transition-colors',
+                    showArchived
+                      ? 'bg-primary/10 text-primary'
+                      : 'text-muted-foreground hover:text-foreground'
+                  )}
+                >
+                  <Archive className="h-3 w-3" />
+                  {showArchived ? 'Back' : 'Archived'}
+                </button>
+              ) : null}
               <div className="flex items-center gap-2">
                 {(sidebarView === 'calls' ? callHistory.length : contacts.length) > 0 ? (
                   <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">
@@ -633,24 +677,30 @@ export function ChatSidebar({
                       onOpenMenuAtPoint={(event) => onOpenCallHistoryMenuAtPoint(event, item.peer_user.id)}
                     />
                   ))
-                : contacts.map((conversation) => (
-                    <ConversationListItem
-                      key={conversation.conversation_id}
-                      conversation={conversation}
-                      isSelected={selectedUser === conversation.conversation_id}
-                      isCurrentUserConversation={
-                        conversation.type === 'dm' && conversation.peer_user?.id === currentUserId
-                      }
-                      currentUserId={currentUserId}
-                      isTyping={!!typingUsers[conversation.conversation_id]}
-                      isMenuOpen={activeConversationMenuPeerUserId === conversation.conversation_id}
-                      onSelect={() => onSelectConversation(conversation.conversation_id)}
-                      onOpenMenu={(event) => onOpenConversationMenu(event, conversation.conversation_id, conversation.unread_count ?? 0)}
-                      onOpenMenuAtPoint={(event) =>
-                        onOpenConversationMenuAtPoint(event, conversation.conversation_id, conversation.unread_count ?? 0)
-                      }
-                    />
-                  ))}
+                : (
+                  <>
+                    {pinnedConversations.length > 0 ? (
+                      <div className="mb-1 flex items-center gap-1 px-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                        <Pin className="h-3 w-3" />
+                        Pinned
+                      </div>
+                    ) : null}
+                    {pinnedConversations.map(renderConversation)}
+                    {pinnedConversations.length > 0 && regularConversations.length > 0 ? (
+                      <div className="mt-3 mb-1 px-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                        All chats
+                      </div>
+                    ) : null}
+                    {regularConversations.map(renderConversation)}
+                  </>
+                )}
+
+              {sidebarView === 'chats' && showArchived && archivedQuery.isLoading ? (
+                <div className="flex items-center justify-center py-10 text-sm text-muted-foreground">
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Loading archived…
+                </div>
+              ) : null}
 
               {sidebarView === 'calls' && isLoadingCallHistory ? (
                 <div className="flex items-center justify-center py-10 text-sm text-muted-foreground">
@@ -684,9 +734,15 @@ export function ChatSidebar({
                 </div>
               ) : null}
 
-              {sidebarView === 'chats' && contacts.length === 0 ? (
+              {sidebarView === 'chats' &&
+              !(showArchived && archivedQuery.isLoading) &&
+              visibleConversations.length === 0 ? (
                 <div className="m-1 rounded-lg border border-dashed bg-muted/30 p-4 text-center text-sm text-muted-foreground">
-                  No recent conversations
+                  {showArchived
+                    ? 'No archived conversations'
+                    : activeFolder
+                      ? 'No conversations in this folder'
+                      : 'No recent conversations'}
                 </div>
               ) : null}
             </div>
