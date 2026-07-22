@@ -5,7 +5,14 @@ import { getCallDirectionFromMeta, getCallSummaryText } from '@/features/chat/ut
 import { getMessageTypeLabel, getPresentedMessageKind } from '@/features/chat/utils/messagePresentation';
 import { useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { MessageDeletedEvent, MessageDoc, MessageReactionsUpdate, ThreadSummary } from '@/api/types';
+import {
+  MessageDeletedEvent,
+  MessageDoc,
+  MessageReactionsUpdate,
+  PresenceState,
+  PresenceStatus,
+  ThreadSummary,
+} from '@/api/types';
 import { resolveMessageContent } from '@/api/messageContent';
 import { socketClient } from './socketClient';
 import { useAuthStore } from '@/store/authStore';
@@ -32,10 +39,12 @@ interface SocketState {
   socket: Socket | null;
   isConnected: boolean;
   onlineUsers: string[];
+  presenceByUserId: Record<string, PresenceStatus>;
   typingUsers: Record<string, boolean>; // userId -> isTyping
   setSocket: (socket: Socket | null) => void;
   setIsConnected: (isConnected: boolean) => void;
   setOnlineUsers: (users: string[]) => void;
+  setPresence: (userId: string, presence: PresenceStatus) => void;
   setTypingUser: (userId: string, isTyping: boolean) => void;
 }
 
@@ -43,10 +52,28 @@ export const useSocketStore = create<SocketState>((set) => ({
   socket: null,
   isConnected: false,
   onlineUsers: [],
+  presenceByUserId: {},
   typingUsers: {},
   setSocket: (socket) => set({ socket }),
   setIsConnected: (isConnected) => set({ isConnected }),
-  setOnlineUsers: (onlineUsers) => set({ onlineUsers }),
+  setOnlineUsers: (onlineUsers) =>
+    set((state) => {
+      const presenceByUserId = { ...state.presenceByUserId };
+      for (const userId of onlineUsers) {
+        const existingState = presenceByUserId[userId]?.state;
+        presenceByUserId[userId] = {
+          user_id: userId,
+          state: existingState && existingState !== 'offline' ? existingState : 'online',
+          is_online: true,
+          last_seen_at: null,
+        };
+      }
+      return { onlineUsers, presenceByUserId };
+    }),
+  setPresence: (userId, presence) =>
+    set((state) => ({
+      presenceByUserId: { ...state.presenceByUserId, [userId]: presence },
+    })),
   setTypingUser: (userId, isTyping) =>
     set((state) => ({
       typingUsers: { ...state.typingUsers, [userId]: isTyping },
@@ -74,7 +101,7 @@ const setupSocketSync = () => {
   let attachedToSocket: Socket | null = null;
 
   socketClient.onConnect((socket) => {
-    const { setIsConnected, setOnlineUsers, setTypingUser, setSocket } = useSocketStore.getState();
+    const { setIsConnected, setOnlineUsers, setTypingUser, setSocket, setPresence } = useSocketStore.getState();
 
     // Always update connection state — runs on every (re)connect.
     setSocket(socket);
@@ -90,25 +117,32 @@ const setupSocketSync = () => {
 
     // Use a Set for O(1) deduplication — idempotent if both PRESENCE_UPDATE
     // and USER_ONLINE/USER_OFFLINE fire for the same event.
-    const updatePresence = (userId: string, online: boolean) => {
+    const updatePresence = (userId: string, state: PresenceState, lastSeenAt: string | null = null) => {
       const currentSet = new Set(useSocketStore.getState().onlineUsers);
-      if (online) currentSet.add(userId);
+      if (state !== 'offline') currentSet.add(userId);
       else currentSet.delete(userId);
+      setPresence(userId, {
+        user_id: userId,
+        state,
+        is_online: state !== 'offline',
+        last_seen_at: lastSeenAt,
+      });
       setOnlineUsers([...currentSet]);
     };
 
     socket.on(EVENTS.PRESENCE_UPDATE, (payload: any) => {
       if (payload.user_id) {
-        updatePresence(payload.user_id, payload.status === 'online');
+        const state = payload.state || payload.status || (payload.online ? 'online' : 'offline');
+        updatePresence(payload.user_id, state, payload.last_seen_at || null);
       }
     });
 
     socket.on(EVENTS.USER_ONLINE, ({ user_id }: { user_id: string }) => {
-      updatePresence(user_id, true);
+      updatePresence(user_id, 'online');
     });
 
     socket.on(EVENTS.USER_OFFLINE, ({ user_id }: { user_id: string }) => {
-      updatePresence(user_id, false);
+      updatePresence(user_id, 'offline');
     });
 
     socket.on(EVENTS.SERVER_TYPING_START, (payload: any) => {
@@ -715,8 +749,10 @@ export const useSocket = () => {
 
 export const usePresence = () => {
   const onlineUsers = useSocketStore((state) => state.onlineUsers);
+  const presenceByUserId = useSocketStore((state) => state.presenceByUserId);
   const setOnlineUsers = useSocketStore((state) => state.setOnlineUsers);
-  return { onlineUsers, setOnlineUsers };
+  const setPresence = useSocketStore((state) => state.setPresence);
+  return { onlineUsers, presenceByUserId, setOnlineUsers, setPresence };
 };
 
 export const useTypingIndicator = (userId?: string) => {

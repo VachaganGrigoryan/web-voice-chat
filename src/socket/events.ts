@@ -14,6 +14,7 @@ export const EVENTS = {
   CONVERSATION_READ: 'conversation_read',
   CLIENT_TYPING_START: 'typing_start',
   CLIENT_TYPING_STOP: 'typing_stop',
+  CLIENT_PRESENCE_STATE: 'presence_state',
   CALL_JOIN: 'call.join',
   CALL_MEDIA_STATE: 'call.media_state',
   CALL_OFFER: 'call.offer',
