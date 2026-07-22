@@ -11,4 +11,6 @@ export interface ChatComposerProps {
   onClearReplyTarget?: () => void;
   isUploading?: boolean;
   contextLabel?: string;
+  /** Persist/restore an unsent draft per conversation (main composer only). */
+  enableDraft?: boolean;
 }

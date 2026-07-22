@@ -21,6 +21,7 @@ export default function ChatComposer({
   onClearReplyTarget,
   isUploading = false,
   contextLabel = 'chat',
+  enableDraft = false,
 }: ChatComposerProps) {
   const [activePanel, setActivePanel] = useState<ComposerPanel>(null);
   const [isMobileViewport, setIsMobileViewport] = useState(
@@ -34,6 +35,7 @@ export default function ChatComposer({
     receiverId,
     onSendText,
     onClearReplyTarget,
+    enableDraft,
   });
 
   const attachmentComposer = useAttachmentComposerController({

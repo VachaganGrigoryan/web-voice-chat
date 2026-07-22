@@ -1,4 +1,6 @@
 import { useEffect, useState, type MouseEvent as ReactMouseEvent } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import { conversationsApi } from '@/api/endpoints';
 import type { SendMediaInput, SendTextInput } from '@/hooks/useChat';
 import { triggerHaptic } from '@/utils/haptics';
 import { ConversationMenuState } from '../components/ConversationActionsMenu';
@@ -118,6 +120,7 @@ export function useChatInteractionState({
   const [replyTarget, setReplyTarget] = useState<ComposerReplyTarget | null>(null);
   const [threadReplyTarget, setThreadReplyTarget] = useState<ComposerReplyTarget | null>(null);
   const [conversationMenu, setConversationMenu] = useState<ConversationMenuState | null>(null);
+  const queryClient = useQueryClient();
 
   useEffect(() => {
     setActiveMessage(null);
@@ -191,6 +194,13 @@ export function useChatInteractionState({
     }
     navigateToConversation(selectedUser, rootMessageId);
     closeMessageMenu();
+
+    // Materialize the thread as an addressable sub-conversation (independent
+    // read state + inbox presence). Additive to the inline thread panel above.
+    void conversationsApi
+      .openThreadConversation(selectedUser, rootMessageId)
+      .then(() => queryClient.invalidateQueries({ queryKey: ['conversations'] }))
+      .catch(() => undefined);
   };
 
   const handleSendText = async (data: SendTextInput) => {

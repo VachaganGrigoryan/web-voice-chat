@@ -1,11 +1,22 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Copy, Info, MessageSquareReply, Pencil, Trash2 } from 'lucide-react';
+import {
+  Bookmark,
+  Copy,
+  Forward,
+  Info,
+  MessageSquareReply,
+  Pencil,
+  Pin,
+  PinOff,
+  Trash2,
+} from 'lucide-react';
 import { toast } from 'sonner';
 import { PanelPageLayout, PanelSection } from '@/components/panel/PanelPageLayout';
 import { Button } from '@/components/ui/Button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/Tabs';
 import { cn } from '@/lib/utils';
+import { resolveMessageContent } from '@/api/messageContent';
 import { formatDuration, formatMessageDateTime, toLocalBrowserDate } from '@/utils/dateUtils';
 import { ChatMessage } from '../types/message';
 import { MessageMenuAnchor } from './MessageShell';
@@ -21,6 +32,11 @@ interface MessageActionsDialogProps {
   onDelete: () => Promise<void>;
   isEditing: boolean;
   isDeleting: boolean;
+  canPin?: boolean;
+  isPinned?: boolean;
+  onTogglePin?: () => void | Promise<void>;
+  onForward?: () => void;
+  onSave?: () => void | Promise<void>;
 }
 
 type DialogView = 'actions' | 'edit' | 'details';
@@ -507,6 +523,28 @@ function MessageDetailsPanel({
                 )}
               </PanelSection>
 
+              <PanelSection title="Edit History" description="Prior versions retained each time this message was edited.">
+                {message.raw.edit_history.length > 0 ? (
+                  <ol className="space-y-2">
+                    {message.raw.edit_history.map((edit, index) => (
+                      <li
+                        key={`${edit.edited_at}-${index}`}
+                        className="rounded-2xl border border-border/70 bg-muted/20 p-4"
+                      >
+                        <div className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
+                          Version {index + 1} · replaced {formatDateValue(edit.edited_at)}
+                        </div>
+                        <div className="mt-2 whitespace-pre-wrap break-words text-sm text-foreground">
+                          {resolveMessageContent({ content: edit.content }).text || '—'}
+                        </div>
+                      </li>
+                    ))}
+                  </ol>
+                ) : (
+                  <p className="text-sm text-muted-foreground">This message has not been edited.</p>
+                )}
+              </PanelSection>
+
               <PanelSection title="Identifiers" description="Internal IDs that help trace the message across systems.">
                 <dl className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                   {identityFields.map((field) => (
@@ -576,6 +614,11 @@ export function MessageActionsDialog({
   onDelete,
   isEditing,
   isDeleting,
+  canPin = false,
+  isPinned = false,
+  onTogglePin,
+  onForward,
+  onSave,
 }: MessageActionsDialogProps) {
   const [view, setView] = useState<DialogView>('actions');
   const [detailsTab, setDetailsTab] = useState<DetailsTab>('summary');
@@ -639,6 +682,12 @@ export function MessageActionsDialog({
   const canCopy = !!copyText;
   const canEdit = canEditMessage(message);
   const canDelete = !!message && message.kind !== 'system' && !message.isDeleted;
+  const canShowPin =
+    canPin && !!onTogglePin && !!message && message.kind !== 'system' && !message.isDeleted;
+  const canForward =
+    !!onForward && !!message && message.kind !== 'system' && !message.isDeleted;
+  const canSave =
+    !!onSave && !!message && message.kind !== 'system' && !message.isDeleted;
 
   useEffect(() => {
     if (view === 'edit' && !canEdit) {
@@ -687,12 +736,46 @@ export function MessageActionsDialog({
       });
     }
 
+    if (canForward) {
+      items.push({
+        key: 'forward',
+        label: 'Forward',
+        icon: <Forward className="h-4 w-4" />,
+        onSelect: () => {
+          onForward?.();
+        },
+      });
+    }
+
     if (canEdit) {
       items.push({
         key: 'edit',
         label: 'Edit',
         icon: <Pencil className="h-4 w-4" />,
         onSelect: () => setView('edit'),
+      });
+    }
+
+    if (canShowPin) {
+      items.push({
+        key: 'pin',
+        label: isPinned ? 'Unpin' : 'Pin',
+        icon: isPinned ? <PinOff className="h-4 w-4" /> : <Pin className="h-4 w-4" />,
+        onSelect: async () => {
+          await onTogglePin?.();
+        },
+      });
+    }
+
+    if (canSave) {
+      items.push({
+        key: 'save',
+        label: 'Save',
+        icon: <Bookmark className="h-4 w-4" />,
+        onSelect: async () => {
+          await onSave?.();
+          onOpenChange(false);
+        },
       });
     }
 
@@ -718,7 +801,7 @@ export function MessageActionsDialog({
     }
 
     return items;
-  }, [canCopy, canDelete, canEdit, canReply, canThread, copyText, isDeleting, message, onDelete, onOpenChange, onReply, onThread]);
+  }, [canCopy, canDelete, canEdit, canForward, canReply, canSave, canShowPin, canThread, copyText, isDeleting, isPinned, message, onDelete, onForward, onOpenChange, onReply, onSave, onThread, onTogglePin]);
 
   if (!open || !message || typeof document === 'undefined') {
     return null;

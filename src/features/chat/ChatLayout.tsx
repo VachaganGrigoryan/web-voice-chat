@@ -7,7 +7,13 @@ import { usePings } from '@/hooks/usePings';
 import { APP_ROUTES } from '@/app/routes';
 import { extractApiError } from '@/api/errors';
 import { useAuthStore } from '@/store/authStore';
-import { authApi, conversationsApi } from '@/api/endpoints';
+import {
+  authApi,
+  conversationsApi,
+  messagesApi,
+  notificationsApi,
+  savedMessagesApi,
+} from '@/api/endpoints';
 import { toast } from 'sonner';
 import { triggerHaptic } from '@/utils/haptics';
 import ChatComposer from './composer';
@@ -16,9 +22,19 @@ import { MediaViewer } from './media/MediaViewer';
 import { CallHistoryActionsMenu, CallHistoryMenuState } from './components/CallHistoryActionsMenu';
 import { ConfirmDestructiveActionDialog } from './components/ConfirmDestructiveActionDialog';
 import { GroupInfoPanel } from './components/GroupInfoPanel';
+import { ForwardMessageDialog } from './components/ForwardMessageDialog';
 import { MessageActionsDialog } from './components/MessageActionsDialog';
+import { MessageSearchDialog } from './components/MessageSearchDialog';
+import { PinnedMessagesBar } from './components/PinnedMessagesBar';
+import { SavedMessagesDialog } from './components/SavedMessagesDialog';
+import { ScheduledMessagesDialog } from './components/ScheduledMessagesDialog';
 import { ThreadPanel } from './components/ThreadPanel';
 import { ChatSidebar } from './components/ChatSidebar';
+import { ChatActionRail } from './components/ChatActionRail';
+import { CreateGroupDialog } from './components/CreateGroupDialog';
+import { CreateChannelDialog } from './components/CreateChannelDialog';
+import { MobileActionFab } from './components/MobileActionFab';
+import { InviteToConversationDialog } from './components/InviteToConversationDialog';
 import { ChatWelcomeState } from './components/ChatWelcomeState';
 import { ConversationAccessState } from './components/ConversationAccessState';
 import {
@@ -29,6 +45,7 @@ import { MainChatPane } from './components/MainChatPane';
 import { cn } from '@/lib/utils';
 import { useTypingIndicator, useSocketStore } from '@/socket/socket';
 import { useProfile } from '@/hooks/useProfile';
+import { useGroupMembers } from '@/hooks/useGroupManagement';
 import { useChatLayoutDerivedData } from './hooks/useChatLayoutDerivedData';
 import { useChatConversationView } from './hooks/useChatConversationView';
 import { NotificationSoundPrompt } from './components/NotificationSoundPrompt';
@@ -40,6 +57,7 @@ import { useChatReadState } from './hooks/useChatReadState';
 import { useThreadPanelLayout } from './hooks/useThreadPanelLayout';
 import { startCall, useCallStore } from '@/features/calls/callController';
 import { useNotificationSoundStore } from '@/utils/notificationSound';
+import { NotificationLevel, PresenceState } from '@/api/types';
 
 type SidebarDestructiveAction =
   | { kind: 'clearConversation'; peerUserId: string; label: string }
@@ -64,13 +82,19 @@ export default function ChatLayout() {
   const [callHistoryMenu, setCallHistoryMenu] = useState<CallHistoryMenuState | null>(null);
   const [pendingDestructiveAction, setPendingDestructiveAction] = useState<SidebarDestructiveAction | null>(null);
   const [isGroupInfoOpen, setIsGroupInfoOpen] = useState(false);
+  const [isGroupDialogOpen, setIsGroupDialogOpen] = useState(false);
+  const [isChannelDialogOpen, setIsChannelDialogOpen] = useState(false);
+  const [isInviteDialogOpen, setIsInviteDialogOpen] = useState(false);
+  const [updatingNotificationConversationId, setUpdatingNotificationConversationId] = useState<string | null>(null);
 
   const {
     onlineUsers,
+    presenceByUserId,
     messages,
     fetchNextPage,
     hasNextPage,
     isFetchingNextPage,
+    isSelectedConversationMissing,
     sendVoice,
     sendText,
     editMessage,
@@ -113,6 +137,13 @@ export default function ChatLayout() {
   const isEnablingSound = useNotificationSoundStore((state) => state.isEnablingSound);
   const enableSoundFromUserGesture = useNotificationSoundStore((state) => state.enableSoundFromUserGesture);
   const dismissSoundPrompt = useNotificationSoundStore((state) => state.dismissSoundPrompt);
+
+  useEffect(() => {
+    if (selectedUser && isSelectedConversationMissing) {
+      navigate(APP_ROUTES.chat, { replace: true });
+    }
+  }, [selectedUser, isSelectedConversationMissing, navigate]);
+
   const {
     incoming,
     outgoing,
@@ -145,6 +176,13 @@ export default function ChatLayout() {
     outgoing,
     selectedUser,
   });
+  const selectedPresence = selectedPeerUserId ? presenceByUserId[selectedPeerUserId] : undefined;
+  const selectedPresenceState: PresenceState =
+    selectedPresence?.state ||
+    selectedConversationUser?.presence_state ||
+    selectedUserSummary?.presence_state ||
+    (selectedPeerUserId && onlineUsers?.includes(selectedPeerUserId) ? 'online' : 'offline');
+  const selectedIsOnline = selectedPresenceState !== 'offline';
   const isCallBusy = callPhase !== 'idle';
 
   const {
@@ -254,6 +292,65 @@ export default function ChatLayout() {
     selectedThreadRootMessage,
   });
 
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [isScheduledOpen, setIsScheduledOpen] = useState(false);
+  const [isSavedOpen, setIsSavedOpen] = useState(false);
+  // Captured before the message menu closes (which clears `activeMessage`).
+  const [forwardSource, setForwardSource] = useState<
+    { conversationId: string; messageId: string } | null
+  >(null);
+
+  const handleForwardMessage = () => {
+    if (!activeMessage) return;
+    setForwardSource({ conversationId: activeMessage.chatId, messageId: activeMessage.id });
+    closeMessageMenu();
+  };
+
+  const handleSaveMessage = async () => {
+    if (!activeMessage) return;
+    try {
+      await savedMessagesApi.save(activeMessage.chatId, activeMessage.id);
+      queryClient.invalidateQueries({ queryKey: ['saved-messages'] });
+      toast.success('Message saved');
+    } catch (error) {
+      toast.error(extractApiError(error, 'Could not save message'));
+    }
+  };
+
+  // Pin rights follow the shared owner/admin default; derived from the members
+  // list for group/channel conversations (DMs have no manageable pins).
+  const isPinCapableConversation =
+    selectedConversation?.type === 'group' || selectedConversation?.type === 'channel';
+  const { data: pinMembers } = useGroupMembers(
+    isPinCapableConversation ? selectedConversation?.id ?? null : null
+  );
+  const canManagePins = useMemo(() => {
+    const role = pinMembers?.find((member) => member.user_id === userId)?.role;
+    return role === 'owner' || role === 'admin';
+  }, [pinMembers, userId]);
+
+  const isActiveMessagePinned = !!(
+    activeMessage && selectedConversation?.pinned_message_ids.includes(activeMessage.id)
+  );
+
+  const handleTogglePinMessage = async () => {
+    if (!activeMessage) return;
+    const conversationId = activeMessage.chatId;
+    try {
+      if (isActiveMessagePinned) {
+        await messagesApi.unpinMessage(conversationId, activeMessage.id);
+      } else {
+        await messagesApi.pinMessage(conversationId, activeMessage.id);
+      }
+      queryClient.invalidateQueries({ queryKey: ['conversations'] });
+      queryClient.invalidateQueries({ queryKey: ['pinned-messages', conversationId] });
+    } catch (error) {
+      toast.error(extractApiError(error, 'Could not update pin'));
+    } finally {
+      closeMessageMenu();
+    }
+  };
+
   useEffect(() => {
     if (selectedUser && isPingAccepted && mainAudioQueueKey) {
       syncAudioQueue(mainAudioQueueKey, mainAudioQueue);
@@ -318,6 +415,53 @@ export default function ChatLayout() {
     } catch (error) {
       toast.error(extractApiError(error, 'Failed to create group'));
       throw error;
+    }
+  };
+
+  const handleCycleNotificationSettings = async () => {
+    if (!selectedConversation) {
+      return;
+    }
+
+    const activeMute = selectedConversation.muted_until
+      ? new Date(selectedConversation.muted_until).getTime() > Date.now()
+      : false;
+    const next: { notification_level?: NotificationLevel; muted_until?: string | null } =
+      activeMute || selectedConversation.notification_level === 'none'
+        ? { notification_level: 'all', muted_until: null }
+        : selectedConversation.notification_level === 'all'
+          ? { notification_level: 'mentions', muted_until: null }
+          : {
+              notification_level: 'all',
+              muted_until: new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString(),
+            };
+
+    setUpdatingNotificationConversationId(selectedConversation.id);
+    try {
+      const participant = await notificationsApi.updateConversationSettings(selectedConversation.id, next);
+      queryClient.setQueryData(['conversations'], (old: any) => {
+        if (!old?.pages) return old;
+
+        return {
+          ...old,
+          pages: old.pages.map((page: any) => ({
+            ...page,
+            data: page.data.map((conversation: any) =>
+              conversation.id === selectedConversation.id
+                ? {
+                    ...conversation,
+                    notification_level: participant.notification_level,
+                    muted_until: participant.muted_until,
+                  }
+                : conversation
+            ),
+          })),
+        };
+      });
+    } catch (error) {
+      toast.error(extractApiError(error, 'Failed to update notification settings'));
+    } finally {
+      setUpdatingNotificationConversationId(null);
     }
   };
 
@@ -536,6 +680,49 @@ export default function ChatLayout() {
         onDelete={handleDeleteMessage}
         isEditing={isEditingMessage}
         isDeleting={isDeletingMessage}
+        canPin={canManagePins}
+        isPinned={isActiveMessagePinned}
+        onTogglePin={handleTogglePinMessage}
+        onForward={handleForwardMessage}
+        onSave={handleSaveMessage}
+      />
+
+      <MessageSearchDialog
+        open={isSearchOpen}
+        onOpenChange={setIsSearchOpen}
+        onSelectResult={(message) => {
+          setIsSearchOpen(false);
+          navigate(APP_ROUTES.chatConversation(message.conversation_id));
+        }}
+      />
+
+      <SavedMessagesDialog
+        open={isSavedOpen}
+        onOpenChange={setIsSavedOpen}
+        onSelectSaved={(saved) => {
+          setIsSavedOpen(false);
+          navigate(APP_ROUTES.chatConversation(saved.conversation_id));
+        }}
+      />
+
+      {selectedConversation ? (
+        <ScheduledMessagesDialog
+          open={isScheduledOpen}
+          onOpenChange={setIsScheduledOpen}
+          conversationId={selectedConversation.id}
+        />
+      ) : null}
+
+      <ForwardMessageDialog
+        open={!!forwardSource}
+        onOpenChange={(open) => !open && setForwardSource(null)}
+        conversations={conversations}
+        sourceConversationId={forwardSource?.conversationId ?? null}
+        messageId={forwardSource?.messageId ?? null}
+        onForwarded={(targetConversationId) => {
+          setForwardSource(null);
+          navigate(APP_ROUTES.chatConversation(targetConversationId));
+        }}
       />
 
       <ConversationActionsMenu
@@ -591,6 +778,44 @@ export default function ChatLayout() {
         />
       ) : null}
 
+      <CreateGroupDialog
+        open={isGroupDialogOpen}
+        onOpenChange={setIsGroupDialogOpen}
+        contacts={contacts}
+        currentUserId={userId}
+        onCreateGroup={handleCreateGroup}
+      />
+      <CreateChannelDialog
+        open={isChannelDialogOpen}
+        onOpenChange={setIsChannelDialogOpen}
+        onCreated={(conversationId) => {
+          navigate(APP_ROUTES.chatConversation(conversationId));
+          resetConversationUnreadCount(conversationId);
+        }}
+      />
+      {selectedConversation &&
+      (selectedConversation.type === 'group' || selectedConversation.type === 'channel') ? (
+        <InviteToConversationDialog
+          open={isInviteDialogOpen}
+          onOpenChange={setIsInviteDialogOpen}
+          conversationId={selectedConversation.id}
+        />
+      ) : null}
+
+      <ChatActionRail
+        pendingIncomingCount={pendingIncomingCount}
+        onOpenPings={() => navigate(APP_ROUTES.pingsTab('incoming'))}
+        onNewGroup={() => setIsGroupDialogOpen(true)}
+        onNewChannel={() => setIsChannelDialogOpen(true)}
+      />
+
+      {!selectedUser ? (
+        <MobileActionFab
+          onNewGroup={() => setIsGroupDialogOpen(true)}
+          onNewChannel={() => setIsChannelDialogOpen(true)}
+        />
+      ) : null}
+
       <ChatSidebar
         profile={profile}
         userEmail={userEmail}
@@ -601,6 +826,7 @@ export default function ChatLayout() {
         sidebarView={sidebarView}
         selectedUser={selectedUser}
         typingUsers={typingUsers}
+        presenceByUserId={presenceByUserId}
         activeConversationMenuPeerUserId={conversationMenu?.peerUserId || null}
         activeCallHistoryMenuPeerUserId={callHistoryMenu?.peerUserId || null}
         isLoadingCallHistory={isLoadingCallHistory}
@@ -613,7 +839,6 @@ export default function ChatLayout() {
         onSidebarViewChange={setSidebarView}
         onLoadMoreCallHistory={() => void fetchNextCallHistoryPage()}
         onClearAllCallHistory={handleRequestClearAllCallHistory}
-        onCreateGroup={handleCreateGroup}
         onSelectSearchUser={(id) => void openDmConversationForUser(id)}
         onSelectConversation={(conversationId) => {
           navigate(APP_ROUTES.chatConversation(conversationId));
@@ -641,9 +866,23 @@ export default function ChatLayout() {
               displaySelectedUser={displaySelectedUser}
               selectedConversationUserAvatarUrl={selectedConversationUser?.avatar?.url}
               isTyping={isTyping}
-              isOnline={!!selectedPeerUserId && (onlineUsers?.includes(selectedPeerUserId) || false)}
+              isOnline={!!selectedPeerUserId && selectedIsOnline}
+              presenceState={selectedPresenceState}
               isGhost={isSelectedConversationGhost}
               isGroup={selectedConversation?.type === 'group'}
+              showInvite={
+                selectedConversation?.type === 'group' ||
+                selectedConversation?.type === 'channel'
+              }
+              onOpenInvite={() => setIsInviteDialogOpen(true)}
+              notificationLevel={selectedConversation?.notification_level}
+              mutedUntil={selectedConversation?.muted_until}
+              isUpdatingNotifications={
+                updatingNotificationConversationId === selectedConversation?.id
+              }
+              onCycleNotificationLevel={
+                selectedConversation ? handleCycleNotificationSettings : undefined
+              }
               isPingAccepted={isPingAccepted}
               pingStatus={pingStatus}
               isSendingPing={isSendingPing}
@@ -657,6 +896,13 @@ export default function ChatLayout() {
                 }
               }}
               onOpenGroupInfo={() => setIsGroupInfoOpen(true)}
+              onOpenSearch={() => setIsSearchOpen(true)}
+              onOpenScheduled={
+                isPingAccepted && selectedConversation
+                  ? () => setIsScheduledOpen(true)
+                  : undefined
+              }
+              onOpenSaved={() => setIsSavedOpen(true)}
               onSendPing={() => {
                 if (selectedPeerUserId) {
                   sendPing(selectedPeerUserId);
@@ -676,11 +922,7 @@ export default function ChatLayout() {
                           displaySelectedUser ||
                           null,
                         avatar: selectedConversationUser?.avatar || selectedUserSummary?.avatar || null,
-                        is_online:
-                          onlineUsers?.includes(selectedPeerUserId) ||
-                          selectedConversationUser?.is_online ||
-                          selectedUserSummary?.is_online ||
-                          false,
+                        is_online: selectedIsOnline,
                       },
                     })
                   : undefined
@@ -699,16 +941,20 @@ export default function ChatLayout() {
                           displaySelectedUser ||
                           null,
                         avatar: selectedConversationUser?.avatar || selectedUserSummary?.avatar || null,
-                        is_online:
-                          onlineUsers?.includes(selectedPeerUserId) ||
-                          selectedConversationUser?.is_online ||
-                          selectedUserSummary?.is_online ||
-                          false,
+                        is_online: selectedIsOnline,
                       },
                     })
                   : undefined
               }
             />
+
+            {selectedConversation && selectedConversation.pinned_message_ids.length > 0 ? (
+              <PinnedMessagesBar
+                conversationId={selectedConversation.id}
+                pinnedMessageIds={selectedConversation.pinned_message_ids}
+                canManagePins={canManagePins}
+              />
+            ) : null}
 
             {isPingAccepted && showNotificationSoundPrompt ? (
               <NotificationSoundPrompt
@@ -751,6 +997,7 @@ export default function ChatLayout() {
                     onClearReplyTarget={() => setReplyTarget(null)}
                     isUploading={isSending}
                     contextLabel="main chat"
+                    enableDraft
                   />
                 }
                 resizeHandle={
