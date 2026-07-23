@@ -396,6 +396,13 @@ export interface ParticipantView {
   hidden: boolean;
 }
 
+/** A user's folder, discovered from per-participant `folder` labels. */
+export interface ConversationFolder {
+  name: string;
+  count: number;
+  archived_count: number;
+}
+
 export type JoinRequestStatus = 'pending' | 'approved' | 'rejected';
 
 /** Invite link to a conversation (POST /conversations/{id}/invites). */
@@ -478,6 +485,21 @@ export interface Conversation {
   folder: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface ThreadConversationView {
+  thread: Conversation;
+  parent: Conversation | null;
+  root_message: MessageDoc | null;
+  locked: boolean;
+  converted_to_conversation_id: string | null;
+}
+
+export interface ConvertThreadToGroupResponse {
+  group: Conversation;
+  thread: Conversation;
+  imported_count: number;
+  truncated: boolean;
 }
 
 /** Lean conversation entity returned by POST /conversations (create-or-get DM). */

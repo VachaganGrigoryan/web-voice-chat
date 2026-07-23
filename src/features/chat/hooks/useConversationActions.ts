@@ -8,8 +8,15 @@ import { conversationsApi } from '@/api/endpoints';
  */
 export const useConversationActions = () => {
   const queryClient = useQueryClient();
-  const invalidateInbox = () =>
-    queryClient.invalidateQueries({ queryKey: ['conversations'] });
+  const invalidateInbox = async () => {
+    // Prefix-match covers ['conversations'], ['conversations','archived'] and
+    // ['conversations','folders']; the singular ['conversation', id] key used to
+    // resolve archived/off-page conversations needs a separate pass.
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['conversations'] }),
+      queryClient.invalidateQueries({ queryKey: ['conversation'] }),
+    ]);
+  };
 
   const createChannel = useMutation({
     mutationFn: conversationsApi.createChannel,
@@ -36,6 +43,28 @@ export const useConversationActions = () => {
     onSuccess: invalidateInbox,
   });
 
+  const setInboxStateBulk = useMutation({
+    mutationFn: ({
+      conversationIds,
+      updates,
+    }: {
+      conversationIds: string[];
+      updates: { pinned?: boolean; archived?: boolean; folder?: string | null };
+    }) => conversationsApi.updateInboxStateBulk(conversationIds, updates),
+    onSuccess: invalidateInbox,
+  });
+
+  const renameFolder = useMutation({
+    mutationFn: ({ name, newName }: { name: string; newName: string }) =>
+      conversationsApi.renameFolder(name, newName),
+    onSuccess: invalidateInbox,
+  });
+
+  const deleteFolder = useMutation({
+    mutationFn: (name: string) => conversationsApi.deleteFolder(name),
+    onSuccess: invalidateInbox,
+  });
+
   const approveJoinRequest = useMutation({
     mutationFn: ({ conversationId, requestId }: { conversationId: string; requestId: string }) =>
       conversationsApi.approveJoinRequest(conversationId, requestId),
@@ -50,6 +79,9 @@ export const useConversationActions = () => {
     createChannel,
     redeemInvite,
     setInboxState,
+    setInboxStateBulk,
+    renameFolder,
+    deleteFolder,
     approveJoinRequest,
     rejectJoinRequest,
   };

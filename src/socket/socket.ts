@@ -432,6 +432,46 @@ const rebuildConversationPreview = (
   });
 };
 
+const updateConversationPinnedMessages = (
+  queryClient: ReturnType<typeof useQueryClient>,
+  conversationId: string,
+  pinnedMessageIds: string[]
+) => {
+  queryClient.setQueryData(['conversations'], (old: any) => {
+    if (!old?.pages) return old;
+
+    let changed = false;
+    const pages = old.pages.map((page: any) => ({
+      ...page,
+      data: (page.data || []).map((conversation: any) => {
+        if (
+          conversation.conversation_id !== conversationId &&
+          conversation.id !== conversationId
+        ) {
+          return conversation;
+        }
+
+        changed = true;
+        return {
+          ...conversation,
+          pinned_message_ids: pinnedMessageIds,
+        };
+      }),
+    }));
+
+    return changed ? { ...old, pages } : old;
+  });
+
+  queryClient.setQueryData(['conversation', conversationId], (old: any) => {
+    if (!old) return old;
+
+    return {
+      ...old,
+      pinned_message_ids: pinnedMessageIds,
+    };
+  });
+};
+
 const updateThreadSummaryCaches = (
   queryClient: ReturnType<typeof useQueryClient>,
   summary: ThreadSummary
@@ -662,6 +702,39 @@ export const applyMessageDeletedEventToCaches = (
 const isThreadMessage = (message: MessageDoc) =>
   message.reply_mode === 'thread' && !!message.thread_root_id;
 
+const isKnownThreadConversationId = (
+  queryClient: ReturnType<typeof useQueryClient>,
+  conversationId: string
+) => {
+  const threadDetail = queryClient.getQueryData<any>(['threadConversation', conversationId]);
+  if (threadDetail?.thread?.conversation_id === conversationId) {
+    return true;
+  }
+
+  const openThreadQueries = queryClient.getQueriesData<any>({ queryKey: ['threadMessages'] });
+  if (openThreadQueries.some(([key]) => Array.isArray(key) && key[1] === conversationId)) {
+    return true;
+  }
+
+  const threadQueries = queryClient.getQueriesData<any>({ queryKey: ['threads'] });
+  return threadQueries.some(([, data]) =>
+    (data?.pages?.flatMap((page: any) => page.data || []) || data?.data || []).some(
+      (item: any) => item?.thread?.conversation_id === conversationId
+    )
+  );
+};
+
+const routeIncomingThreadConversationMessage = (
+  queryClient: ReturnType<typeof useQueryClient>,
+  message: MessageDoc
+) => {
+  queryClient.setQueryData(['threadMessages', message.conversation_id], (old: any) =>
+    prependMessageToMessageCache(old, message)
+  );
+  updateConversationActivity(queryClient, message.conversation_id, message.created_at);
+  queryClient.invalidateQueries({ queryKey: ['threads'] });
+};
+
 const routeIncomingThreadMessage = (
   queryClient: ReturnType<typeof useQueryClient>,
   message: MessageDoc,
@@ -813,6 +886,19 @@ export const useRealtimeMessages = (
         return;
       }
 
+      if (isKnownThreadConversationId(queryClient, message.conversation_id)) {
+        routeIncomingThreadConversationMessage(queryClient, message);
+
+        if (message.sender_id !== currentUserId) {
+          socket.emit(EVENTS.MESSAGE_DELIVERED, {
+            conversation_id: message.conversation_id,
+            message_id: message.id,
+          });
+        }
+
+        return;
+      }
+
       routeIncomingMainChatMessage(queryClient, message, currentUserId, selectedUser);
 
       if (message.sender_id !== currentUserId) {
@@ -926,6 +1012,21 @@ export const useRealtimeMessages = (
       updateThreadSummaryCaches(queryClient, payload);
     };
 
+    const handleConversationPinsUpdated = (payload: {
+      conversation_id?: string;
+      pinned_message_ids?: string[];
+    }) => {
+      const conversationId = payload?.conversation_id;
+      if (!conversationId) return;
+
+      updateConversationPinnedMessages(
+        queryClient,
+        conversationId,
+        payload.pinned_message_ids ?? []
+      );
+      queryClient.invalidateQueries({ queryKey: ['pinned-messages', conversationId] });
+    };
+
     const handleConversationHistoryCleared = (payload: { conversation_id: string }) => {
       const conversationId = payload?.conversation_id;
       if (!conversationId) return;
@@ -942,6 +1043,7 @@ export const useRealtimeMessages = (
     socket.on(EVENTS.MESSAGE_REACTED, handleMessageReacted);
     socket.on(EVENTS.THREAD_REPLY_CREATED, handleThreadReplyCreated);
     socket.on(EVENTS.THREAD_SUMMARY_UPDATED, handleThreadSummaryUpdated);
+    socket.on(EVENTS.CONVERSATION_PINS_UPDATED, handleConversationPinsUpdated);
     socket.on(EVENTS.CONVERSATION_HISTORY_CLEARED, handleConversationHistoryCleared);
 
     return () => {
@@ -952,6 +1054,7 @@ export const useRealtimeMessages = (
       socket.off(EVENTS.MESSAGE_REACTED, handleMessageReacted);
       socket.off(EVENTS.THREAD_REPLY_CREATED, handleThreadReplyCreated);
       socket.off(EVENTS.THREAD_SUMMARY_UPDATED, handleThreadSummaryUpdated);
+      socket.off(EVENTS.CONVERSATION_PINS_UPDATED, handleConversationPinsUpdated);
       socket.off(EVENTS.CONVERSATION_HISTORY_CLEARED, handleConversationHistoryCleared);
     };
   }, [queryClient, currentUserId, socket, selectedUser, openThreadRootId]);

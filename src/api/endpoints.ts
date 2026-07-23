@@ -8,7 +8,9 @@ import {
   CallSession,
   ClearConversationResponse,
   ContactListItem,
+  ConvertThreadToGroupResponse,
   Conversation,
+  ConversationFolder,
   ConversationInviteLink,
   ConversationJoinRequest,
   ConversationReadUpdate,
@@ -45,6 +47,7 @@ import {
   SelectedUserProfile,
   SuccessResponse,
   ThreadSummary,
+  ThreadConversationView,
   TokenPair,
   User,
 } from './types';
@@ -249,6 +252,12 @@ export const messagesApi = {
     );
     return response.data;
   },
+  getMessage: (conversationId: string, messageId: string) =>
+    apiClient
+      .get<SuccessResponse<MessageDoc>>(
+        `/conversations/${conversationId}/messages/${messageId}`
+      )
+      .then((res) => extractResponseData(res.data)),
   markDelivered: (conversationId: string, messageId: string) =>
     apiClient
       .post<SuccessResponse<MessageDoc>>(
@@ -317,13 +326,13 @@ export const messagesApi = {
       .post<SuccessResponse<Conversation>>(
         `/conversations/${conversationId}/messages/${messageId}/pin`
       )
-      .then((res) => extractResponseData(res.data)),
+      .then((res) => normalizeConversation(extractResponseData(res.data))),
   unpinMessage: (conversationId: string, messageId: string) =>
     apiClient
       .delete<SuccessResponse<Conversation>>(
         `/conversations/${conversationId}/messages/${messageId}/pin`
       )
-      .then((res) => extractResponseData(res.data)),
+      .then((res) => normalizeConversation(extractResponseData(res.data))),
   getPinnedMessages: (conversationId: string) =>
     apiClient
       .get<SuccessResponse<MessageDoc[]>>(
@@ -391,6 +400,12 @@ const normalizeConversation = (conversation: Conversation): Conversation => ({
   ),
 });
 
+const normalizeThreadConversation = (thread: ThreadConversationView): ThreadConversationView => ({
+  ...thread,
+  thread: normalizeConversation(thread.thread),
+  parent: thread.parent ? normalizeConversation(thread.parent) : null,
+});
+
 export const conversationsApi = {
   getConversations: (
     limit = 20,
@@ -410,6 +425,75 @@ export const conversationsApi = {
         ...res.data,
         data: res.data.data.map(normalizeConversation),
       })),
+  getConversation: (conversationId: string) =>
+    apiClient
+      .get<SuccessResponse<Conversation>>(`/conversations/${conversationId}`)
+      .then((res) => normalizeConversation(extractResponseData(res.data))),
+  getThreads: (limit = 20, cursor?: string, options?: { archived?: boolean }) =>
+    apiClient
+      .get<PaginatedResponse<ThreadConversationView>>('/conversations/threads', {
+        params: {
+          limit,
+          cursor,
+          archived: options?.archived ? true : undefined,
+        },
+      })
+      .then((res) => ({
+        ...res.data,
+        data: res.data.data.map(normalizeThreadConversation),
+      })),
+  getThreadConversation: (threadId: string) =>
+    apiClient
+      .get<SuccessResponse<ThreadConversationView>>(`/conversations/threads/${threadId}`)
+      .then((res) => normalizeThreadConversation(extractResponseData(res.data))),
+  getThreadConversationMessages: (threadId: string) =>
+    apiClient
+      .get<SuccessResponse<MessageDoc[]>>(`/conversations/threads/${threadId}/messages`)
+      .then((res) => extractResponseData(res.data)),
+  convertThreadToGroup: (
+    threadId: string,
+    data: { title: string; participant_ids: string[] }
+  ) =>
+    apiClient
+      .post<SuccessResponse<ConvertThreadToGroupResponse>>(
+        `/conversations/threads/${threadId}/convert-to-group`,
+        data
+      )
+      .then((res) => {
+        const result = extractResponseData(res.data);
+        return {
+          ...result,
+          group: normalizeConversation(result.group),
+          thread: normalizeConversation(result.thread),
+        };
+      }),
+  listFolders: () =>
+    apiClient
+      .get<SuccessResponse<ConversationFolder[]>>('/conversations/folders')
+      .then((res) => extractResponseData(res.data)),
+  renameFolder: (name: string, newName: string) =>
+    apiClient
+      .patch<SuccessResponse<{ updated: number }>>(
+        `/conversations/folders/${encodeURIComponent(name)}`,
+        { new_name: newName }
+      )
+      .then((res) => extractResponseData(res.data)),
+  deleteFolder: (name: string) =>
+    apiClient
+      .delete<void>(
+        `/conversations/folders/${encodeURIComponent(name)}`
+      )
+      .then(() => undefined),
+  updateInboxStateBulk: (
+    conversationIds: string[],
+    updates: { pinned?: boolean; archived?: boolean; folder?: string | null }
+  ) =>
+    apiClient
+      .patch<SuccessResponse<{ updated: number }>>('/conversations/inbox', {
+        conversation_ids: conversationIds,
+        ...updates,
+      })
+      .then((res) => extractResponseData(res.data)),
   createChannel: (data: {
     title: string;
     description?: string;
