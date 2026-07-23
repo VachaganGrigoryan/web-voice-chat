@@ -1,6 +1,6 @@
 import React from 'react';
 import { Button } from '@/components/ui/Button';
-import { ArrowDown, Loader2, MessageSquareText, X } from 'lucide-react';
+import { ArrowDown, Loader2, Lock, MessageSquareText, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ChatMessage, MediaClickPayload } from '../types/message';
 import { MessageItem, MessageMenuAnchor, MessageMeta } from './MessageShell';
@@ -33,6 +33,11 @@ interface ThreadPanelProps {
   composer?: React.ReactNode;
   isMobile?: boolean;
   isMessageMenuOpen?: boolean;
+  isLocked?: boolean;
+  convertedToConversationId?: string | null;
+  canConvertToGroup?: boolean;
+  onOpenConvertedConversation?: () => void;
+  onConvertToGroup?: () => void;
   className?: string;
   style?: React.CSSProperties;
 }
@@ -59,6 +64,11 @@ export function ThreadPanel({
   composer,
   isMobile = false,
   isMessageMenuOpen = false,
+  isLocked = false,
+  convertedToConversationId,
+  canConvertToGroup = false,
+  onOpenConvertedConversation,
+  onConvertToGroup,
   className,
   style,
 }: ThreadPanelProps) {
@@ -101,9 +111,22 @@ export function ThreadPanel({
               : 'No replies yet'}
           </div>
         </div>
-        <Button variant="ghost" size="icon" className="h-9 w-9" onClick={onClose}>
-          <X className="h-4 w-4" />
-        </Button>
+        <div className="flex shrink-0 items-center gap-1">
+          {convertedToConversationId && onOpenConvertedConversation ? (
+            <Button variant="ghost" size="sm" className="h-8 rounded-full px-2 text-xs" onClick={onOpenConvertedConversation}>
+              Open group
+            </Button>
+          ) : null}
+          {canConvertToGroup && onConvertToGroup ? (
+            <Button variant="ghost" size="sm" className="h-8 rounded-full px-2 text-xs" onClick={onConvertToGroup}>
+              Convert
+            </Button>
+          ) : null}
+          {isLocked ? <Lock className="h-4 w-4 text-muted-foreground" /> : null}
+          <Button variant="ghost" size="icon" className="h-9 w-9" onClick={onClose}>
+            <X className="h-4 w-4" />
+          </Button>
+        </div>
       </div>
 
       <div
@@ -199,7 +222,13 @@ export function ThreadPanel({
         </div>
       ) : null}
 
-      {composer ? <div className="border-t">{composer}</div> : null}
+      {isLocked ? (
+        <div className="border-t bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
+          This thread was converted to a group and is now locked.
+        </div>
+      ) : composer ? (
+        <div className="border-t">{composer}</div>
+      ) : null}
     </aside>
   );
 }

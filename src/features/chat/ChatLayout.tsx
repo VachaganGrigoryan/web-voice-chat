@@ -1,6 +1,6 @@
 import { type MouseEvent as ReactMouseEvent, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useChat, useConversations, useThreadMessages } from '@/hooks/useChat';
 import { useCallHistory } from '@/hooks/useCallHistory';
 import { usePings } from '@/hooks/usePings';
@@ -29,6 +29,7 @@ import { PinnedMessagesBar } from './components/PinnedMessagesBar';
 import { SavedMessagesDialog } from './components/SavedMessagesDialog';
 import { ScheduledMessagesDialog } from './components/ScheduledMessagesDialog';
 import { ThreadPanel } from './components/ThreadPanel';
+import { ConvertThreadToGroupDialog } from './components/ConvertThreadToGroupDialog';
 import { ChatSidebar } from './components/ChatSidebar';
 import { ChatActionRail } from './components/ChatActionRail';
 import { CreateGroupDialog } from './components/CreateGroupDialog';
@@ -40,6 +41,9 @@ import { ConversationAccessState } from './components/ConversationAccessState';
 import {
   ConversationActionsMenu,
 } from './components/ConversationActionsMenu';
+import { MoveToFolderDialog } from './components/MoveToFolderDialog';
+import { useConversationActions } from './hooks/useConversationActions';
+import { useConversationFolders } from './hooks/useConversationFolders';
 import { ChatHeader } from './components/ChatHeader';
 import { MainChatPane } from './components/MainChatPane';
 import { cn } from '@/lib/utils';
@@ -57,7 +61,8 @@ import { useChatReadState } from './hooks/useChatReadState';
 import { useThreadPanelLayout } from './hooks/useThreadPanelLayout';
 import { startCall, useCallStore } from '@/features/calls/callController';
 import { useNotificationSoundStore } from '@/utils/notificationSound';
-import { NotificationLevel, PresenceState } from '@/api/types';
+import { NotificationLevel, PresenceState, ThreadConversationView } from '@/api/types';
+import { parseMessage } from './utils/messageParser';
 
 type SidebarDestructiveAction =
   | { kind: 'clearConversation'; peerUserId: string; label: string }
@@ -78,13 +83,14 @@ export default function ChatLayout() {
   const selectedThreadRootId = rootMessageId || null;
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [sidebarView, setSidebarView] = useState<'chats' | 'calls'>('chats');
+  const [sidebarView, setSidebarView] = useState<'chats' | 'calls' | 'threads'>('chats');
   const [callHistoryMenu, setCallHistoryMenu] = useState<CallHistoryMenuState | null>(null);
   const [pendingDestructiveAction, setPendingDestructiveAction] = useState<SidebarDestructiveAction | null>(null);
   const [isGroupInfoOpen, setIsGroupInfoOpen] = useState(false);
   const [isGroupDialogOpen, setIsGroupDialogOpen] = useState(false);
   const [isChannelDialogOpen, setIsChannelDialogOpen] = useState(false);
   const [isInviteDialogOpen, setIsInviteDialogOpen] = useState(false);
+  const [isConvertThreadDialogOpen, setIsConvertThreadDialogOpen] = useState(false);
   const [updatingNotificationConversationId, setUpdatingNotificationConversationId] = useState<string | null>(null);
 
   const {
@@ -111,10 +117,70 @@ export default function ChatLayout() {
   } = useChat(selectedUser, selectedThreadRootId);
 
   const { data: conversationsData } = useConversations();
-  const conversations = useMemo(
+  const inboxConversations = useMemo(
     () => conversationsData?.pages.flatMap((page) => page.data || []).filter(Boolean) || [],
     [conversationsData]
   );
+
+  // The inbox query only returns non-archived conversations on the active page,
+  // so an archived (or off-page) chat opened by id is absent. Fetch it on its own
+  // and merge it in, so its history and composer resolve instead of the ping/
+  // access screen.
+  const isSelectedInInbox = useMemo(
+    () =>
+      !!selectedUser &&
+      inboxConversations.some(
+        (conversation) =>
+          conversation.conversation_id === selectedUser || conversation.id === selectedUser
+      ),
+    [inboxConversations, selectedUser]
+  );
+
+  const selectedConversationQuery = useQuery({
+    queryKey: ['conversation', selectedUser],
+    queryFn: () => conversationsApi.getConversation(selectedUser as string),
+    enabled: !!selectedUser && !isSelectedInInbox,
+  });
+
+  const conversations = useMemo(() => {
+    const fallback = selectedConversationQuery.data;
+    if (
+      !fallback ||
+      inboxConversations.some(
+        (conversation) =>
+          conversation.conversation_id === fallback.conversation_id ||
+          conversation.id === fallback.id
+      )
+    ) {
+      return inboxConversations;
+    }
+    return [...inboxConversations, fallback];
+  }, [inboxConversations, selectedConversationQuery.data]);
+  const selectedThreadConversationQuery = useQuery({
+    queryKey: ['threadConversationByRoot', selectedUser, selectedThreadRootId],
+    queryFn: () =>
+      conversationsApi.openThreadConversation(
+        selectedUser as string,
+        selectedThreadRootId as string
+      ),
+    enabled: !!selectedUser && !!selectedThreadRootId,
+  });
+  const selectedThreadConversation = selectedThreadConversationQuery.data ?? null;
+  const selectedThreadConversationId =
+    selectedThreadConversation?.conversation_id || selectedThreadConversation?.id || null;
+  const selectedThreadDetailQuery = useQuery({
+    queryKey: ['threadConversation', selectedThreadConversationId],
+    queryFn: () => conversationsApi.getThreadConversation(selectedThreadConversationId as string),
+    enabled: !!selectedThreadConversationId,
+  });
+  const selectedThreadDetail = selectedThreadDetailQuery.data ?? null;
+  const isSelectedThreadLocked =
+    selectedThreadDetail?.locked || !!selectedThreadConversation?.settings?.locked_at;
+  const convertedThreadGroupId =
+    selectedThreadDetail?.converted_to_conversation_id ??
+    (typeof selectedThreadConversation?.settings?.converted_to_conversation_id === 'string'
+      ? selectedThreadConversation.settings.converted_to_conversation_id
+      : null);
   const {
     history: callHistory,
     fetchNextPage: fetchNextCallHistoryPage,
@@ -191,7 +257,7 @@ export default function ChatLayout() {
     hasNextPage: hasNextThreadPage,
     isFetchingNextPage: isFetchingNextThreadPage,
     isLoading: isLoadingThread,
-  } = useThreadMessages(selectedUser, selectedThreadRootId);
+  } = useThreadMessages(selectedThreadConversationId);
 
   const {
     mainChatMessages,
@@ -212,6 +278,21 @@ export default function ChatLayout() {
     selectedUser,
     selectedThreadRootId,
   });
+  const threadRootMessageQuery = useQuery({
+    queryKey: ['message', selectedUser, selectedThreadRootId],
+    queryFn: () =>
+      messagesApi.getMessage(selectedUser as string, selectedThreadRootId as string),
+    enabled: !!selectedUser && !!selectedThreadRootId && !selectedThreadRootMessage,
+  });
+  const fetchedThreadRootMessage = useMemo(
+    () =>
+      threadRootMessageQuery.data
+        ? parseMessage(threadRootMessageQuery.data, userId)
+        : null,
+    [threadRootMessageQuery.data, userId]
+  );
+  const displayedThreadRootMessage =
+    selectedThreadRootMessage ?? fetchedThreadRootMessage;
 
   const {
     splitLayoutRef,
@@ -256,6 +337,8 @@ export default function ChatLayout() {
   } = useChatInteractionState({
     selectedUser,
     selectedThreadRootId,
+    selectedThreadConversationId,
+    isSelectedThreadLocked,
     displaySelectedUser,
     isMobileViewport,
     mainImageGallery,
@@ -274,6 +357,90 @@ export default function ChatLayout() {
     toggleReaction,
   });
 
+  const { setInboxState } = useConversationActions();
+  const [folderDialogConversationId, setFolderDialogConversationId] = useState<string | null>(null);
+
+  const { folderNames: inboxFolders } = useConversationFolders();
+
+  const conversationMenuBaseConversation = conversationMenu
+    ? conversations.find(
+        (item) =>
+          item.conversation_id === conversationMenu.peerUserId ||
+          item.id === conversationMenu.peerUserId
+      ) ?? null
+    : null;
+
+  const conversationMenuQuery = useQuery({
+    queryKey: ['conversation', conversationMenu?.peerUserId],
+    queryFn: () => conversationsApi.getConversation(conversationMenu?.peerUserId as string),
+    enabled: !!conversationMenu?.peerUserId && !conversationMenuBaseConversation,
+  });
+
+  const findConversationByMenuId = (menuId: string) =>
+    conversations.find((item) => item.conversation_id === menuId || item.id === menuId) ??
+    (
+      conversationMenuQuery.data?.conversation_id === menuId ||
+      conversationMenuQuery.data?.id === menuId
+        ? conversationMenuQuery.data
+        : null
+    );
+
+  const conversationMenuConversation = conversationMenu
+    ? conversationMenuBaseConversation ?? conversationMenuQuery.data ?? null
+    : null;
+
+  const folderDialogConversation = folderDialogConversationId
+    ? findConversationByMenuId(folderDialogConversationId)
+    : null;
+
+  const sidebarContacts = useMemo(
+    () =>
+      contacts.filter(
+        (conversation) => !conversation.archived && conversation.type !== 'thread'
+      ),
+    [contacts]
+  );
+
+  const handleSelectThread = (thread: ThreadConversationView) => {
+    const parentId = thread.parent?.conversation_id || thread.thread.parent_conversation_id;
+    const rootId = thread.root_message?.id || thread.thread.root_message_id;
+    if (!parentId || !rootId) {
+      return;
+    }
+    navigate(APP_ROUTES.chatConversationThread(parentId, rootId));
+    resetConversationUnreadCount(thread.thread.conversation_id);
+  };
+
+  const handleConversationMenuTogglePin = (menuId: string) => {
+    const conversation = findConversationByMenuId(menuId);
+    setConversationMenu(null);
+    if (conversation) {
+      setInboxState.mutate({
+        conversationId: conversation.id,
+        updates: { pinned: !conversation.pinned },
+      });
+    }
+  };
+
+  const handleConversationMenuToggleArchive = (menuId: string) => {
+    const conversation = findConversationByMenuId(menuId);
+    setConversationMenu(null);
+    if (conversation) {
+      setInboxState.mutate({
+        conversationId: conversation.id,
+        updates: { archived: !conversation.archived },
+      });
+    }
+  };
+
+  const handleConversationMenuMoveToFolder = (menuId: string) => {
+    const conversation = findConversationByMenuId(menuId);
+    setConversationMenu(null);
+    if (conversation) {
+      setFolderDialogConversationId(conversation.id);
+    }
+  };
+
   const {
     highlightedMessageIds,
     resetConversationUnreadCount,
@@ -286,10 +453,10 @@ export default function ChatLayout() {
     userId,
     selectedUser,
     selectedThreadRootId,
+    selectedThreadConversationId,
     contacts,
     mainChatMessages,
     threadReplyMessages,
-    selectedThreadRootMessage,
   });
 
   const [isSearchOpen, setIsSearchOpen] = useState(false);
@@ -317,32 +484,77 @@ export default function ChatLayout() {
     }
   };
 
-  // Pin rights follow the shared owner/admin default; derived from the members
-  // list for group/channel conversations (DMs have no manageable pins).
+  // DMs allow either participant to manage message pins; larger conversations
+  // follow the owner/admin pin right.
   const isPinCapableConversation =
-    selectedConversation?.type === 'group' || selectedConversation?.type === 'channel';
+    selectedConversation?.type === 'group' ||
+    selectedConversation?.type === 'channel' ||
+    selectedConversation?.type === 'thread';
   const { data: pinMembers } = useGroupMembers(
     isPinCapableConversation ? selectedConversation?.id ?? null : null
   );
   const canManagePins = useMemo(() => {
+    if (selectedConversation?.type === 'dm') {
+      return true;
+    }
+
     const role = pinMembers?.find((member) => member.user_id === userId)?.role;
     return role === 'owner' || role === 'admin';
-  }, [pinMembers, userId]);
+  }, [pinMembers, selectedConversation?.type, userId]);
 
   const isActiveMessagePinned = !!(
     activeMessage && selectedConversation?.pinned_message_ids.includes(activeMessage.id)
+  );
+  const canPinActiveMessage = !!(
+    canManagePins &&
+    activeMessage &&
+    activeMessage.chatId === selectedConversation?.id
   );
 
   const handleTogglePinMessage = async () => {
     if (!activeMessage) return;
     const conversationId = activeMessage.chatId;
+    const updatePinnedIds = (pinnedMessageIds: string[]) => {
+      queryClient.setQueryData(['conversations'], (old: any) => {
+        if (!old?.pages) return old;
+
+        return {
+          ...old,
+          pages: old.pages.map((page: any) => ({
+            ...page,
+            data: page.data.map((conversation: any) =>
+              conversation.conversation_id === conversationId ||
+              conversation.id === conversationId
+                ? {
+                    ...conversation,
+                    pinned_message_ids: pinnedMessageIds,
+                  }
+                : conversation
+            ),
+          })),
+        };
+      });
+
+      queryClient.setQueryData(['conversation', conversationId], (old: any) => {
+        if (!old) return old;
+
+        return {
+          ...old,
+          pinned_message_ids: pinnedMessageIds,
+        };
+      });
+    };
+
     try {
+      const updatedConversation = isActiveMessagePinned
+        ? await messagesApi.unpinMessage(conversationId, activeMessage.id)
+        : await messagesApi.pinMessage(conversationId, activeMessage.id);
+      updatePinnedIds(updatedConversation.pinned_message_ids);
       if (isActiveMessagePinned) {
-        await messagesApi.unpinMessage(conversationId, activeMessage.id);
+        toast.success('Message unpinned');
       } else {
-        await messagesApi.pinMessage(conversationId, activeMessage.id);
+        toast.success('Message pinned');
       }
-      queryClient.invalidateQueries({ queryKey: ['conversations'] });
       queryClient.invalidateQueries({ queryKey: ['pinned-messages', conversationId] });
     } catch (error) {
       toast.error(extractApiError(error, 'Could not update pin'));
@@ -414,6 +626,33 @@ export default function ChatLayout() {
       navigate(APP_ROUTES.chatConversation(conversation.id));
     } catch (error) {
       toast.error(extractApiError(error, 'Failed to create group'));
+      throw error;
+    }
+  };
+
+  const handleConvertThreadToGroup = async (data: {
+    title: string;
+    participantIds: string[];
+  }) => {
+    if (!selectedThreadConversationId) return;
+    try {
+      const result = await conversationsApi.convertThreadToGroup(
+        selectedThreadConversationId,
+        {
+          title: data.title,
+          participant_ids: data.participantIds,
+        }
+      );
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['conversations'] }),
+        queryClient.invalidateQueries({ queryKey: ['threads'] }),
+        queryClient.invalidateQueries({ queryKey: ['threadConversation'] }),
+        queryClient.invalidateQueries({ queryKey: ['threadConversationByRoot'] }),
+      ]);
+      toast.success('Thread converted to group');
+      navigate(APP_ROUTES.chatConversation(result.group.id));
+    } catch (error) {
+      toast.error(extractApiError(error, 'Failed to convert thread'));
       throw error;
     }
   };
@@ -680,7 +919,7 @@ export default function ChatLayout() {
         onDelete={handleDeleteMessage}
         isEditing={isEditingMessage}
         isDeleting={isDeletingMessage}
-        canPin={canManagePins}
+        canPin={canPinActiveMessage}
         isPinned={isActiveMessagePinned}
         onTogglePin={handleTogglePinMessage}
         onForward={handleForwardMessage}
@@ -731,14 +970,40 @@ export default function ChatLayout() {
         isMarkingRead={false}
         isClearingConversation={isClearingConversation}
         isDeletingConversation={isDeletingConversation}
+        pinned={!!conversationMenuConversation?.pinned}
+        archived={!!conversationMenuConversation?.archived}
+        isUpdatingInbox={setInboxState.isPending}
         onOpenChange={(open) => {
           if (!open) {
             setConversationMenu(null);
           }
         }}
+        onTogglePin={handleConversationMenuTogglePin}
+        onToggleArchive={handleConversationMenuToggleArchive}
+        onMoveToFolder={handleConversationMenuMoveToFolder}
         onMarkAsRead={handleConversationMenuMarkAsRead}
         onClearConversation={handleRequestClearConversation}
         onDeleteConversation={handleRequestDeleteConversation}
+      />
+
+      <MoveToFolderDialog
+        open={!!folderDialogConversation}
+        onOpenChange={(open) => {
+          if (!open) {
+            setFolderDialogConversationId(null);
+          }
+        }}
+        folders={inboxFolders}
+        initialFolder={folderDialogConversation?.folder ?? null}
+        onSave={(folder) => {
+          if (folderDialogConversation) {
+            setInboxState.mutate({
+              conversationId: folderDialogConversation.id,
+              updates: { folder },
+            });
+          }
+          setFolderDialogConversationId(null);
+        }}
       />
 
       <CallHistoryActionsMenu
@@ -785,6 +1050,14 @@ export default function ChatLayout() {
         currentUserId={userId}
         onCreateGroup={handleCreateGroup}
       />
+      <ConvertThreadToGroupDialog
+        open={isConvertThreadDialogOpen}
+        onOpenChange={setIsConvertThreadDialogOpen}
+        thread={selectedThreadDetail}
+        contacts={contacts}
+        currentUserId={userId}
+        onConvert={handleConvertThreadToGroup}
+      />
       <CreateChannelDialog
         open={isChannelDialogOpen}
         onOpenChange={setIsChannelDialogOpen}
@@ -805,8 +1078,10 @@ export default function ChatLayout() {
       <ChatActionRail
         pendingIncomingCount={pendingIncomingCount}
         onOpenPings={() => navigate(APP_ROUTES.pingsTab('incoming'))}
+        onOpenThreads={() => setSidebarView('threads')}
         onNewGroup={() => setIsGroupDialogOpen(true)}
         onNewChannel={() => setIsChannelDialogOpen(true)}
+        onOpenSettings={() => navigate(APP_ROUTES.settingsTab('profile'))}
       />
 
       {!selectedUser ? (
@@ -821,7 +1096,7 @@ export default function ChatLayout() {
         userEmail={userEmail}
         currentUserId={userId}
         pendingIncomingCount={pendingIncomingCount}
-        contacts={contacts}
+        contacts={sidebarContacts}
         callHistory={callHistory}
         sidebarView={sidebarView}
         selectedUser={selectedUser}
@@ -834,6 +1109,7 @@ export default function ChatLayout() {
         isFetchingMoreCallHistory={isFetchingNextCallHistoryPage}
         isClearingCallHistory={isDeletingHistory}
         onOpenSettings={() => navigate(APP_ROUTES.settingsTab('profile'))}
+        onOpenOwnProfile={() => navigate(APP_ROUTES.me)}
         onOpenPings={() => navigate(APP_ROUTES.pingsTab('incoming'))}
         onLogout={handleLogout}
         onSidebarViewChange={setSidebarView}
@@ -844,6 +1120,7 @@ export default function ChatLayout() {
           navigate(APP_ROUTES.chatConversation(conversationId));
           resetConversationUnreadCount(conversationId);
         }}
+        onSelectThread={handleSelectThread}
         onSelectCallHistoryPeer={(peerUserId) => {
           void openDmConversationForUser(peerUserId);
         }}
@@ -869,7 +1146,7 @@ export default function ChatLayout() {
               isOnline={!!selectedPeerUserId && selectedIsOnline}
               presenceState={selectedPresenceState}
               isGhost={isSelectedConversationGhost}
-              isGroup={selectedConversation?.type === 'group'}
+              conversationType={selectedConversation?.type}
               showInvite={
                 selectedConversation?.type === 'group' ||
                 selectedConversation?.type === 'channel'
@@ -882,6 +1159,32 @@ export default function ChatLayout() {
               }
               onCycleNotificationLevel={
                 selectedConversation ? handleCycleNotificationSettings : undefined
+              }
+              inboxPinned={selectedConversation?.pinned}
+              inboxArchived={selectedConversation?.archived}
+              isUpdatingInboxState={setInboxState.isPending}
+              onToggleInboxPin={
+                selectedConversation
+                  ? () =>
+                      setInboxState.mutate({
+                        conversationId: selectedConversation.id,
+                        updates: { pinned: !selectedConversation.pinned },
+                      })
+                  : undefined
+              }
+              onToggleInboxArchive={
+                selectedConversation
+                  ? () =>
+                      setInboxState.mutate({
+                        conversationId: selectedConversation.id,
+                        updates: { archived: !selectedConversation.archived },
+                      })
+                  : undefined
+              }
+              onMoveToFolder={
+                selectedConversation
+                  ? () => setFolderDialogConversationId(selectedConversation.id)
+                  : undefined
               }
               isPingAccepted={isPingAccepted}
               pingStatus={pingStatus}
@@ -1001,7 +1304,7 @@ export default function ChatLayout() {
                   />
                 }
                 resizeHandle={
-                  selectedThreadRootMessage && !isMobileViewport ? (
+                  displayedThreadRootMessage && !isMobileViewport ? (
                     <button
                       type="button"
                       aria-label="Resize thread panel"
@@ -1025,8 +1328,8 @@ export default function ChatLayout() {
                 }
                 threadPanel={
                   <ThreadPanel
-                    open={!!selectedThreadRootMessage}
-                    rootMessage={selectedThreadRootMessage}
+                    open={!!displayedThreadRootMessage}
+                    rootMessage={displayedThreadRootMessage}
                     replyMessages={threadReplyMessages}
                     renderItems={threadRenderItems}
                     isLoading={isLoadingThread}
@@ -1037,7 +1340,18 @@ export default function ChatLayout() {
                     onClose={closeThreadRoute}
                     onOpenMenu={(message, anchor) => openMessageMenu(message, anchor, 'thread')}
                     onSwipeReply={(message) => handleSwipeReply(message, 'thread')}
-                    onToggleReaction={handleToggleReaction}
+                    onToggleReaction={async (messageId, emoji) => {
+                      const targetMessage =
+                        displayedThreadRootMessage?.id === messageId
+                          ? displayedThreadRootMessage
+                          : threadReplyMessages.find((message) => message.id === messageId);
+                      await toggleReaction({
+                        conversationId: targetMessage?.chatId,
+                        messageId,
+                        emoji,
+                      });
+                      triggerHaptic('reaction');
+                    }}
                     isTogglingReaction={isTogglingReaction}
                     onVisibleUnreadMessages={handleVisibleThreadMessageIds}
                     onMediaClick={handleThreadMediaClick}
@@ -1045,12 +1359,25 @@ export default function ChatLayout() {
                     audioQueue={threadAudioQueue}
                     isMobile={isMobileViewport}
                     isMessageMenuOpen={!!activeMessage}
+                    isLocked={isSelectedThreadLocked}
+                    convertedToConversationId={convertedThreadGroupId}
+                    canConvertToGroup={
+                      !!selectedThreadConversation &&
+                      selectedThreadConversation.created_by === userId &&
+                      !isSelectedThreadLocked
+                    }
+                    onOpenConvertedConversation={
+                      convertedThreadGroupId
+                        ? () => navigate(APP_ROUTES.chatConversation(convertedThreadGroupId))
+                        : undefined
+                    }
+                    onConvertToGroup={() => setIsConvertThreadDialogOpen(true)}
                     style={{ width: threadPanelWidth }}
                     composer={
-                      selectedThreadRootMessage ? (
+                      displayedThreadRootMessage && !isSelectedThreadLocked ? (
                         <div className="bg-background px-3">
                           <ChatComposer
-                            receiverId={selectedUser}
+                            receiverId={selectedThreadConversationId || selectedUser}
                             onSendText={handleSendThreadText}
                             onSendMedia={handleSendThreadMedia}
                             replyTarget={threadReplyTarget}

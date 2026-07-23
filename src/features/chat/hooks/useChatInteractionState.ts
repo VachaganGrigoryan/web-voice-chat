@@ -49,6 +49,8 @@ export type MediaViewerState =
 interface UseChatInteractionStateParams {
   selectedUser: string | null;
   selectedThreadRootId: string | null;
+  selectedThreadConversationId: string | null;
+  isSelectedThreadLocked?: boolean;
   displaySelectedUser?: string | null;
   isMobileViewport: boolean;
   mainImageGallery: MediaViewerImageItem[];
@@ -62,9 +64,9 @@ interface UseChatInteractionStateParams {
     reply_to_message_id?: string;
   }) => Promise<unknown>;
   sendVoice: (data: SendMediaInput) => Promise<unknown>;
-  editMessage: (data: { messageId: string; text: string }) => Promise<unknown>;
-  deleteMessage: (messageId: string) => Promise<unknown>;
-  toggleReaction: (data: { messageId: string; emoji: string }) => Promise<unknown>;
+  editMessage: (data: { conversationId?: string; messageId: string; text: string }) => Promise<unknown>;
+  deleteMessage: (data: { conversationId?: string; messageId: string }) => Promise<unknown>;
+  toggleReaction: (data: { conversationId?: string; messageId: string; emoji: string }) => Promise<unknown>;
 }
 
 export const closedMediaViewerState: MediaViewerState = {
@@ -101,6 +103,8 @@ const getMessagePreviewText = (message: ChatMessage) => {
 export function useChatInteractionState({
   selectedUser,
   selectedThreadRootId,
+  selectedThreadConversationId,
+  isSelectedThreadLocked = false,
   displaySelectedUser,
   isMobileViewport,
   mainImageGallery,
@@ -199,7 +203,10 @@ export function useChatInteractionState({
     // read state + inbox presence). Additive to the inline thread panel above.
     void conversationsApi
       .openThreadConversation(selectedUser, rootMessageId)
-      .then(() => queryClient.invalidateQueries({ queryKey: ['conversations'] }))
+      .then(() => {
+        queryClient.invalidateQueries({ queryKey: ['threads'] });
+        queryClient.invalidateQueries({ queryKey: ['threadConversationByRoot'] });
+      })
       .catch(() => undefined);
   };
 
@@ -214,11 +221,12 @@ export function useChatInteractionState({
   };
 
   const handleSendThreadText = async (data: SendTextInput) => {
-    if (!selectedThreadRootId) return;
+    if (!selectedThreadConversationId || isSelectedThreadLocked) return;
     await sendText({
       ...data,
-      reply_mode: 'thread',
-      reply_to_message_id: threadReplyTarget?.messageId || selectedThreadRootId,
+      conversation_id: selectedThreadConversationId,
+      reply_mode: null,
+      reply_to_message_id: threadReplyTarget?.messageId,
     });
     triggerHaptic('send');
     setThreadReplyTarget(null);
@@ -233,29 +241,31 @@ export function useChatInteractionState({
   };
 
   const handleSendThreadMedia = async (data: SendMediaInput) => {
-    if (!selectedThreadRootId) return;
+    if (!selectedThreadConversationId || isSelectedThreadLocked) return;
     await sendVoice({
       ...data,
-      reply_mode: data.reply_mode ?? 'thread',
-      reply_to_message_id:
-        data.reply_to_message_id ?? threadReplyTarget?.messageId ?? selectedThreadRootId,
+      conversation_id: selectedThreadConversationId,
+      reply_mode: null,
+      reply_to_message_id: data.reply_to_message_id ?? threadReplyTarget?.messageId,
     });
   };
 
   const handleEditMessage = async (text: string) => {
     if (!activeMessage) return;
-    await editMessage({ messageId: activeMessage.id, text });
+    await editMessage({ conversationId: activeMessage.chatId, messageId: activeMessage.id, text });
     closeMessageMenu();
   };
 
   const handleDeleteMessage = async () => {
     if (!activeMessage) return;
-    await deleteMessage(activeMessage.id);
+    await deleteMessage({ conversationId: activeMessage.chatId, messageId: activeMessage.id });
     closeMessageMenu();
   };
 
   const handleToggleReaction = async (messageId: string, emoji: string) => {
-    await toggleReaction({ messageId, emoji });
+    const targetMessage =
+      activeMessage?.id === messageId ? activeMessage : null;
+    await toggleReaction({ conversationId: targetMessage?.chatId, messageId, emoji });
     triggerHaptic('reaction');
   };
 

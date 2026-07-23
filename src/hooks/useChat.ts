@@ -318,6 +318,13 @@ const integrateCreatedMessage = (
   selectedUser: string,
   message: MessageDoc
 ) => {
+  if (message.conversation_id !== selectedUser) {
+    prependThreadMessageToCache(queryClient, message.conversation_id, message);
+    updateConversationActivity(queryClient, message.conversation_id, message.created_at);
+    queryClient.invalidateQueries({ queryKey: ['threads'] });
+    return;
+  }
+
   if (message.reply_mode === 'thread' && message.thread_root_id) {
     prependThreadMessageToCache(queryClient, message.thread_root_id, message);
     updateThreadRootSummaryFromReply(queryClient, message.thread_root_id, message.created_at);
@@ -350,17 +357,19 @@ export const useConversations = () => {
   });
 };
 
-export const useThreadMessages = (conversationId: string | null, threadRootId: string | null) => {
+export const useThreadMessages = (threadConversationId: string | null) => {
   return useInfiniteQuery({
-    queryKey: ['threadMessages', conversationId, threadRootId],
+    queryKey: ['threadMessages', threadConversationId],
     queryFn: async () => {
-      if (!conversationId || !threadRootId) {
+      if (!threadConversationId) {
         return toSinglePageResponse([], 0);
       }
-      return toSinglePageResponse(await messagesApi.getThreadMessages(conversationId, threadRootId));
+      return toSinglePageResponse(
+        await conversationsApi.getThreadConversationMessages(threadConversationId)
+      );
     },
     getNextPageParam: (lastPage) => lastPage.meta?.next_cursor,
-    enabled: !!conversationId && !!threadRootId,
+    enabled: !!threadConversationId,
     initialPageParam: undefined,
   });
 };
@@ -448,7 +457,7 @@ export const useChat = (selectedUser: string | null = null, openThreadRootId: st
             }
           : newMessage;
 
-        emitOutgoingMessage(messageWithClientBatchId, variables.type, selectedUser);
+        emitOutgoingMessage(messageWithClientBatchId, variables.type, newMessage.conversation_id);
         integrateCreatedMessage(queryClient, selectedUser, messageWithClientBatchId);
       }
     },
@@ -458,16 +467,24 @@ export const useChat = (selectedUser: string | null = null, openThreadRootId: st
     mutationFn: (data: SendTextInput) => messagesApi.sendText(data),
     onSuccess: (newMessage) => {
       if (selectedUser) {
-        emitOutgoingMessage(newMessage, 'text', selectedUser);
+        emitOutgoingMessage(newMessage, 'text', newMessage.conversation_id);
         integrateCreatedMessage(queryClient, selectedUser, newMessage);
       }
     },
   });
 
   const editMessageMutation = useMutation({
-    mutationFn: ({ messageId, text }: { messageId: string; text: string }) =>
-      selectedUser
-        ? messagesApi.editMessage(selectedUser, messageId, text)
+    mutationFn: ({
+      conversationId,
+      messageId,
+      text,
+    }: {
+      conversationId?: string;
+      messageId: string;
+      text: string;
+    }) =>
+      (conversationId || selectedUser)
+        ? messagesApi.editMessage(conversationId || (selectedUser as string), messageId, text)
         : Promise.reject(new Error('No conversation selected')),
     onSuccess: (updatedMessage) => {
       updateMessageAcrossCacheGroup(queryClient, 'messages', updatedMessage.id, () => updatedMessage);
@@ -477,9 +494,9 @@ export const useChat = (selectedUser: string | null = null, openThreadRootId: st
   });
 
   const deleteMessageMutation = useMutation({
-    mutationFn: (messageId: string) =>
-      selectedUser
-        ? messagesApi.deleteMessage(selectedUser, messageId)
+    mutationFn: ({ conversationId, messageId }: { conversationId?: string; messageId: string }) =>
+      (conversationId || selectedUser)
+        ? messagesApi.deleteMessage(conversationId || (selectedUser as string), messageId)
         : Promise.reject(new Error('No conversation selected')),
     onSuccess: (deletedMessage) => {
       applyMessageDeletedEventToCaches(
@@ -544,9 +561,17 @@ export const useChat = (selectedUser: string | null = null, openThreadRootId: st
   });
 
   const toggleReactionMutation = useMutation({
-    mutationFn: ({ messageId, emoji }: { messageId: string; emoji: string }) =>
-      selectedUser
-        ? messagesApi.toggleReaction(selectedUser, messageId, emoji)
+    mutationFn: ({
+      conversationId,
+      messageId,
+      emoji,
+    }: {
+      conversationId?: string;
+      messageId: string;
+      emoji: string;
+    }) =>
+      (conversationId || selectedUser)
+        ? messagesApi.toggleReaction(conversationId || (selectedUser as string), messageId, emoji)
         : Promise.reject(new Error('No conversation selected')),
     onMutate: async ({ messageId, emoji }) => {
       if (!currentUserId) {
@@ -609,11 +634,11 @@ export const useChat = (selectedUser: string | null = null, openThreadRootId: st
     isSelectedConversationMissing,
     sendVoice: sendMessageMutation.mutateAsync as (data: SendMediaInput) => Promise<any>,
     sendText: sendTextMutation.mutateAsync as (data: SendTextInput) => Promise<any>,
-    editMessage: editMessageMutation.mutateAsync as (data: { messageId: string; text: string }) => Promise<any>,
-    deleteMessage: deleteMessageMutation.mutateAsync as (messageId: string) => Promise<any>,
+    editMessage: editMessageMutation.mutateAsync as (data: { conversationId?: string; messageId: string; text: string }) => Promise<any>,
+    deleteMessage: deleteMessageMutation.mutateAsync as (data: { conversationId?: string; messageId: string }) => Promise<any>,
     clearConversation: clearConversationMutation.mutateAsync as (conversationId: string) => Promise<ClearConversationResponse>,
     deleteConversation: deleteConversationMutation.mutateAsync as (conversationId: string) => Promise<DeleteConversationResponse>,
-    toggleReaction: toggleReactionMutation.mutateAsync as (data: { messageId: string; emoji: string }) => Promise<any>,
+    toggleReaction: toggleReactionMutation.mutateAsync as (data: { conversationId?: string; messageId: string; emoji: string }) => Promise<any>,
     isSending: sendMessageMutation.isPending || sendTextMutation.isPending,
     isEditingMessage: editMessageMutation.isPending,
     isDeletingMessage: deleteMessageMutation.isPending,

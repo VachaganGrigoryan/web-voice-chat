@@ -1,12 +1,14 @@
 import type { ComponentType } from 'react';
-import { Bell, Radio, Users } from 'lucide-react';
+import { Bell, MessageSquareText, Radio, Settings, Users } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface ChatActionRailProps {
   pendingIncomingCount: number;
   onOpenPings: () => void;
+  onOpenThreads: () => void;
   onNewGroup: () => void;
   onNewChannel: () => void;
+  onOpenSettings: () => void;
 }
 
 interface RailButtonProps {
@@ -14,9 +16,10 @@ interface RailButtonProps {
   label: string;
   onClick: () => void;
   showDot?: boolean;
+  className?: string;
 }
 
-function RailButton({ icon: Icon, label, onClick, showDot = false }: RailButtonProps) {
+function RailButton({ icon: Icon, label, onClick, showDot = false, className }: RailButtonProps) {
   return (
     <button
       type="button"
@@ -27,7 +30,8 @@ function RailButton({ icon: Icon, label, onClick, showDot = false }: RailButtonP
         'relative flex h-12 w-12 cursor-pointer items-center justify-center rounded-2xl',
         'text-muted-foreground transition-colors duration-200',
         'hover:bg-background hover:text-foreground',
-        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-muted'
+        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-muted',
+        className
       )}
     >
       <Icon className="h-5 w-5" />
@@ -46,8 +50,10 @@ function RailButton({ icon: Icon, label, onClick, showDot = false }: RailButtonP
 export function ChatActionRail({
   pendingIncomingCount,
   onOpenPings,
+  onOpenThreads,
   onNewGroup,
   onNewChannel,
+  onOpenSettings,
 }: ChatActionRailProps) {
   return (
     <nav
@@ -60,8 +66,15 @@ export function ChatActionRail({
         onClick={onOpenPings}
         showDot={pendingIncomingCount > 0}
       />
+      <RailButton icon={MessageSquareText} label="Threads" onClick={onOpenThreads} />
       <RailButton icon={Users} label="New group" onClick={onNewGroup} />
       <RailButton icon={Radio} label="New channel" onClick={onNewChannel} />
+      <RailButton
+        icon={Settings}
+        label="Settings"
+        onClick={onOpenSettings}
+        className="mt-auto"
+      />
     </nav>
   );
 }

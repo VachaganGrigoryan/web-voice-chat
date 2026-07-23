@@ -1,6 +1,16 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { CheckCheck, Info, Loader2, Trash2 } from 'lucide-react';
+import {
+  Archive,
+  ArchiveRestore,
+  CheckCheck,
+  FolderInput,
+  Info,
+  Loader2,
+  Pin,
+  PinOff,
+  Trash2,
+} from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface ConversationMenuRect {
@@ -22,14 +32,20 @@ interface ConversationActionsMenuProps {
   isMarkingRead: boolean;
   isClearingConversation: boolean;
   isDeletingConversation: boolean;
+  pinned: boolean;
+  archived: boolean;
+  isUpdatingInbox?: boolean;
   onOpenChange: (open: boolean) => void;
+  onTogglePin: (peerUserId: string) => void | Promise<void>;
+  onToggleArchive: (peerUserId: string) => void | Promise<void>;
+  onMoveToFolder: (peerUserId: string) => void;
   onMarkAsRead: (peerUserId: string) => void | Promise<void>;
   onClearConversation: (peerUserId: string) => void | Promise<void>;
   onDeleteConversation: (peerUserId: string) => void | Promise<void>;
 }
 
 const MENU_WIDTH = 236;
-const MENU_HEIGHT = 180;
+const MENU_HEIGHT = 360;
 const VIEWPORT_PADDING = 12;
 const DESKTOP_GAP = 10;
 
@@ -85,7 +101,13 @@ export function ConversationActionsMenu({
   isMarkingRead,
   isClearingConversation,
   isDeletingConversation,
+  pinned,
+  archived,
+  isUpdatingInbox = false,
   onOpenChange,
+  onTogglePin,
+  onToggleArchive,
+  onMoveToFolder,
   onMarkAsRead,
   onClearConversation,
   onDeleteConversation,
@@ -129,6 +151,9 @@ export function ConversationActionsMenu({
   const markAsReadDisabled = isMarkingRead || menu.unreadCount === 0;
   const clearConversationDisabled = isClearingConversation || isDeletingConversation;
   const deleteConversationDisabled = isDeletingConversation || isClearingConversation;
+  const pinInfo = pinned ? 'Remove this chat from the pinned section.' : 'Keep this chat at the top of your inbox.';
+  const archiveInfo = archived ? 'Move this chat back to your main inbox.' : 'Hide this chat in your archive.';
+  const folderInfo = 'Organize this chat into a folder.';
   const markAsReadInfo =
     menu.unreadCount > 0
       ? `Mark ${menu.unreadCount} unread message${menu.unreadCount === 1 ? '' : 's'} as read.`
@@ -150,6 +175,75 @@ export function ConversationActionsMenu({
         className="absolute rounded-2xl border border-border/70 bg-background/98 p-2 shadow-2xl backdrop-blur"
         style={menuStyle}
       >
+        <div className="group" title={pinInfo}>
+          <button
+            type="button"
+            role="menuitem"
+            disabled={isUpdatingInbox}
+            className={cn(
+              'flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition-colors',
+              isUpdatingInbox ? 'cursor-not-allowed opacity-60' : 'hover:bg-muted/80'
+            )}
+            onClick={() => {
+              void onTogglePin(menu.peerUserId);
+            }}
+          >
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-muted/80">
+              {pinned ? <PinOff className="h-4 w-4" /> : <Pin className="h-4 w-4" />}
+            </span>
+            <span className="min-w-0 flex-1 text-sm font-medium text-foreground">
+              {pinned ? 'Unpin chat' : 'Pin chat'}
+            </span>
+            <MenuInfoHint />
+          </button>
+        </div>
+
+        <div className="group" title={archiveInfo}>
+          <button
+            type="button"
+            role="menuitem"
+            disabled={isUpdatingInbox}
+            className={cn(
+              'flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition-colors',
+              isUpdatingInbox ? 'cursor-not-allowed opacity-60' : 'hover:bg-muted/80'
+            )}
+            onClick={() => {
+              void onToggleArchive(menu.peerUserId);
+            }}
+          >
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-muted/80">
+              {archived ? <ArchiveRestore className="h-4 w-4" /> : <Archive className="h-4 w-4" />}
+            </span>
+            <span className="min-w-0 flex-1 text-sm font-medium text-foreground">
+              {archived ? 'Unarchive chat' : 'Archive chat'}
+            </span>
+            <MenuInfoHint />
+          </button>
+        </div>
+
+        <div className="group" title={folderInfo}>
+          <button
+            type="button"
+            role="menuitem"
+            disabled={isUpdatingInbox}
+            className={cn(
+              'flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition-colors',
+              isUpdatingInbox ? 'cursor-not-allowed opacity-60' : 'hover:bg-muted/80'
+            )}
+            onClick={() => {
+              onMoveToFolder(menu.peerUserId);
+            }}
+          >
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-muted/80">
+              <FolderInput className="h-4 w-4" />
+            </span>
+            <span className="min-w-0 flex-1 text-sm font-medium text-foreground">Move to folder…</span>
+            <MenuInfoHint />
+          </button>
+        </div>
+
+        <div className="my-1 h-px bg-border/60" />
+
         <div className="group" title={markAsReadInfo}>
           <button
             type="button"

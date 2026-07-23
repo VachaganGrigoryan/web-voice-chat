@@ -15,10 +15,10 @@ interface UseChatReadStateParams {
   userId?: string | null;
   selectedUser: string | null;
   selectedThreadRootId: string | null;
+  selectedThreadConversationId: string | null;
   contacts: Conversation[];
   mainChatMessages: ChatMessage[];
   threadReplyMessages: ChatMessage[];
-  selectedThreadRootMessage: ChatMessage | null;
 }
 
 export function useChatReadState({
@@ -27,10 +27,10 @@ export function useChatReadState({
   userId,
   selectedUser,
   selectedThreadRootId,
+  selectedThreadConversationId,
   contacts,
   mainChatMessages,
   threadReplyMessages,
-  selectedThreadRootMessage,
 }: UseChatReadStateParams) {
   const [highlightedMessageIds, setHighlightedMessageIds] = useState<Set<string>>(new Set());
   const mainReadEmittedMessagesRef = useRef<Set<string>>(new Set());
@@ -208,7 +208,13 @@ export function useChatReadState({
   };
 
   const handleVisibleThreadMessageIds = (visibleMessageIds: string[]) => {
-    if (!socket || !selectedUser || !selectedThreadRootId || !visibleMessageIds.length) {
+    if (
+      !socket ||
+      !selectedUser ||
+      !selectedThreadRootId ||
+      !selectedThreadConversationId ||
+      !visibleMessageIds.length
+    ) {
       return;
     }
 
@@ -227,7 +233,7 @@ export function useChatReadState({
     unreadIds.forEach((id) => threadReadEmittedMessagesRef.current.add(id));
 
     emitMessageRead(unreadIds, {
-      conversation_id: selectedThreadRootMessage?.chatId,
+      conversation_id: selectedThreadConversationId,
       thread_root_id: selectedThreadRootId,
       message_ids: unreadIds,
       status: 'read',
