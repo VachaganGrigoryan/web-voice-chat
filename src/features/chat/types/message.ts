@@ -18,6 +18,11 @@ export type MessageKind =
   | 'system'
   | 'emoji'
   | 'sticker'
+  | 'poll'
+  | 'location'
+  | 'contact'
+  | 'link_preview'
+  | 'attachments'
   | 'unknown';
 
 export type MessageStatus = 'sent' | 'delivered' | 'read' | 'sending' | 'failed';
@@ -45,6 +50,7 @@ export interface BaseMessage {
   unreadThreadReplyCount: number;
   lastThreadReplyAt?: string;
   reactions: MessageReactionGroup[];
+  attachments: MediaMeta[];
   clientBatchId?: string;
 }
 
@@ -113,6 +119,45 @@ export interface StickerMessage extends BaseMessage {
   kind: 'sticker';
   stickerUrl: string;
   media?: MediaMeta;
+  emoji?: string;
+  label?: string;
+}
+
+export interface PollMessage extends BaseMessage {
+  kind: 'poll';
+  /** Links to the first-class poll entity; tallies are fetched via usePoll. */
+  pollId: string;
+  /** Denormalized question for immediate render / fallback. */
+  question: string;
+}
+
+export interface LocationMessage extends BaseMessage {
+  kind: 'location';
+  latitude: number;
+  longitude: number;
+  name?: string;
+  address?: string;
+}
+
+export interface ContactMessage extends BaseMessage {
+  kind: 'contact';
+  displayName: string;
+  userId?: string;
+  phone?: string;
+  email?: string;
+}
+
+export interface LinkPreviewMessage extends BaseMessage {
+  kind: 'link_preview';
+  url: string;
+  title?: string;
+  description?: string;
+  imageUrl?: string;
+}
+
+export interface AttachmentStackMessage extends BaseMessage {
+  kind: 'attachments';
+  text?: string;
 }
 
 export interface UnknownMessage extends BaseMessage {
@@ -132,6 +177,11 @@ export type ChatMessage =
   | SystemMessage
   | EmojiMessage
   | StickerMessage
+  | PollMessage
+  | LocationMessage
+  | ContactMessage
+  | LinkPreviewMessage
+  | AttachmentStackMessage
   | UnknownMessage;
 
 export interface ComposerReplyTarget {

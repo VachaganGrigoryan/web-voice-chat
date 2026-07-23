@@ -7,14 +7,17 @@ import { useQuery } from '@tanstack/react-query';
 import {
   Archive,
   ArchiveRestore,
+  BarChart3,
   Bell,
   BellOff,
   Check,
   FolderInput,
   Image as ImageIcon,
+  Link2,
   Loader2,
   Lock,
   LogOut,
+  MapPin,
   MessageSquareText,
   Mic,
   MoreVertical,
@@ -25,6 +28,7 @@ import {
   Pin,
   Settings,
   Trash2,
+  UserRound,
   Video,
   X,
 } from 'lucide-react';
@@ -163,6 +167,14 @@ function getConversationPreview(conversation: Conversation, currentUserId: strin
       );
     case 'file':
       return <PreviewIcon icon={Paperclip} label="File" />;
+    case 'poll':
+      return lastMessage.text?.trim() || <PreviewIcon icon={BarChart3} label="Poll" />;
+    case 'location':
+      return lastMessage.text?.trim() || <PreviewIcon icon={MapPin} label="Location" />;
+    case 'contact':
+      return lastMessage.text?.trim() || <PreviewIcon icon={UserRound} label="Contact" />;
+    case 'link':
+      return lastMessage.text?.trim() || <PreviewIcon icon={Link2} label="Link" />;
     case 'image':
       return lastMessage.text?.trim() || <PreviewIcon icon={ImageIcon} label="Photo" />;
     case 'video':

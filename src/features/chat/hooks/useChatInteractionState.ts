@@ -1,7 +1,7 @@
 import { useEffect, useState, type MouseEvent as ReactMouseEvent } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { conversationsApi } from '@/api/endpoints';
-import type { SendMediaInput, SendTextInput } from '@/hooks/useChat';
+import type { SendMediaInput, SendRichContentInput, SendTextInput } from '@/hooks/useChat';
 import { triggerHaptic } from '@/utils/haptics';
 import { ConversationMenuState } from '../components/ConversationActionsMenu';
 import { MessageMenuAnchor } from '../components/MessageShell';
@@ -63,6 +63,7 @@ interface UseChatInteractionStateParams {
     reply_mode?: ComposerReplyTarget['mode'] | null;
     reply_to_message_id?: string;
   }) => Promise<unknown>;
+  sendRichContent: (data: SendRichContentInput) => Promise<unknown>;
   sendVoice: (data: SendMediaInput) => Promise<unknown>;
   editMessage: (data: { conversationId?: string; messageId: string; text: string }) => Promise<unknown>;
   deleteMessage: (data: { conversationId?: string; messageId: string }) => Promise<unknown>;
@@ -96,6 +97,10 @@ const getMessagePreviewText = (message: ChatMessage) => {
     });
   }
   if (message.kind === 'sticker') return 'Sticker';
+  if (message.kind === 'poll') return message.question;
+  if (message.kind === 'location') return message.name || 'Location';
+  if (message.kind === 'contact') return message.displayName;
+  if (message.kind === 'link_preview') return message.title || message.url;
   if (message.kind === 'system') return message.text;
   return 'Message';
 };
@@ -112,6 +117,7 @@ export function useChatInteractionState({
   navigateToConversation,
   openThreadPanelInFullMode,
   sendText,
+  sendRichContent,
   sendVoice,
   editMessage,
   deleteMessage,
@@ -220,6 +226,16 @@ export function useChatInteractionState({
     setReplyTarget(null);
   };
 
+  const handleSendRichContent = async (data: SendRichContentInput) => {
+    await sendRichContent({
+      ...data,
+      reply_mode: data.reply_mode ?? replyTarget?.mode,
+      reply_to_message_id: data.reply_to_message_id ?? replyTarget?.messageId,
+    });
+    triggerHaptic('send');
+    setReplyTarget(null);
+  };
+
   const handleSendThreadText = async (data: SendTextInput) => {
     if (!selectedThreadConversationId || isSelectedThreadLocked) return;
     await sendText({
@@ -227,6 +243,18 @@ export function useChatInteractionState({
       conversation_id: selectedThreadConversationId,
       reply_mode: null,
       reply_to_message_id: threadReplyTarget?.messageId,
+    });
+    triggerHaptic('send');
+    setThreadReplyTarget(null);
+  };
+
+  const handleSendThreadRichContent = async (data: SendRichContentInput) => {
+    if (!selectedThreadConversationId || isSelectedThreadLocked) return;
+    await sendRichContent({
+      ...data,
+      conversation_id: selectedThreadConversationId,
+      reply_mode: null,
+      reply_to_message_id: data.reply_to_message_id ?? threadReplyTarget?.messageId,
     });
     triggerHaptic('send');
     setThreadReplyTarget(null);
@@ -363,7 +391,9 @@ export function useChatInteractionState({
     handleSwipeReply,
     openThreadForMessage,
     handleSendText,
+    handleSendRichContent,
     handleSendThreadText,
+    handleSendThreadRichContent,
     handleSendMedia,
     handleSendThreadMedia,
     handleEditMessage,

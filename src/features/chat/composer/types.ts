@@ -1,4 +1,5 @@
-import type { SendMediaInput, SendTextInput } from '@/hooks/useChat';
+import type { ContactListItem, CreatePollRequest } from '@/api/types';
+import type { SendMediaInput, SendRichContentInput, SendTextInput } from '@/hooks/useChat';
 import { ComposerReplyTarget } from '../types/message';
 
 export type ComposerPanel = 'emoji' | 'attachments' | null;
@@ -7,6 +8,9 @@ export interface ChatComposerProps {
   receiverId: string;
   onSendText: (data: SendTextInput) => Promise<unknown>;
   onSendMedia: (data: SendMediaInput) => Promise<unknown>;
+  onSendRichContent: (data: SendRichContentInput) => Promise<unknown>;
+  onCreatePoll: (data: CreatePollRequest) => Promise<unknown>;
+  contacts?: ContactListItem[];
   replyTarget?: ComposerReplyTarget | null;
   onClearReplyTarget?: () => void;
   isUploading?: boolean;

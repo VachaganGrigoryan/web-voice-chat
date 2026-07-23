@@ -207,10 +207,22 @@ export interface ThreadSummary {
 export type EncryptionMode = 'none' | 'e2ee';
 export type ContentType = MessageType | 'system';
 
+export interface PollRef {
+  poll_id: string;
+  question: string;
+}
+
 export interface MessagePlaintext {
   text: string | null;
   media: MediaMeta | null;
   call: CallMeta | null;
+  /** Legacy embedded poll payload; new poll messages link via `poll_ref`. */
+  poll?: Record<string, unknown> | null;
+  poll_ref?: PollRef | null;
+  sticker?: Record<string, unknown> | null;
+  location?: Record<string, unknown> | null;
+  contact?: Record<string, unknown> | null;
+  link_preview?: Record<string, unknown> | null;
 }
 
 /**
@@ -224,6 +236,94 @@ export interface MessageContent {
   attachments: MediaMeta[];
   ciphertext: string | null;
   envelope: Record<string, unknown> | null;
+}
+
+export interface RichLocationInput {
+  latitude: number;
+  longitude: number;
+  name?: string | null;
+  address?: string | null;
+}
+
+export interface RichContactInput {
+  display_name: string;
+  user_id?: string | null;
+  phone?: string | null;
+  email?: string | null;
+}
+
+export interface RichLinkPreviewInput {
+  url: string;
+  title?: string | null;
+  description?: string | null;
+  image_url?: string | null;
+}
+
+export interface SendRichContentRequest {
+  conversation_id: string;
+  // Polls are created via `pollsApi.create` (/polls), not this rich-content path.
+  type: Extract<MessageType, 'sticker' | 'voice' | 'location' | 'contact' | 'link_preview'>;
+  text?: string | null;
+  location?: RichLocationInput | null;
+  contact?: RichContactInput | null;
+  link_preview?: RichLinkPreviewInput | null;
+  reply_mode?: ReplyMode | null;
+  reply_to_message_id?: string | null;
+}
+
+// ---- Polls (PollBot) --------------------------------------------------------
+
+export type PollResultsVisibility = 'after_vote' | 'always' | 'after_close';
+
+export interface PollOptionInput {
+  id: string;
+  text: string;
+}
+
+export interface CreatePollRequest {
+  conversation_id: string;
+  question: string;
+  options: PollOptionInput[];
+  allows_multiple?: boolean;
+  anonymous?: boolean;
+  results_visibility?: PollResultsVisibility;
+  closes_at?: string | null;
+}
+
+export interface PollVoteRequest {
+  option_ids: string[];
+}
+
+export interface PollOptionView {
+  id: string;
+  text: string;
+  /** Present only when results are visible to the caller (per results_visibility). */
+  vote_count: number | null;
+}
+
+export interface PollView {
+  id: string;
+  conversation_id: string;
+  message_id: string | null;
+  created_by: string;
+  bot_id: string;
+  question: string;
+  options: PollOptionView[];
+  allows_multiple: boolean;
+  anonymous: boolean;
+  results_visibility: PollResultsVisibility;
+  closes_at: string | null;
+  closed: boolean;
+  total_votes: number | null;
+  results_visible: boolean;
+  my_option_ids: string[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreatePollResponse {
+  poll: PollView;
+  message: MessageDoc;
 }
 
 export interface ForwardedFrom {

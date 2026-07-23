@@ -103,6 +103,8 @@ export default function ChatLayout() {
     isSelectedConversationMissing,
     sendVoice,
     sendText,
+    sendRichContent,
+    createPoll,
     editMessage,
     deleteMessage,
     clearConversation,
@@ -216,6 +218,7 @@ export default function ChatLayout() {
     sendPing,
     acceptPing,
     declinePing,
+    contacts: pingContacts,
     isSending: isSendingPing,
     isAccepting: isAcceptingPing,
     isDeclining: isDecliningPing,
@@ -324,7 +327,9 @@ export default function ChatLayout() {
     handleSwipeReply,
     openThreadForMessage,
     handleSendText,
+    handleSendRichContent,
     handleSendThreadText,
+    handleSendThreadRichContent,
     handleSendMedia,
     handleSendThreadMedia,
     handleEditMessage,
@@ -351,6 +356,7 @@ export default function ChatLayout() {
       ),
     openThreadPanelInFullMode: () => setThreadPanelMode('full'),
     sendText,
+    sendRichContent,
     sendVoice,
     editMessage,
     deleteMessage,
@@ -1296,6 +1302,9 @@ export default function ChatLayout() {
                     receiverId={selectedUser}
                     onSendText={handleSendText}
                     onSendMedia={handleSendMedia}
+                    onSendRichContent={handleSendRichContent}
+                    onCreatePoll={createPoll}
+                    contacts={pingContacts}
                     replyTarget={replyTarget}
                     onClearReplyTarget={() => setReplyTarget(null)}
                     isUploading={isSending}
@@ -1380,6 +1389,9 @@ export default function ChatLayout() {
                             receiverId={selectedThreadConversationId || selectedUser}
                             onSendText={handleSendThreadText}
                             onSendMedia={handleSendThreadMedia}
+                            onSendRichContent={handleSendThreadRichContent}
+                            onCreatePoll={createPoll}
+                            contacts={pingContacts}
                             replyTarget={threadReplyTarget}
                             onClearReplyTarget={() => setThreadReplyTarget(null)}
                             isUploading={isSending}

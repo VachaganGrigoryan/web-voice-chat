@@ -5,6 +5,8 @@ import { CallMessageRenderer } from './renderers/CallMessageRenderer';
 import { EmojiMessageRenderer } from './renderers/EmojiMessageRenderer';
 import { FileMessageRenderer } from './renderers/FileMessageRenderer';
 import { ImageMessageRenderer } from './renderers/ImageMessageRenderer';
+import { PollMessageRenderer } from './renderers/PollMessageRenderer';
+import { RichContentMessageRenderer } from './renderers/RichContentMessageRenderer';
 import { StickerMessageRenderer } from './renderers/StickerMessageRenderer';
 import { SystemMessageRenderer } from './renderers/SystemMessageRenderer';
 import { TextMessageRenderer } from './renderers/TextMessageRenderer';
@@ -74,6 +76,14 @@ export const MessageRenderer: React.FC<MessageRendererProps> = ({
       return <EmojiMessageRenderer message={message} groupedWithAbove={groupedWithAbove} groupedWithBelow={groupedWithBelow} bubbleFooter={bubbleFooter} />;
     case 'sticker':
       return <StickerMessageRenderer message={message} groupedWithAbove={groupedWithAbove} groupedWithBelow={groupedWithBelow} bubbleFooter={bubbleFooter} />;
+    case 'poll':
+      return <PollMessageRenderer message={message} highlighted={highlighted} groupedWithAbove={groupedWithAbove} groupedWithBelow={groupedWithBelow} bubbleFooter={bubbleFooter} />;
+    case 'location':
+    case 'contact':
+    case 'link_preview':
+    case 'attachments':
+    case 'unknown':
+      return <RichContentMessageRenderer message={message} highlighted={highlighted} groupedWithAbove={groupedWithAbove} groupedWithBelow={groupedWithBelow} bubbleFooter={bubbleFooter} />;
     default:
       return <div className="px-4 py-2 text-sm text-muted-foreground">Unknown message type</div>;
   }

@@ -3,12 +3,14 @@ import { create } from 'zustand';
 import { EVENTS } from './events';
 import { getCallDirectionFromMeta, getCallSummaryText } from '@/features/chat/utils/callPresentation';
 import { getMessageTypeLabel, getPresentedMessageKind } from '@/features/chat/utils/messagePresentation';
+import { pollQueryKey } from '@/hooks/usePoll';
 import { useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   MessageDeletedEvent,
   MessageDoc,
   MessageReactionsUpdate,
+  PollView,
   PresenceState,
   PresenceStatus,
   ThreadSummary,
@@ -34,6 +36,15 @@ interface MessageStatusPayloadBase {
 export type MessageStatusPayload =
   | (MessageStatusPayloadBase & { message_id: string; message_ids?: never })
   | (MessageStatusPayloadBase & { message_ids: string[]; message_id?: never });
+
+interface PollUpdatedPayload {
+  conversation_id: string;
+  poll_id: string;
+  message_id: string | null;
+  closed: boolean;
+  total_votes: number | null;
+  updated_at: string;
+}
 
 interface SocketState {
   socket: Socket | null;
@@ -625,6 +636,24 @@ const updateReactionCaches = (
   );
 };
 
+const updatePollCache = (
+  queryClient: ReturnType<typeof useQueryClient>,
+  payload: PollUpdatedPayload
+) => {
+  const queryKey = pollQueryKey(payload.poll_id);
+  queryClient.setQueryData<PollView>(queryKey, (old) => {
+    if (!old) return old;
+
+    return {
+      ...old,
+      closed: payload.closed,
+      total_votes: payload.total_votes ?? old.total_votes,
+      updated_at: payload.updated_at,
+    };
+  });
+  queryClient.invalidateQueries({ queryKey });
+};
+
 const updateMessageDocumentCaches = (
   queryClient: ReturnType<typeof useQueryClient>,
   message: MessageDoc
@@ -980,6 +1009,10 @@ export const useRealtimeMessages = (
       updateReactionCaches(queryClient, payload);
     };
 
+    const handlePollUpdated = (payload: PollUpdatedPayload) => {
+      updatePollCache(queryClient, payload);
+    };
+
     const handleThreadReplyCreated = (payload: MessageDoc | ({ message: MessageDoc } & ThreadSummary)) => {
       const { message, summary } = extractThreadReplyEvent(payload);
       // Use cache presence for reload-safe dedup — avoids double delivery
@@ -1041,6 +1074,7 @@ export const useRealtimeMessages = (
     socket.on(EVENTS.MESSAGE_EDITED, handleMessageEdited);
     socket.on(EVENTS.MESSAGE_DELETED, handleMessageDeleted);
     socket.on(EVENTS.MESSAGE_REACTED, handleMessageReacted);
+    socket.on(EVENTS.POLL_UPDATED, handlePollUpdated);
     socket.on(EVENTS.THREAD_REPLY_CREATED, handleThreadReplyCreated);
     socket.on(EVENTS.THREAD_SUMMARY_UPDATED, handleThreadSummaryUpdated);
     socket.on(EVENTS.CONVERSATION_PINS_UPDATED, handleConversationPinsUpdated);
@@ -1052,6 +1086,7 @@ export const useRealtimeMessages = (
       socket.off(EVENTS.MESSAGE_EDITED, handleMessageEdited);
       socket.off(EVENTS.MESSAGE_DELETED, handleMessageDeleted);
       socket.off(EVENTS.MESSAGE_REACTED, handleMessageReacted);
+      socket.off(EVENTS.POLL_UPDATED, handlePollUpdated);
       socket.off(EVENTS.THREAD_REPLY_CREATED, handleThreadReplyCreated);
       socket.off(EVENTS.THREAD_SUMMARY_UPDATED, handleThreadSummaryUpdated);
       socket.off(EVENTS.CONVERSATION_PINS_UPDATED, handleConversationPinsUpdated);

@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { Link2, X } from 'lucide-react';
 import { useCallStore } from '@/features/calls/callController';
 import { FILE_ATTACH_ACCEPT, MEDIA_ATTACH_ACCEPT } from '@/utils/fileUtils';
 import { cn } from '@/lib/utils';
@@ -10,13 +11,40 @@ import { ComposerAttachmentPanel } from './components/ComposerAttachmentPanel';
 import { ComposerEmojiPanel } from './components/ComposerEmojiPanel';
 import { ComposerInputRow } from './components/ComposerInputRow';
 import { ComposerReplyBar } from './components/ComposerReplyBar';
+import {
+  ComposerContactDialog,
+  ComposerLocationDialog,
+} from './components/ComposerRichContentDialogs';
 import { ComposerRecorder } from './components/ComposerRecorder';
+import { BuiltInBotSheet } from '../builtInBots/BuiltInBotSheet';
+import { PollBotComposer, type PollComposerValues } from '../builtInBots/PollBotComposer';
+import { BUILT_IN_BOTS, findBuiltInBotByCommand } from '../builtInBots/registry';
+import type { BuiltInBotId } from '../builtInBots/types';
 import { ChatComposerProps, ComposerPanel } from './types';
+
+const URL_PATTERN = /\bhttps?:\/\/[^\s<>"']+/i;
+const TRAILING_URL_PUNCTUATION = /[),.;!?]+$/;
+
+const extractFirstUrl = (value: string) => {
+  const match = value.match(URL_PATTERN);
+  return match ? match[0].replace(TRAILING_URL_PUNCTUATION, '') : null;
+};
+
+const getUrlHost = (url: string) => {
+  try {
+    return new URL(url).hostname.replace(/^www\./, '');
+  } catch {
+    return url;
+  }
+};
 
 export default function ChatComposer({
   receiverId,
   onSendText,
   onSendMedia,
+  onSendRichContent,
+  onCreatePoll,
+  contacts = [],
   replyTarget,
   onClearReplyTarget,
   isUploading = false,
@@ -24,6 +52,10 @@ export default function ChatComposer({
   enableDraft = false,
 }: ChatComposerProps) {
   const [activePanel, setActivePanel] = useState<ComposerPanel>(null);
+  const [activeBotId, setActiveBotId] = useState<BuiltInBotId | null>(null);
+  const [isLocationDialogOpen, setIsLocationDialogOpen] = useState(false);
+  const [isContactDialogOpen, setIsContactDialogOpen] = useState(false);
+  const [dismissedLinkPreviewUrl, setDismissedLinkPreviewUrl] = useState<string | null>(null);
   const [isMobileViewport, setIsMobileViewport] = useState(
     () => typeof window !== 'undefined' && window.innerWidth < MOBILE_BREAKPOINT
   );
@@ -62,7 +94,7 @@ export default function ChatComposer({
   }, [attachmentComposer.isBatchDialogOpen]);
 
   useEffect(() => {
-    if (!activePanel || isMobileViewport) {
+    if ((!activePanel && !activeBotId) || isMobileViewport) {
       return;
     }
 
@@ -76,11 +108,13 @@ export default function ChatComposer({
       }
 
       setActivePanel(null);
+      setActiveBotId(null);
     };
 
     const handleEscape = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         setActivePanel(null);
+        setActiveBotId(null);
       }
     };
 
@@ -90,13 +124,19 @@ export default function ChatComposer({
       document.removeEventListener('pointerdown', handlePointerDown, true);
       window.removeEventListener('keydown', handleEscape);
     };
-  }, [activePanel, isMobileViewport]);
+  }, [activePanel, activeBotId, isMobileViewport]);
 
   const closePanels = () => setActivePanel(null);
 
   const handleTogglePanel = (panel: Exclude<ComposerPanel, null>) => {
     textInput.blurTextarea();
+    setActiveBotId(null);
     setActivePanel((current) => (current === panel ? null : panel));
+  };
+
+  const closeBot = () => {
+    setActiveBotId(null);
+    window.setTimeout(() => textInput.focusTextarea(), 0);
   };
 
   const handlePickAttachments = (mode: 'media' | 'file') => {
@@ -104,11 +144,91 @@ export default function ChatComposer({
     closePanels();
   };
 
+  const openLocationDialog = () => {
+    closePanels();
+    setActiveBotId(null);
+    setIsLocationDialogOpen(true);
+  };
+
+  const openPollBot = () => {
+    closePanels();
+    setActiveBotId('poll');
+  };
+
+  const openContactDialog = () => {
+    closePanels();
+    setActiveBotId(null);
+    setIsContactDialogOpen(true);
+  };
+
   const handleSendText = async () => {
+    const trimmedText = textInput.text.trim();
+    const previewUrl = extractFirstUrl(trimmedText);
+    if (previewUrl && previewUrl !== dismissedLinkPreviewUrl) {
+      textInput.stopTyping();
+      await onSendRichContent({
+        conversation_id: receiverId,
+        type: 'link_preview',
+        text: trimmedText,
+        link_preview: {
+          url: previewUrl,
+          title: getUrlHost(previewUrl),
+        },
+      });
+      textInput.clearTextAfterSend();
+      setDismissedLinkPreviewUrl(null);
+      closePanels();
+      return;
+    }
+
     const sent = await textInput.handleSendText();
     if (sent) {
       closePanels();
+      setDismissedLinkPreviewUrl(null);
     }
+  };
+
+  const handleTextChange = (value: string) => {
+    const command = value.trim();
+    const bot = findBuiltInBotByCommand(command);
+    if (bot && value.length === command.length) {
+      closePanels();
+      setActiveBotId(bot.id);
+      textInput.setText('');
+      return;
+    }
+
+    const nextPreviewUrl = extractFirstUrl(value);
+    if (nextPreviewUrl !== dismissedLinkPreviewUrl) {
+      setDismissedLinkPreviewUrl(null);
+    }
+    textInput.handleTextChange(value);
+  };
+
+  const handleSendPoll = async (values: PollComposerValues) => {
+    await onCreatePoll({ conversation_id: receiverId, ...values });
+    setActiveBotId(null);
+    onClearReplyTarget?.();
+  };
+
+  const handleSendLocation = async (location: Parameters<typeof onSendRichContent>[0]['location']) => {
+    if (!location) return;
+    await onSendRichContent({
+      conversation_id: receiverId,
+      type: 'location',
+      location,
+    });
+    onClearReplyTarget?.();
+  };
+
+  const handleSendContact = async (contact: Parameters<typeof onSendRichContent>[0]['contact']) => {
+    if (!contact) return;
+    await onSendRichContent({
+      conversation_id: receiverId,
+      type: 'contact',
+      contact,
+    });
+    onClearReplyTarget?.();
   };
 
   const isBusy =
@@ -120,7 +240,13 @@ export default function ChatComposer({
   const isAttachmentsPanel = activePanel === 'attachments';
   const isMobileEmojiPanelOpen = isMobileViewport && isEmojiPanel;
   const isMobileAttachmentPanelOpen = isMobileViewport && isAttachmentsPanel;
-  const isMobileDockedPanelOpen = isMobileEmojiPanelOpen || isMobileAttachmentPanelOpen;
+  const activeBot = BUILT_IN_BOTS.find((bot) => bot.id === activeBotId) ?? null;
+  const isBotSheetOpen = !!activeBot;
+  const isMobileBotSheetOpen = isMobileViewport && isBotSheetOpen;
+  const isMobileDockedPanelOpen = isMobileEmojiPanelOpen || isMobileAttachmentPanelOpen || isMobileBotSheetOpen;
+  const linkPreviewUrl = extractFirstUrl(textInput.text);
+  const activeLinkPreviewUrl =
+    linkPreviewUrl && linkPreviewUrl !== dismissedLinkPreviewUrl ? linkPreviewUrl : null;
 
   const renderDesktopPanel = () => {
     if (!activePanel || isMobileViewport) {
@@ -149,6 +275,9 @@ export default function ChatComposer({
             attachMode={attachmentComposer.attachMode}
             onAttachModeChange={attachmentComposer.setAttachMode}
             onPickAttachments={handlePickAttachments}
+            onOpenLocation={openLocationDialog}
+            onOpenContact={openContactDialog}
+            onOpenPoll={openPollBot}
             isBusy={isBusy}
           />
         )}
@@ -177,6 +306,9 @@ export default function ChatComposer({
               attachMode={attachmentComposer.attachMode}
               onAttachModeChange={attachmentComposer.setAttachMode}
               onPickAttachments={handlePickAttachments}
+              onOpenLocation={openLocationDialog}
+              onOpenContact={openContactDialog}
+              onOpenPoll={openPollBot}
               isBusy={isBusy}
             />
           </div>
@@ -208,6 +340,58 @@ export default function ChatComposer({
             />
           </div>
         </div>
+      </div>
+    );
+  };
+
+  const renderBuiltInBotSheet = () => {
+    if (!activeBot) {
+      return null;
+    }
+
+    return (
+      <BuiltInBotSheet
+        bot={activeBot}
+        isMobileViewport={isMobileViewport}
+        onClose={closeBot}
+      >
+        {activeBot.id === 'poll' ? (
+          <PollBotComposer
+            isSending={isBusy}
+            onSubmit={handleSendPoll}
+            onCancel={closeBot}
+          />
+        ) : null}
+      </BuiltInBotSheet>
+    );
+  };
+
+  const renderPendingLinkPreview = () => {
+    if (!activeLinkPreviewUrl || activeBot) {
+      return null;
+    }
+
+    return (
+      <div className="mx-1 mb-2 flex min-w-0 items-start gap-3 rounded-2xl border border-border/70 bg-muted/25 px-3 py-2.5">
+        <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+          <Link2 className="h-4 w-4" />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-sm font-semibold text-foreground">
+            {getUrlHost(activeLinkPreviewUrl)}
+          </span>
+          <span className="block truncate text-xs text-muted-foreground">
+            {activeLinkPreviewUrl}
+          </span>
+        </span>
+        <button
+          type="button"
+          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          onClick={() => setDismissedLinkPreviewUrl(activeLinkPreviewUrl)}
+          aria-label="Dismiss link preview"
+        >
+          <X className="h-4 w-4" />
+        </button>
       </div>
     );
   };
@@ -248,6 +432,19 @@ export default function ChatComposer({
         }
         canAddMore={attachmentComposer.canAddMore}
       />
+      <ComposerLocationDialog
+        open={isLocationDialogOpen}
+        isSending={isBusy}
+        onOpenChange={setIsLocationDialogOpen}
+        onSend={handleSendLocation}
+      />
+      <ComposerContactDialog
+        open={isContactDialogOpen}
+        contacts={contacts}
+        isSending={isBusy}
+        onOpenChange={setIsContactDialogOpen}
+        onSend={handleSendContact}
+      />
 
       <div
         className={cn(
@@ -264,6 +461,8 @@ export default function ChatComposer({
 
         <div ref={composerShellRef} className="relative">
           {renderDesktopPanel()}
+          {renderBuiltInBotSheet()}
+          {renderPendingLinkPreview()}
           <ComposerRecorder
             audio
             video
@@ -272,7 +471,10 @@ export default function ChatComposer({
             replyTarget={replyTarget}
             onClearReplyTarget={onClearReplyTarget}
             disabled={isBusy || isCallActive}
-            onEngage={closePanels}
+            onEngage={() => {
+              closePanels();
+              setActiveBotId(null);
+            }}
             renderIdleRow={(recorderTrigger) => (
               <ComposerInputRow
                 activePanel={activePanel}
@@ -283,10 +485,11 @@ export default function ChatComposer({
                 isPanelDocked={isMobileDockedPanelOpen}
                 recorderTrigger={recorderTrigger}
                 onTogglePanel={handleTogglePanel}
-                onTextChange={textInput.handleTextChange}
+                onTextChange={handleTextChange}
                 onTextareaFocus={() => {
                   if (isMobileDockedPanelOpen) {
                     closePanels();
+                    setActiveBotId(null);
                   }
                   textInput.setIsFocused(true);
                 }}

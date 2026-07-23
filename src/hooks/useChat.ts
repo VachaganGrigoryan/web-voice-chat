@@ -1,11 +1,14 @@
 import { useEffect } from 'react';
 import { useInfiniteQuery, useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
 import { getApiErrorStatus } from '@/api/errors';
-import { messagesApi, realtimeApi, conversationsApi } from '@/api/endpoints';
+import { messagesApi, realtimeApi, conversationsApi, pollsApi } from '@/api/endpoints';
+import { pollQueryKey } from '@/hooks/usePoll';
 import { toSinglePageResponse } from '@/api/utils';
 import { applyMessageDeletedEventToCaches, useSocket, usePresence, useRealtimeMessages, useSocketStore } from '@/socket/socket';
 import {
   ClearConversationResponse,
+  CreatePollRequest,
+  CreatePollResponse,
   DeleteConversationResponse,
   MessageDoc,
   MessageReactionGroup,
@@ -13,6 +16,7 @@ import {
   PresenceStatus,
   PreviewMediaKind,
   ReplyMode,
+  SendRichContentRequest,
 } from '@/api/types';
 import { useAuthStore } from '@/store/authStore';
 import { resolveMessageContent } from '@/api/messageContent';
@@ -45,6 +49,8 @@ export interface SendTextInput {
   reply_mode?: ReplyMode | null;
   reply_to_message_id?: string;
 }
+
+export type SendRichContentInput = SendRichContentRequest;
 
 const prependMessageToCache = (queryClient: ReturnType<typeof useQueryClient>, conversationId: string, message: MessageDoc) => {
   queryClient.setQueryData(['messages', conversationId], (old: any) => {
@@ -407,7 +413,9 @@ export const useChat = (selectedUser: string | null = null, openThreadRootId: st
         selectedConversation?.peer_user?.id,
         ...(selectedConversation?.participant_users || []).map((user: any) => user.id),
       ].filter(Boolean);
-      const presence = await realtimeApi.getPresence(Array.from(new Set(userIds)));
+      const uniqueUserIds = Array.from(new Set(userIds));
+      if (uniqueUserIds.length === 0) return {};
+      const presence = await realtimeApi.getPresence(uniqueUserIds);
       Object.entries(presence).forEach(([userId, value]: [string, PresenceStatus]) => {
         setPresence(userId, value);
       });
@@ -469,6 +477,28 @@ export const useChat = (selectedUser: string | null = null, openThreadRootId: st
       if (selectedUser) {
         emitOutgoingMessage(newMessage, 'text', newMessage.conversation_id);
         integrateCreatedMessage(queryClient, selectedUser, newMessage);
+      }
+    },
+  });
+
+  const sendRichContentMutation = useMutation({
+    mutationFn: (data: SendRichContentInput) => messagesApi.sendRichContent(data),
+    onSuccess: (newMessage) => {
+      if (selectedUser) {
+        emitOutgoingMessage(newMessage, newMessage.type, newMessage.conversation_id);
+        integrateCreatedMessage(queryClient, selectedUser, newMessage);
+      }
+    },
+  });
+
+  const createPollMutation = useMutation({
+    mutationFn: (data: CreatePollRequest) => pollsApi.create(data),
+    onSuccess: ({ poll, message }: CreatePollResponse) => {
+      // Seed the poll query cache so the card renders tallies without an extra fetch.
+      queryClient.setQueryData(pollQueryKey(poll.id), poll);
+      if (selectedUser) {
+        emitOutgoingMessage(message, message.type, message.conversation_id);
+        integrateCreatedMessage(queryClient, selectedUser, message);
       }
     },
   });
@@ -634,12 +664,14 @@ export const useChat = (selectedUser: string | null = null, openThreadRootId: st
     isSelectedConversationMissing,
     sendVoice: sendMessageMutation.mutateAsync as (data: SendMediaInput) => Promise<any>,
     sendText: sendTextMutation.mutateAsync as (data: SendTextInput) => Promise<any>,
+    sendRichContent: sendRichContentMutation.mutateAsync as (data: SendRichContentInput) => Promise<MessageDoc>,
+    createPoll: createPollMutation.mutateAsync as (data: CreatePollRequest) => Promise<CreatePollResponse>,
     editMessage: editMessageMutation.mutateAsync as (data: { conversationId?: string; messageId: string; text: string }) => Promise<any>,
     deleteMessage: deleteMessageMutation.mutateAsync as (data: { conversationId?: string; messageId: string }) => Promise<any>,
     clearConversation: clearConversationMutation.mutateAsync as (conversationId: string) => Promise<ClearConversationResponse>,
     deleteConversation: deleteConversationMutation.mutateAsync as (conversationId: string) => Promise<DeleteConversationResponse>,
     toggleReaction: toggleReactionMutation.mutateAsync as (data: { conversationId?: string; messageId: string; emoji: string }) => Promise<any>,
-    isSending: sendMessageMutation.isPending || sendTextMutation.isPending,
+    isSending: sendMessageMutation.isPending || sendTextMutation.isPending || sendRichContentMutation.isPending,
     isEditingMessage: editMessageMutation.isPending,
     isDeletingMessage: deleteMessageMutation.isPending,
     isClearingConversation: clearConversationMutation.isPending,

@@ -32,6 +32,7 @@ export const EVENTS = {
   MESSAGE_EDITED: 'message_edited',
   MESSAGE_DELETED: 'message_deleted',
   MESSAGE_REACTED: 'message_reacted',
+  POLL_UPDATED: 'poll_updated',
   THREAD_REPLY_CREATED: 'thread_reply_created',
   THREAD_SUMMARY_UPDATED: 'thread_summary_updated',
   CONVERSATION_PINS_UPDATED: 'conversation_pins_updated',

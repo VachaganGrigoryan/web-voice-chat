@@ -32,7 +32,7 @@ const operationCount = Object.values(spec.paths).reduce(
   0
 );
 
-assert.equal(operationCount, 88, 'Unexpected number of OpenAPI operations');
+assert.equal(operationCount, 118, 'Unexpected number of OpenAPI operations');
 
 assert.equal(
   getJsonResponseRef('get', '/auth/passkeys', '200'),
@@ -49,6 +49,10 @@ assert.equal(
 assert.equal(
   getJsonResponseRef('get', '/conversations/{conversation_id}/messages/{message_id}/thread', '200'),
   '#/components/schemas/SuccessResponse_list_MessageDoc__'
+);
+assert.equal(
+  getJsonResponseRef('post', '/conversations/{conversation_id}/messages/content', '201'),
+  '#/components/schemas/SuccessResponse_MessageDoc_'
 );
 assert.equal(
   getJsonResponseRef('delete', '/conversations/{conversation_id}/messages/{message_id}', '200'),

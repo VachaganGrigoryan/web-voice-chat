@@ -93,6 +93,22 @@ export function useComposerTextInput({
     }, 2000);
   };
 
+  const stopTyping = () => {
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+      typingTimeoutRef.current = null;
+    }
+    emitTypingStop();
+  };
+
+  const clearTextAfterSend = () => {
+    setText('');
+    onClearReplyTarget?.();
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+    }
+  };
+
   useEffect(() => {
     resizeTextarea();
   }, [text]);
@@ -134,20 +150,12 @@ export function useComposerTextInput({
       return false;
     }
 
-    if (typingTimeoutRef.current) {
-      clearTimeout(typingTimeoutRef.current);
-      typingTimeoutRef.current = null;
-    }
-    emitTypingStop();
+    stopTyping();
 
     setIsSendingText(true);
     try {
       await onSendText({ conversation_id: receiverId, text: trimmedText });
-      setText('');
-      onClearReplyTarget?.();
-      if (textareaRef.current) {
-        textareaRef.current.style.height = 'auto';
-      }
+      clearTextAfterSend();
       return true;
     } finally {
       setIsSendingText(false);
@@ -165,6 +173,8 @@ export function useComposerTextInput({
     handleTextChange,
     appendText,
     handleSendText,
+    stopTyping,
+    clearTextAfterSend,
     blurTextarea: () => textareaRef.current?.blur(),
     focusTextarea: () => textareaRef.current?.focus(),
     resizeTextarea,

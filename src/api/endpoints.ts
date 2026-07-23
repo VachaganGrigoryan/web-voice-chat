@@ -40,11 +40,15 @@ import {
   PushTokenView,
   PresenceStatus,
   PreviewMediaKind,
+  CreatePollRequest,
+  CreatePollResponse,
+  PollView,
   RedeemInviteResult,
   ReplyMode,
   RegenerateCodeResponse,
   SavedMessageView,
   SelectedUserProfile,
+  SendRichContentRequest,
   SuccessResponse,
   ThreadSummary,
   ThreadConversationView,
@@ -241,6 +245,21 @@ export const messagesApi = {
         text: data.text,
         reply_mode: data.reply_mode ?? null,
         reply_to_message_id: data.reply_to_message_id,
+      }
+    );
+    return extractResponseData(response.data);
+  },
+  sendRichContent: async (data: SendRichContentRequest) => {
+    const response = await apiClient.post<SuccessResponse<MessageDoc>>(
+      `/conversations/${data.conversation_id}/messages/content`,
+      {
+        type: data.type,
+        text: data.text ?? null,
+        location: data.location ?? null,
+        contact: data.contact ?? null,
+        link_preview: data.link_preview ?? null,
+        reply_mode: data.reply_mode ?? null,
+        reply_to_message_id: data.reply_to_message_id ?? null,
       }
     );
     return extractResponseData(response.data);
@@ -834,6 +853,29 @@ export const callsApi = {
       .delete<SuccessResponse<DeleteCallHistoryResponse>>('/calls/history', {
         params: peer_user_id ? { peer_user_id } : undefined,
       })
+      .then((res) => extractResponseData(res.data)),
+};
+
+export const pollsApi = {
+  create: (data: CreatePollRequest) =>
+    apiClient
+      .post<SuccessResponse<CreatePollResponse>>('/polls', data)
+      .then((res) => extractResponseData(res.data)),
+  get: (pollId: string) =>
+    apiClient
+      .get<SuccessResponse<PollView>>(`/polls/${pollId}`)
+      .then((res) => extractResponseData(res.data)),
+  vote: (pollId: string, optionIds: string[]) =>
+    apiClient
+      .post<SuccessResponse<PollView>>(`/polls/${pollId}/vote`, { option_ids: optionIds })
+      .then((res) => extractResponseData(res.data)),
+  retract: (pollId: string) =>
+    apiClient
+      .post<SuccessResponse<PollView>>(`/polls/${pollId}/retract`)
+      .then((res) => extractResponseData(res.data)),
+  close: (pollId: string) =>
+    apiClient
+      .post<SuccessResponse<PollView>>(`/polls/${pollId}/close`)
       .then((res) => extractResponseData(res.data)),
 };
 
