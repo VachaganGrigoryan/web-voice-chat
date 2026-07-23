@@ -32,6 +32,7 @@ export const APP_ROUTES = {
   contacts: '/contacts',
   settings: '/settings',
   settingsTab: (tab: SettingsTab = 'profile') => `/settings/${tab}`,
+  me: '/me',
   profile: (userId: string) => `/profile/${userId}`,
   invite: (token: string) => `/invite/${token}`,
 } as const;
@@ -43,6 +44,7 @@ const isProtectedAppPath = (path: string) =>
   path.startsWith(APP_ROUTES.contacts) ||
   path.startsWith(APP_ROUTES.settings) ||
   path.startsWith(APP_ROUTES.pings) ||
+  path === APP_ROUTES.me ||
   path.startsWith('/profile/');
 
 export const isPingsTab = (value?: string): value is PingsTab =>

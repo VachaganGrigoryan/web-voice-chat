@@ -10,6 +10,7 @@ import SettingsPage from '@/features/settings/SettingsPage';
 import PingsPage from '@/features/pings/PingsPage';
 import ContactsPage from '@/features/profile/ContactsPage';
 import ProfilePage from '@/features/profile/ProfilePage';
+import MyProfilePage from '@/features/profile/MyProfilePage';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import PublicRoute from '@/components/PublicRoute';
 import { ThemeProvider } from '@/components/ThemeProvider';
@@ -61,6 +62,7 @@ export default function App() {
               <Route path={APP_ROUTES.contacts} element={<ContactsPage />} />
               <Route path={APP_ROUTES.settings} element={<Navigate to={APP_ROUTES.settingsTab('profile')} replace />} />
               <Route path="/settings/:tab" element={<SettingsPage />} />
+              <Route path={APP_ROUTES.me} element={<MyProfilePage />} />
               <Route path="/profile/:userId" element={<ProfilePage />} />
             </Route>
 
