@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useChat, useConversations, useThreadMessages } from '@/hooks/useChat';
 import { useCallHistory } from '@/hooks/useCallHistory';
 import { usePings } from '@/hooks/usePings';
+import { useContacts } from '@/hooks/useContacts';
 import { APP_ROUTES } from '@/app/routes';
 import { extractApiError } from '@/api/errors';
 import { useAuthStore } from '@/store/authStore';
@@ -34,7 +35,6 @@ import { ChatSidebar } from './components/ChatSidebar';
 import { ChatActionRail } from './components/ChatActionRail';
 import { CreateGroupDialog } from './components/CreateGroupDialog';
 import { CreateChannelDialog } from './components/CreateChannelDialog';
-import { MobileActionFab } from './components/MobileActionFab';
 import { InviteToConversationDialog } from './components/InviteToConversationDialog';
 import { ChatWelcomeState } from './components/ChatWelcomeState';
 import { ConversationAccessState } from './components/ConversationAccessState';
@@ -92,6 +92,7 @@ export default function ChatLayout() {
   const [isInviteDialogOpen, setIsInviteDialogOpen] = useState(false);
   const [isConvertThreadDialogOpen, setIsConvertThreadDialogOpen] = useState(false);
   const [updatingNotificationConversationId, setUpdatingNotificationConversationId] = useState<string | null>(null);
+  const [selectedSpaceId, setSelectedSpaceId] = useState<string | null>(null);
 
   const {
     onlineUsers,
@@ -118,7 +119,7 @@ export default function ChatLayout() {
     isTogglingReaction,
   } = useChat(selectedUser, selectedThreadRootId);
 
-  const { data: conversationsData } = useConversations();
+  const { data: conversationsData } = useConversations(selectedSpaceId);
   const inboxConversations = useMemo(
     () => conversationsData?.pages.flatMap((page) => page.data || []).filter(Boolean) || [],
     [conversationsData]
@@ -218,11 +219,11 @@ export default function ChatLayout() {
     sendPing,
     acceptPing,
     declinePing,
-    contacts: pingContacts,
     isSending: isSendingPing,
     isAccepting: isAcceptingPing,
     isDeclining: isDecliningPing,
   } = usePings();
+  const { contacts: pingContacts } = useContacts();
   const syncAudioQueue = useChatAudioPlayerStore((state) => state.syncQueue);
   const closeAudioPlayer = useChatAudioPlayerStore((state) => state.close);
   const { isTyping, typingUsers } = useTypingIndicator(selectedUser || undefined);
@@ -337,8 +338,8 @@ export default function ChatLayout() {
     handleToggleReaction,
     handleMainMediaClick,
     handleThreadMediaClick,
-    openConversationMenu,
     openConversationMenuAtPoint,
+    openConversationMenuAtCoordinates,
   } = useChatInteractionState({
     selectedUser,
     selectedThreadRootId,
@@ -627,6 +628,7 @@ export default function ChatLayout() {
       const conversation = await conversationsApi.createGroup({
         title: data.title,
         participant_ids: data.participantIds,
+        space_id: selectedSpaceId || undefined,
       });
       await queryClient.invalidateQueries({ queryKey: ['conversations'] });
       navigate(APP_ROUTES.chatConversation(conversation.id));
@@ -1067,6 +1069,7 @@ export default function ChatLayout() {
       <CreateChannelDialog
         open={isChannelDialogOpen}
         onOpenChange={setIsChannelDialogOpen}
+        spaceId={selectedSpaceId}
         onCreated={(conversationId) => {
           navigate(APP_ROUTES.chatConversation(conversationId));
           resetConversationUnreadCount(conversationId);
@@ -1083,21 +1086,24 @@ export default function ChatLayout() {
 
       <ChatActionRail
         pendingIncomingCount={pendingIncomingCount}
+        sidebarView={sidebarView}
+        profile={profile}
+        userEmail={userEmail}
+        selectedSpaceId={selectedSpaceId}
+        onSpaceChange={setSelectedSpaceId}
+        onSelectView={setSidebarView}
         onOpenPings={() => navigate(APP_ROUTES.pingsTab('incoming'))}
-        onOpenThreads={() => setSidebarView('threads')}
+        onOpenContacts={() => navigate(APP_ROUTES.contacts)}
         onNewGroup={() => setIsGroupDialogOpen(true)}
         onNewChannel={() => setIsChannelDialogOpen(true)}
+        onOpenProfile={() => navigate(APP_ROUTES.me)}
         onOpenSettings={() => navigate(APP_ROUTES.settingsTab('profile'))}
+        onLogout={handleLogout}
       />
 
-      {!selectedUser ? (
-        <MobileActionFab
-          onNewGroup={() => setIsGroupDialogOpen(true)}
-          onNewChannel={() => setIsChannelDialogOpen(true)}
-        />
-      ) : null}
-
       <ChatSidebar
+        selectedSpaceId={selectedSpaceId}
+        onSpaceChange={setSelectedSpaceId}
         profile={profile}
         userEmail={userEmail}
         currentUserId={userId}
@@ -1108,7 +1114,6 @@ export default function ChatLayout() {
         selectedUser={selectedUser}
         typingUsers={typingUsers}
         presenceByUserId={presenceByUserId}
-        activeConversationMenuPeerUserId={conversationMenu?.peerUserId || null}
         activeCallHistoryMenuPeerUserId={callHistoryMenu?.peerUserId || null}
         isLoadingCallHistory={isLoadingCallHistory}
         hasMoreCallHistory={hasNextCallHistoryPage}
@@ -1117,7 +1122,10 @@ export default function ChatLayout() {
         onOpenSettings={() => navigate(APP_ROUTES.settingsTab('profile'))}
         onOpenOwnProfile={() => navigate(APP_ROUTES.me)}
         onOpenPings={() => navigate(APP_ROUTES.pingsTab('incoming'))}
+        onOpenContacts={() => navigate(APP_ROUTES.contacts)}
         onLogout={handleLogout}
+        onNewGroup={() => setIsGroupDialogOpen(true)}
+        onNewChannel={() => setIsChannelDialogOpen(true)}
         onSidebarViewChange={setSidebarView}
         onLoadMoreCallHistory={() => void fetchNextCallHistoryPage()}
         onClearAllCallHistory={handleRequestClearAllCallHistory}
@@ -1130,8 +1138,8 @@ export default function ChatLayout() {
         onSelectCallHistoryPeer={(peerUserId) => {
           void openDmConversationForUser(peerUserId);
         }}
-        onOpenConversationMenu={openConversationMenu}
         onOpenConversationMenuAtPoint={openConversationMenuAtPoint}
+        onOpenConversationMenuAtCoordinates={openConversationMenuAtCoordinates}
         onOpenCallHistoryMenu={openCallHistoryMenu}
         onOpenCallHistoryMenuAtPoint={openCallHistoryMenuAtPoint}
       />

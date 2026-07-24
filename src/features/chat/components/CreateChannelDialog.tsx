@@ -20,11 +20,7 @@ type PostingPolicy = 'everyone' | 'admins';
 
 const SLUG_PATTERN = /^[a-z0-9](?:[a-z0-9-]{1,78}[a-z0-9])$/;
 
-interface CreateChannelDialogProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  onCreated: (conversationId: string) => void;
-}
+
 
 function ChoicePills<T extends string>({
   value,
@@ -56,7 +52,14 @@ function ChoicePills<T extends string>({
   );
 }
 
-export function CreateChannelDialog({ open, onOpenChange, onCreated }: CreateChannelDialogProps) {
+interface CreateChannelDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onCreated: (conversationId: string) => void;
+  spaceId?: string | null;
+}
+
+export function CreateChannelDialog({ open, onOpenChange, onCreated, spaceId }: CreateChannelDialogProps) {
   const { createChannel } = useConversationActions();
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -92,6 +95,7 @@ export function CreateChannelDialog({ open, onOpenChange, onCreated }: CreateCha
         visibility,
         posting_policy: postingPolicy,
         slug: visibility === 'public' ? slug.trim() : undefined,
+        space_id: spaceId || undefined,
       });
       onCreated(conversation.conversation_id);
       close();

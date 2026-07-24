@@ -374,6 +374,25 @@ export function useChatInteractionState({
     });
   };
 
+  // Coordinate-based opener used by the mobile touch long-press gesture, where
+  // no synthetic mouse event is available.
+  const openConversationMenuAtCoordinates = (
+    point: { x: number; y: number },
+    peerUserId: string,
+    unreadCount: number
+  ) => {
+    setConversationMenu({
+      peerUserId,
+      unreadCount,
+      rect: {
+        top: point.y,
+        right: point.x,
+        bottom: point.y,
+        left: point.x,
+      },
+    });
+  };
+
   return {
     mediaViewer,
     setMediaViewer,
@@ -403,5 +422,6 @@ export function useChatInteractionState({
     handleThreadMediaClick,
     openConversationMenu,
     openConversationMenuAtPoint,
+    openConversationMenuAtCoordinates,
   };
 }

@@ -6,7 +6,8 @@ import { Button } from '@/components/ui/Button';
 import { APP_ROUTES, isPingsTab, PingsTab } from '@/app/routes';
 import { PanelPageLayout, PanelSection } from '@/components/panel/PanelPageLayout';
 import { usePings } from '@/hooks/usePings';
-import { PingItem } from '@/api/types';
+import { useNotifications } from '@/hooks/useNotifications';
+import { NotificationView, PingItem } from '@/api/types';
 import { conversationsApi } from '@/api/endpoints';
 import { extractApiError } from '@/api/errors';
 import { cn } from '@/lib/utils';
@@ -170,6 +171,123 @@ function EmptyState({
   );
 }
 
+function describeNotification(
+  notification: NotificationView,
+  peerName: string | null
+): { title: string; description: string } {
+  const name = peerName ? `@${peerName}` : 'Someone';
+  switch (notification.kind) {
+    case 'ping_received':
+      return { title: 'New connection request', description: `${name} wants to connect with you.` };
+    case 'ping_accepted':
+      return { title: 'Connection accepted', description: `${name} accepted your connection request.` };
+    case 'ping_declined':
+      return { title: 'Connection declined', description: `${name} declined your connection request.` };
+    case 'ping_cancelled':
+      return { title: 'Request withdrawn', description: `${name} withdrew a connection request.` };
+    case 'user_blocked':
+      return { title: 'User blocked', description: `You blocked ${name}.` };
+    case 'message':
+      return { title: 'New message', description: 'You have a new message.' };
+    default:
+      return { title: 'Notification', description: notification.kind };
+  }
+}
+
+function NotificationFeedItem({
+  notification,
+  matchedPing,
+  onAccept,
+  onDecline,
+  onOpenConversation,
+  isAccepting,
+  isDeclining,
+}: {
+  notification: NotificationView;
+  matchedPing: PingItem | null;
+  onAccept: (ping: PingItem) => void;
+  onDecline: (pingId: string) => void;
+  onOpenConversation: (conversationId: string) => void;
+  isAccepting: boolean;
+  isDeclining: boolean;
+}) {
+  const peer = matchedPing?.peer ?? null;
+  const { title, description } = describeNotification(notification, peer?.username ?? null);
+  const isUnread = notification.read_at === null;
+  const relative = formatDistanceToNow(new Date(notification.created_at), { addSuffix: true });
+  const canAcceptDecline = notification.kind === 'ping_received' && matchedPing !== null;
+  const conversationId =
+    notification.kind === 'message' ? notification.conversation_id : null;
+
+  return (
+    <div
+      className={cn(
+        'rounded-2xl border p-4',
+        isUnread ? 'border-primary/30 bg-primary/5' : 'border-border/60 bg-background/80'
+      )}
+    >
+      <div className="flex min-w-0 items-start gap-3">
+        <div className="rounded-full bg-muted p-2">
+          {notification.kind === 'message' ? (
+            <MessageSquare className="h-4 w-4 text-muted-foreground" />
+          ) : notification.kind === 'user_blocked' ? (
+            <ShieldAlert className="h-4 w-4 text-muted-foreground" />
+          ) : (
+            <Bell className="h-4 w-4 text-muted-foreground" />
+          )}
+        </div>
+        <div className="min-w-0 flex-1 space-y-1">
+          <div className="text-sm font-semibold">{title}</div>
+          <div className="truncate text-xs text-muted-foreground">{description}</div>
+          <div className="text-[11px] text-muted-foreground">{relative}</div>
+        </div>
+      </div>
+
+      {(canAcceptDecline || conversationId) && (
+        <div className="mt-3 grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center sm:justify-end">
+          {canAcceptDecline && matchedPing ? (
+            <>
+              <Button
+                type="button"
+                size="sm"
+                className="w-full rounded-full sm:w-auto"
+                onClick={() => onAccept(matchedPing)}
+                disabled={isAccepting}
+              >
+                <Check className="mr-1.5 h-4 w-4" />
+                Accept
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="w-full rounded-full sm:w-auto"
+                onClick={() => onDecline(matchedPing.ping.id)}
+                disabled={isDeclining}
+              >
+                <X className="mr-1.5 h-4 w-4" />
+                Decline
+              </Button>
+            </>
+          ) : null}
+          {conversationId ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="col-span-2 w-full rounded-full sm:col-span-1 sm:w-auto"
+              onClick={() => onOpenConversation(conversationId)}
+            >
+              <MessageSquare className="mr-1.5 h-4 w-4" />
+              Open Chat
+            </Button>
+          ) : null}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function PingsPage() {
   const navigate = useNavigate();
   const [isJoinByCodeOpen, setIsJoinByCodeOpen] = useState(false);
@@ -189,9 +307,10 @@ export default function PingsPage() {
     isCancelling,
     isBlocking,
   } = usePings();
+  const { notifications, isLoading: isLoadingNotifications } = useNotifications();
 
   if (!routeTab) {
-    return <Navigate to={APP_ROUTES.pingsTab('incoming')} replace />;
+    return <Navigate to={APP_ROUTES.pingsTab('notifications')} replace />;
   }
 
   const pendingIncoming = incoming.filter((item) => item.ping.status === 'pending');
@@ -205,8 +324,23 @@ export default function PingsPage() {
   const handleBack = () => {
     goBack({
       fallback:
-        routeTab !== 'incoming' ? APP_ROUTES.pingsTab('incoming') : APP_ROUTES.chat,
+        routeTab !== 'notifications'
+          ? APP_ROUTES.pingsTab('notifications')
+          : APP_ROUTES.chat,
     });
+  };
+
+  const unreadNotifications = notifications.filter((n) => n.read_at === null).length;
+
+  const matchedPingFor = (notification: NotificationView): PingItem | null => {
+    const peerId =
+      typeof notification.data?.peer_user_id === 'string'
+        ? notification.data.peer_user_id
+        : null;
+    if (!peerId) return null;
+    return (
+      pendingIncoming.find((item) => item.peer.id === peerId) ?? null
+    );
   };
 
   const handleTabChange = (value: PingsTab) => {
@@ -224,32 +358,46 @@ export default function PingsPage() {
 
   return (
     <PanelPageLayout
-      title="Pings"
-      description="Review incoming and outgoing connection requests with consistent actions and status handling."
+      title="Notifications"
+      description="Your unified feed of connection events and message alerts, with quick actions."
       onBack={handleBack}
       onClose={handleClose}
       nav={
         <div className="flex flex-wrap items-center gap-2">
-          {(['incoming', 'outgoing'] as const).map((value) => (
-            <button
-              key={value}
-              type="button"
-              onClick={() => handleTabChange(value)}
-              className={cn(
-                'inline-flex items-center rounded-full px-4 py-2 text-sm font-medium transition-colors',
-                routeTab === value
-                  ? 'bg-primary text-primary-foreground shadow-sm'
-                  : 'bg-muted text-muted-foreground hover:bg-accent hover:text-foreground'
-              )}
-            >
-              {value === 'incoming' ? 'Incoming' : 'Outgoing'}
-              {value === 'incoming' && pendingIncoming.length > 0 ? (
-                <span className="ml-2 rounded-full bg-background/20 px-2 py-0.5 text-[10px] font-bold">
-                  {pendingIncoming.length}
-                </span>
-              ) : null}
-            </button>
-          ))}
+          {(['notifications', 'incoming', 'outgoing'] as const).map((value) => {
+            const label =
+              value === 'notifications'
+                ? 'All'
+                : value === 'incoming'
+                  ? 'Incoming'
+                  : 'Outgoing';
+            const badgeCount =
+              value === 'notifications'
+                ? unreadNotifications
+                : value === 'incoming'
+                  ? pendingIncoming.length
+                  : 0;
+            return (
+              <button
+                key={value}
+                type="button"
+                onClick={() => handleTabChange(value)}
+                className={cn(
+                  'inline-flex items-center rounded-full px-4 py-2 text-sm font-medium transition-colors',
+                  routeTab === value
+                    ? 'bg-primary text-primary-foreground shadow-sm'
+                    : 'bg-muted text-muted-foreground hover:bg-accent hover:text-foreground'
+                )}
+              >
+                {label}
+                {badgeCount > 0 ? (
+                  <span className="ml-2 rounded-full bg-background/20 px-2 py-0.5 text-[10px] font-bold">
+                    {badgeCount}
+                  </span>
+                ) : null}
+              </button>
+            );
+          })}
           <Button
             type="button"
             variant="outline"
@@ -269,7 +417,41 @@ export default function PingsPage() {
         onOpenChange={setIsJoinByCodeOpen}
         onJoined={(conversationId) => navigate(APP_ROUTES.chatConversation(conversationId))}
       />
-      {isLoading ? (
+      {routeTab === 'notifications' ? (
+        isLoadingNotifications ? (
+          <PanelSection>
+            <div className="flex flex-col items-center justify-center gap-3 py-14 text-center">
+              <Loader2 className="h-8 w-8 animate-spin text-primary/60" />
+              <div className="text-sm text-muted-foreground">Loading notifications…</div>
+            </div>
+          </PanelSection>
+        ) : notifications.length > 0 ? (
+          <PanelSection title="Recent Notifications">
+            <div className="space-y-3">
+              {notifications.map((notification) => (
+                <NotificationFeedItem
+                  key={notification.id}
+                  notification={notification}
+                  matchedPing={matchedPingFor(notification)}
+                  onAccept={(ping) => acceptPing(ping.ping.id).then(() => openChat(ping.peer.id))}
+                  onDecline={(pingId) => declinePing(pingId)}
+                  onOpenConversation={(conversationId) =>
+                    navigate(APP_ROUTES.chatConversation(conversationId))
+                  }
+                  isAccepting={isAccepting}
+                  isDeclining={isDeclining}
+                />
+              ))}
+            </div>
+          </PanelSection>
+        ) : (
+          <EmptyState
+            icon={<Bell className="h-8 w-8 text-muted-foreground" />}
+            title="No notifications yet"
+            description="Connection requests and message alerts will appear here."
+          />
+        )
+      ) : isLoading ? (
         <PanelSection>
           <div className="flex flex-col items-center justify-center gap-3 py-14 text-center">
             <Loader2 className="h-8 w-8 animate-spin text-primary/60" />

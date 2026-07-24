@@ -82,6 +82,11 @@ export interface SelectedUserProfile {
   last_seen_at?: string | null;
   profile_visibility: 'full' | 'limited';
   relationship: ContactState;
+  // Populated only when requested via `?include=contact_details` on an accepted contact.
+  connection_timestamp?: string | null;
+  conversation_id?: string | null;
+  shared_conversations?: SharedConversationSummary[];
+  shared_spaces?: SharedSpaceSummary[];
 }
 
 export interface TokenPair {
@@ -696,6 +701,18 @@ export interface ContactListItem extends PingListItem {
   conversation_id: string | null;
 }
 
+export interface SharedConversationSummary {
+  id: string;
+  type: string;
+  title: string | null;
+}
+
+export interface SharedSpaceSummary {
+  id: string;
+  name: string;
+  slug: string;
+}
+
 export type CallType = OpenApiCallType;
 export type CallStatus = OpenApiCallStatus;
 
@@ -821,3 +838,43 @@ export interface SuccessResponse<T> {
   data: T;
   request_id?: string | null;
 }
+
+export interface SpaceView {
+  id: string;
+  name: string;
+  slug: string;
+  kind: 'org' | 'workspace' | 'subspace';
+  visibility: 'private' | 'public';
+  avatar: string | null;
+  created_by: string;
+  settings: Record<string, any>;
+  created_at: string;
+}
+
+export interface SpaceInviteLinkView {
+  id: string;
+  space_id: string;
+  code: string;
+  requires_approval: boolean;
+  expires_at: string | null;
+  max_uses: number | null;
+  uses: number;
+  created_by: string;
+  created_at: string;
+}
+
+export interface SpaceJoinRequestView {
+  id: string;
+  space_id: string;
+  user_id: string;
+  status: 'pending' | 'approved' | 'rejected';
+  created_by: string;
+  created_at: string;
+}
+
+export interface RedeemSpaceInviteResponse {
+  status: 'joined' | 'pending';
+  space: SpaceView | null;
+  join_request: SpaceJoinRequestView | null;
+}
+

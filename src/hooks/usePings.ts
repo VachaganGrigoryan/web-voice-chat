@@ -53,11 +53,6 @@ export function usePings() {
     queryFn: () => pingsApi.getOutgoing().then(res => res.data),
   });
 
-  const contactsQuery = useQuery({
-    queryKey: ['pings', 'contacts'],
-    queryFn: () => pingsApi.getContacts().then(res => res.data),
-  });
-
   const sendPingMutation = useMutation({
     mutationFn: (userId: string) => pingsApi.sendPing(userId),
     onSuccess: () => {
@@ -142,9 +137,7 @@ export function usePings() {
   return {
     incoming: Array.isArray(incomingQuery.data) ? incomingQuery.data : [],
     outgoing: Array.isArray(outgoingQuery.data) ? outgoingQuery.data : [],
-    contacts: Array.isArray(contactsQuery.data) ? contactsQuery.data : [],
     isLoading: incomingQuery.isLoading || outgoingQuery.isLoading,
-    isLoadingContacts: contactsQuery.isLoading,
     sendPing: sendPingMutation.mutateAsync,
     acceptPing: acceptPingMutation.mutateAsync,
     declinePing: declinePingMutation.mutateAsync,

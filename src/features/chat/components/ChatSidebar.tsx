@@ -1,7 +1,10 @@
 import {
+  useEffect,
   useMemo,
+  useRef,
   useState,
   type MouseEvent as ReactMouseEvent,
+  type TouchEvent as ReactTouchEvent,
 } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
@@ -11,6 +14,8 @@ import {
   Bell,
   BellOff,
   Check,
+  ChevronLeft,
+  Contact,
   FolderInput,
   Image as ImageIcon,
   Link2,
@@ -18,6 +23,7 @@ import {
   Lock,
   LogOut,
   MapPin,
+  MessageSquare,
   MessageSquareText,
   Mic,
   MoreVertical,
@@ -26,13 +32,17 @@ import {
   Pencil,
   Phone,
   Pin,
+  Plus,
+  Radio,
+  Search,
   Settings,
   Trash2,
   UserRound,
+  Users,
   Video,
   X,
 } from 'lucide-react';
-import { CallHistoryItem, Conversation, PresenceStatus, ThreadConversationView, User } from '@/api/types';
+import { CallHistoryItem, Conversation, ConversationType, PresenceStatus, ThreadConversationView, User } from '@/api/types';
 import { conversationsApi } from '@/api/endpoints';
 import { resolveMessageContent } from '@/api/messageContent';
 import { useConversationFolders } from '../hooks/useConversationFolders';
@@ -40,9 +50,9 @@ import { useConversationActions } from '../hooks/useConversationActions';
 import { MoveToFolderDialog } from './MoveToFolderDialog';
 import { Button } from '@/components/ui/Button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/Avatar';
-import { ProfileTriggerButton } from '@/features/chat/components/ProfileTriggerButton';
 import { UserSearch } from '@/features/discovery/UserSearch';
 import { cn } from '@/lib/utils';
+import { triggerHaptic } from '@/utils/haptics';
 import { formatDuration, formatMessageDay, formatMessageTime, isSameLocalDay } from '@/utils/dateUtils';
 import {
   getCallDirectionFromMeta,
@@ -50,6 +60,7 @@ import {
   getCallSummaryText,
 } from '../utils/callPresentation';
 import { getPresentedMessageKind } from '../utils/messagePresentation';
+import { SpaceSwitcher } from './SpaceSwitcher';
 
 type SidebarView = 'chats' | 'calls' | 'threads';
 
@@ -64,16 +75,20 @@ interface ChatSidebarProps {
   selectedUser: string | null;
   typingUsers: Record<string, boolean>;
   presenceByUserId?: Record<string, PresenceStatus>;
-  activeConversationMenuPeerUserId: string | null;
   activeCallHistoryMenuPeerUserId: string | null;
   isLoadingCallHistory: boolean;
   hasMoreCallHistory: boolean;
   isFetchingMoreCallHistory: boolean;
   isClearingCallHistory: boolean;
+  selectedSpaceId: string | null;
+  onSpaceChange: (spaceId: string | null) => void;
   onOpenSettings: () => void;
   onOpenOwnProfile: () => void;
   onOpenPings: () => void;
+  onOpenContacts: () => void;
   onLogout: () => void;
+  onNewGroup: () => void;
+  onNewChannel: () => void;
   onSidebarViewChange: (view: SidebarView) => void;
   onLoadMoreCallHistory: () => void;
   onClearAllCallHistory: () => void;
@@ -81,8 +96,8 @@ interface ChatSidebarProps {
   onSelectConversation: (peerUserId: string) => void;
   onSelectThread: (thread: ThreadConversationView) => void;
   onSelectCallHistoryPeer: (peerUserId: string) => void;
-  onOpenConversationMenu: (event: ReactMouseEvent<HTMLElement>, peerUserId: string, unreadCount: number) => void;
   onOpenConversationMenuAtPoint: (event: ReactMouseEvent<HTMLElement>, peerUserId: string, unreadCount: number) => void;
+  onOpenConversationMenuAtCoordinates: (point: { x: number; y: number }, peerUserId: string, unreadCount: number) => void;
   onOpenCallHistoryMenu: (event: ReactMouseEvent<HTMLElement>, peerUserId: string) => void;
   onOpenCallHistoryMenuAtPoint: (event: ReactMouseEvent<HTMLElement>, peerUserId: string) => void;
 }
@@ -281,31 +296,88 @@ function CallHistoryListItem({
   );
 }
 
+// Threshold in px beyond which a touch counts as a scroll and cancels the
+// long-press; hold duration that triggers the mobile context menu.
+const LONG_PRESS_MOVE_THRESHOLD = 10;
+const LONG_PRESS_DURATION_MS = 500;
+
 function ConversationListItem({
   conversation,
   isSelected,
   isCurrentUserConversation,
   currentUserId,
   isTyping,
-  isMenuOpen,
   selectionMode = false,
   isChecked = false,
+  selectionDisabled = false,
   onSelect,
-  onOpenMenu,
   onOpenMenuAtPoint,
+  onOpenMenuAtCoordinates,
 }: {
   conversation: Conversation;
   isSelected: boolean;
   isCurrentUserConversation: boolean;
   currentUserId: string | null;
   isTyping: boolean;
-  isMenuOpen: boolean;
   selectionMode?: boolean;
   isChecked?: boolean;
+  selectionDisabled?: boolean;
   onSelect: () => void;
-  onOpenMenu: (event: ReactMouseEvent<HTMLElement>) => void;
   onOpenMenuAtPoint: (event: ReactMouseEvent<HTMLElement>) => void;
+  onOpenMenuAtCoordinates: (point: { x: number; y: number }) => void;
 }) {
+  const longPressTimer = useRef<number | null>(null);
+  const touchStartPoint = useRef<{ x: number; y: number } | null>(null);
+  const longPressFired = useRef(false);
+
+  const clearLongPress = () => {
+    if (longPressTimer.current !== null) {
+      window.clearTimeout(longPressTimer.current);
+      longPressTimer.current = null;
+    }
+  };
+
+  useEffect(() => clearLongPress, []);
+
+  const handleTouchStart = (event: ReactTouchEvent<HTMLElement>) => {
+    if (selectionMode || selectionDisabled) return;
+    const touch = event.touches[0];
+    if (!touch) return;
+    touchStartPoint.current = { x: touch.clientX, y: touch.clientY };
+    longPressFired.current = false;
+    clearLongPress();
+    longPressTimer.current = window.setTimeout(() => {
+      longPressFired.current = true;
+      triggerHaptic('reaction');
+      onOpenMenuAtCoordinates({ x: touch.clientX, y: touch.clientY });
+    }, LONG_PRESS_DURATION_MS);
+  };
+
+  const handleTouchMove = (event: ReactTouchEvent<HTMLElement>) => {
+    if (!touchStartPoint.current) return;
+    const touch = event.touches[0];
+    if (!touch) return;
+    const movedX = Math.abs(touch.clientX - touchStartPoint.current.x);
+    const movedY = Math.abs(touch.clientY - touchStartPoint.current.y);
+    if (movedX > LONG_PRESS_MOVE_THRESHOLD || movedY > LONG_PRESS_MOVE_THRESHOLD) {
+      clearLongPress();
+    }
+  };
+
+  const handleTouchEnd = () => {
+    clearLongPress();
+    touchStartPoint.current = null;
+  };
+
+  const handleClick = () => {
+    // Suppress the synthetic click the browser emits after a long-press.
+    if (longPressFired.current) {
+      longPressFired.current = false;
+      return;
+    }
+    onSelect();
+  };
+
   const conversationLabel = getConversationLabel(conversation);
   const avatarUrl = conversation.peer_user?.avatar?.url;
   const presenceState =
@@ -328,7 +400,8 @@ function ConversationListItem({
         (selectionMode ? isChecked : isSelected)
           ? 'border-primary/20 bg-background/95 shadow-sm ring-1 ring-primary/10'
           : 'border-border/60 bg-background/75 shadow-[0_1px_2px_rgba(15,23,42,0.04)] hover:border-border/80 hover:bg-background/95 hover:shadow-sm',
-        isCurrentUserConversation && 'pointer-events-none opacity-50'
+        isCurrentUserConversation && 'pointer-events-none opacity-50',
+        selectionDisabled && 'pointer-events-none opacity-40'
       )}
       onContextMenu={(event) => {
         event.preventDefault();
@@ -336,14 +409,15 @@ function ConversationListItem({
           onOpenMenuAtPoint(event);
         }
       }}
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
+      onTouchCancel={handleTouchEnd}
     >
       <button
         type="button"
-        className={cn(
-          'flex w-full min-w-0 max-w-full items-center gap-3 rounded-[18px] px-2.5 py-2 text-left transition-colors',
-          selectionMode ? 'pr-2' : 'pr-12'
-        )}
-        onClick={onSelect}
+        className="flex w-full min-w-0 max-w-full items-center gap-3 rounded-[18px] px-2.5 py-2 text-left transition-colors"
+        onClick={handleClick}
       >
         {selectionMode ? (
           <span
@@ -418,27 +492,6 @@ function ConversationListItem({
           </div>
         </div>
       </button>
-
-      {selectionMode ? null : (
-        <div className="absolute right-1.5 top-1/2 flex -translate-y-1/2 items-center">
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className={cn(
-              'h-11 w-11 rounded-full text-muted-foreground transition-opacity hover:bg-muted hover:text-foreground',
-              'opacity-100 md:opacity-0 md:group-hover:opacity-100',
-              isMenuOpen && 'bg-muted text-foreground opacity-100'
-            )}
-            onClick={(event) => {
-              event.stopPropagation();
-              onOpenMenu(event);
-            }}
-          >
-            <MoreVertical className="h-4 w-4" />
-          </Button>
-        </div>
-      )}
     </div>
   );
 }
@@ -529,16 +582,20 @@ export function ChatSidebar({
   selectedUser,
   typingUsers,
   presenceByUserId = {},
-  activeConversationMenuPeerUserId,
   activeCallHistoryMenuPeerUserId,
   isLoadingCallHistory,
   hasMoreCallHistory,
   isFetchingMoreCallHistory,
   isClearingCallHistory,
+  selectedSpaceId,
+  onSpaceChange,
   onOpenSettings,
   onOpenOwnProfile,
   onOpenPings,
+  onOpenContacts,
   onLogout,
+  onNewGroup,
+  onNewChannel,
   onSidebarViewChange,
   onLoadMoreCallHistory,
   onClearAllCallHistory,
@@ -546,8 +603,8 @@ export function ChatSidebar({
   onSelectConversation,
   onSelectThread,
   onSelectCallHistoryPeer,
-  onOpenConversationMenu,
   onOpenConversationMenuAtPoint,
+  onOpenConversationMenuAtCoordinates,
   onOpenCallHistoryMenu,
   onOpenCallHistoryMenuAtPoint,
 }: ChatSidebarProps) {
@@ -556,10 +613,13 @@ export function ChatSidebar({
   const [renamingFolder, setRenamingFolder] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
   const [bulkFolderDialogOpen, setBulkFolderDialogOpen] = useState(false);
+  const [mobileUserMenuOpen, setMobileUserMenuOpen] = useState(false);
+  const [mobileCreateOpen, setMobileCreateOpen] = useState(false);
+  const [searchExpanded, setSearchExpanded] = useState(false);
 
   const archivedQuery = useQuery({
-    queryKey: ['conversations', 'archived'],
-    queryFn: () => conversationsApi.getConversations(50, undefined, { archived: true }),
+    queryKey: ['conversations', 'archived', selectedSpaceId],
+    queryFn: () => conversationsApi.getConversations(50, undefined, { archived: true, space_id: selectedSpaceId || undefined }),
     enabled: sidebarView === 'chats' && showArchived,
   });
   const threadsQuery = useQuery({
@@ -576,17 +636,33 @@ export function ChatSidebar({
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
+  // Type the multi-select is locked to, derived from the first checked item.
+  // Selecting a conversation of a different type is disabled while this is set.
+  const [selectionType, setSelectionType] = useState<ConversationType | null>(null);
+
   const exitSelectionMode = () => {
     setSelectionMode(false);
     setSelectedIds([]);
+    setSelectionType(null);
   };
 
-  const toggleSelected = (conversationId: string) => {
-    setSelectedIds((current) =>
-      current.includes(conversationId)
-        ? current.filter((id) => id !== conversationId)
-        : [...current, conversationId]
-    );
+  const toggleSelected = (conversationId: string, type: ConversationType) => {
+    setSelectedIds((current) => {
+      if (current.includes(conversationId)) {
+        const next = current.filter((id) => id !== conversationId);
+        if (next.length === 0) {
+          setSelectionType(null);
+        }
+        return next;
+      }
+      // First selection locks the allowed type; ignore mismatched types.
+      if (current.length === 0) {
+        setSelectionType(type);
+      } else if (selectionType && type !== selectionType) {
+        return current;
+      }
+      return [...current, conversationId];
+    });
   };
 
   const applyBulkInboxState = (updates: {
@@ -650,12 +726,19 @@ export function ChatSidebar({
     return chatContacts;
   }, [showArchived, archivedConversations, activeFolder, chatContacts]);
 
-  const pinnedConversations = showArchived
-    ? []
-    : visibleConversations.filter((conversation) => conversation.pinned);
-  const regularConversations = showArchived
-    ? visibleConversations
-    : visibleConversations.filter((conversation) => !conversation.pinned);
+  // Group conversations by type into Slack-style sections. Pinned items stay in
+  // their type group (a pin badge marks them) instead of a separate section.
+  const groupedConversations = useMemo(() => {
+    const directMessages = visibleConversations.filter((c) => c.type === 'dm');
+    const groups = visibleConversations.filter((c) => c.type === 'group');
+    const channels = visibleConversations.filter((c) => c.type === 'channel');
+    return [
+      { key: 'channels', label: 'Channels', items: channels },
+      { key: 'groups', label: 'Groups', items: groups },
+      { key: 'dms', label: 'Direct Messages', items: directMessages },
+    ] as const;
+  }, [visibleConversations]);
+
   const renderConversation = (conversation: Conversation) => {
     const peerId = conversation.peer_user?.id;
     const livePresence = peerId ? presenceByUserId[peerId] : undefined;
@@ -682,19 +765,24 @@ export function ChatSidebar({
         }
         currentUserId={currentUserId}
         isTyping={!!typingUsers[conversation.conversation_id]}
-        isMenuOpen={activeConversationMenuPeerUserId === conversation.conversation_id}
         selectionMode={selectionMode}
         isChecked={selectedIds.includes(conversation.conversation_id)}
+        selectionDisabled={
+          selectionMode &&
+          selectionType !== null &&
+          conversation.type !== selectionType &&
+          !selectedIds.includes(conversation.conversation_id)
+        }
         onSelect={() =>
           selectionMode
-            ? toggleSelected(conversation.conversation_id)
+            ? toggleSelected(conversation.conversation_id, conversation.type)
             : onSelectConversation(conversation.conversation_id)
-        }
-        onOpenMenu={(event) =>
-          onOpenConversationMenu(event, conversation.conversation_id, conversation.unread_count ?? 0)
         }
         onOpenMenuAtPoint={(event) =>
           onOpenConversationMenuAtPoint(event, conversation.conversation_id, conversation.unread_count ?? 0)
+        }
+        onOpenMenuAtCoordinates={(point) =>
+          onOpenConversationMenuAtCoordinates(point, conversation.conversation_id, conversation.unread_count ?? 0)
         }
       />
     );
@@ -719,72 +807,151 @@ export function ChatSidebar({
         )}
       >
         <div className="flex h-full min-h-0 w-full min-w-0 flex-1 flex-col overflow-hidden">
-        <div className="flex h-16 shrink-0 items-center justify-between border-b p-4">
-          <ProfileTriggerButton
-            title={profile?.display_name || profile?.username || userEmail}
-            subtitle={profile?.username ? `@${profile.username}` : undefined}
-            avatarUrl={profile?.avatar?.url}
-            fallback={(profile?.display_name || profile?.username || userEmail || '?')[0].toUpperCase()}
-            onClick={onOpenOwnProfile}
-            className="min-w-0 flex-1"
+        {/* Mobile-only top action header: Space switcher, expandable search, and
+            the user menu. On desktop these controls live in the vertical rail. */}
+        <div className="relative flex h-16 shrink-0 items-center justify-between gap-2 border-b px-3 md:hidden">
+          <SpaceSwitcher
+            variant="mobile"
+            selectedSpaceId={selectedSpaceId}
+            onSpaceChange={onSpaceChange}
           />
-          <div className="flex shrink-0 items-center gap-1">
-            {/* Pings + Settings live in the desktop rail; keep mobile entry points here. */}
+
+          <div className="flex flex-1 justify-center">
             <Button
               variant="ghost"
               size="icon"
-              onClick={onOpenPings}
-              className="relative md:hidden"
-              title="Pings"
-              aria-label="Pings"
+              onClick={() => setSearchExpanded(true)}
+              title="Search"
+              aria-label="Search"
             >
-              <Bell className="h-4 w-4" />
-              {pendingIncomingCount > 0 ? (
-                <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-destructive" />
-              ) : null}
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={onOpenSettings}
-              className="md:hidden"
-              title="Settings"
-              aria-label="Settings"
-            >
-              <Settings className="h-4 w-4" />
-            </Button>
-            <Button variant="ghost" size="icon" onClick={onLogout} title="Log out" aria-label="Log out">
-              <LogOut className="h-4 w-4" />
+              <Search className="h-5 w-5" />
             </Button>
           </div>
+
+          <div className="relative shrink-0">
+            <button
+              type="button"
+              onClick={() => setMobileUserMenuOpen((current) => !current)}
+              aria-expanded={mobileUserMenuOpen}
+              aria-label="Account menu"
+              className="relative flex h-11 w-11 items-center justify-center rounded-full transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+            >
+              <Avatar className="h-9 w-9 border border-border/60">
+                {profile?.avatar?.url ? <AvatarImage src={profile.avatar.url} className="object-cover" /> : null}
+                <AvatarFallback>
+                  {(profile?.display_name || profile?.username || userEmail || '?')[0].toUpperCase()}
+                </AvatarFallback>
+              </Avatar>
+              {pendingIncomingCount > 0 ? (
+                <span className="absolute right-0.5 top-0.5 h-2.5 w-2.5 rounded-full border-2 border-background bg-destructive" />
+              ) : null}
+            </button>
+            {mobileUserMenuOpen ? (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setMobileUserMenuOpen(false)} />
+                <div className="absolute right-0 top-full z-50 mt-2 w-52 rounded-xl border bg-popover p-1.5 shadow-xl shadow-foreground/5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMobileUserMenuOpen(false);
+                      onOpenOwnProfile();
+                    }}
+                    className="flex w-full items-center gap-2 rounded-lg p-2 text-left text-sm font-medium text-foreground/80 transition-colors hover:bg-muted/60 hover:text-foreground"
+                  >
+                    <UserRound className="h-4 w-4 shrink-0" />
+                    Profile
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMobileUserMenuOpen(false);
+                      onOpenSettings();
+                    }}
+                    className="flex w-full items-center gap-2 rounded-lg p-2 text-left text-sm font-medium text-foreground/80 transition-colors hover:bg-muted/60 hover:text-foreground"
+                  >
+                    <Settings className="h-4 w-4 shrink-0" />
+                    Settings
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMobileUserMenuOpen(false);
+                      onOpenPings();
+                    }}
+                    className="flex w-full items-center gap-2 rounded-lg p-2 text-left text-sm font-medium text-foreground/80 transition-colors hover:bg-muted/60 hover:text-foreground"
+                  >
+                    <span className="relative flex shrink-0">
+                      <Bell className="h-4 w-4" />
+                      {pendingIncomingCount > 0 ? (
+                        <span className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-destructive" />
+                      ) : null}
+                    </span>
+                    Pings
+                    {pendingIncomingCount > 0 ? (
+                      <span className="ml-auto inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-destructive px-1.5 text-[10px] font-bold text-destructive-foreground">
+                        {pendingIncomingCount > 99 ? '99+' : pendingIncomingCount}
+                      </span>
+                    ) : null}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMobileUserMenuOpen(false);
+                      onOpenContacts();
+                    }}
+                    className="flex w-full items-center gap-2 rounded-lg p-2 text-left text-sm font-medium text-foreground/80 transition-colors hover:bg-muted/60 hover:text-foreground"
+                  >
+                    <Contact className="h-4 w-4 shrink-0" />
+                    Contacts
+                  </button>
+                  <div className="my-1 border-t opacity-40" />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMobileUserMenuOpen(false);
+                      onLogout();
+                    }}
+                    className="flex w-full items-center gap-2 rounded-lg p-2 text-left text-sm font-medium text-destructive transition-colors hover:bg-destructive/10"
+                  >
+                    <LogOut className="h-4 w-4 shrink-0" />
+                    Leave
+                  </button>
+                </div>
+              </>
+            ) : null}
+          </div>
+
+          {/* Expandable full-width search overlay */}
+          {searchExpanded ? (
+            <div className="absolute inset-0 z-30 flex items-center gap-2 bg-background px-3 animate-in fade-in slide-in-from-top-1 duration-150">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setSearchExpanded(false)}
+                title="Close search"
+                aria-label="Close search"
+              >
+                <ChevronLeft className="h-5 w-5" />
+              </Button>
+              <UserSearch
+                autoFocus
+                className="mb-0 flex-1"
+                onSelectUser={(id) => {
+                  setSearchExpanded(false);
+                  onSelectSearchUser(id);
+                }}
+              />
+            </div>
+          ) : null}
         </div>
 
-        <div className="flex min-h-0 flex-1 flex-col">
-          <div className="shrink-0 px-4 pt-4">
-            <UserSearch onSelectUser={onSelectSearchUser} />
+        {/* Search bar — sidebar header on desktop; mobile uses the header icon. */}
+        <div className="hidden shrink-0 border-b px-4 py-3 md:block">
+          <UserSearch onSelectUser={onSelectSearchUser} />
+        </div>
 
-            <div className="mb-3 mt-4 flex items-center rounded-full bg-muted p-1">
-              {([
-                { value: 'chats', label: 'Chats' },
-                { value: 'threads', label: 'Threads' },
-                { value: 'calls', label: 'Calls' },
-              ] as const).map((item) => (
-                <button
-                  key={item.value}
-                  type="button"
-                  onClick={() => onSidebarViewChange(item.value)}
-                  className={cn(
-                    'flex-1 rounded-full px-3 py-2 text-sm font-medium transition-colors',
-                    sidebarView === item.value
-                      ? 'bg-background text-foreground shadow-sm'
-                      : 'text-muted-foreground hover:text-foreground'
-                  )}
-                >
-                  {item.label}
-                </button>
-              ))}
-            </div>
-
+        <div className="relative flex min-h-0 flex-1 flex-col">
+          <div className="shrink-0 px-4 pt-3">
             {sidebarView === 'chats' && (folders.length > 0 || showArchived) ? (
               <div className="mb-3 flex flex-wrap items-center gap-1.5">
                 <button
@@ -1044,19 +1211,16 @@ export function ChatSidebar({
                     ))
                 : (
                   <>
-                    {pinnedConversations.length > 0 ? (
-                      <div className="mb-1 flex items-center gap-1 px-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                        <Pin className="h-3 w-3" />
-                        Pinned
-                      </div>
-                    ) : null}
-                    {pinnedConversations.map(renderConversation)}
-                    {pinnedConversations.length > 0 && regularConversations.length > 0 ? (
-                      <div className="mt-3 mb-1 px-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                        All chats
-                      </div>
-                    ) : null}
-                    {regularConversations.map(renderConversation)}
+                    {groupedConversations.map((group) =>
+                      group.items.length > 0 ? (
+                        <div key={group.key} className="space-y-2">
+                          <div className="mb-1 mt-1 px-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                            {group.label}
+                          </div>
+                          {group.items.map(renderConversation)}
+                        </div>
+                      ) : null
+                    )}
                   </>
                 )}
 
@@ -1125,6 +1289,81 @@ export function ChatSidebar({
               ) : null}
             </div>
           </div>
+
+          {/* Mobile-only creation FAB, floating above the bottom navigation. */}
+          <div className="absolute bottom-[72px] right-4 z-30 md:hidden">
+            {mobileCreateOpen ? (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setMobileCreateOpen(false)} />
+                <div className="absolute bottom-full right-0 z-50 mb-2 flex flex-col items-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMobileCreateOpen(false);
+                      onNewGroup();
+                    }}
+                    className="flex w-max items-center gap-2 rounded-full border bg-background py-2 pl-3 pr-4 text-sm font-medium shadow-md transition-colors hover:bg-muted"
+                  >
+                    <Users className="h-4 w-4 shrink-0" />
+                    New Group
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMobileCreateOpen(false);
+                      onNewChannel();
+                    }}
+                    className="flex w-max items-center gap-2 rounded-full border bg-background py-2 pl-3 pr-4 text-sm font-medium shadow-md transition-colors hover:bg-muted"
+                  >
+                    <Radio className="h-4 w-4 shrink-0" />
+                    New Channel
+                  </button>
+                </div>
+              </>
+            ) : null}
+            <button
+              type="button"
+              onClick={() => setMobileCreateOpen((current) => !current)}
+              aria-expanded={mobileCreateOpen}
+              title="New conversation"
+              aria-label="New conversation"
+              className="relative z-50 flex h-14 w-14 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            >
+              {mobileCreateOpen ? <X className="h-6 w-6" /> : <Plus className="h-6 w-6" />}
+            </button>
+          </div>
+
+          {/* Mobile-only sticky bottom navigation. Desktop uses the action rail. */}
+          <nav
+            role="tablist"
+            aria-label="Views"
+            className="flex shrink-0 items-stretch border-t bg-background md:hidden"
+          >
+            {([
+              { value: 'chats', label: 'Chats', icon: MessageSquare },
+              { value: 'threads', label: 'Threads', icon: MessageSquareText },
+              { value: 'calls', label: 'Calls', icon: Phone },
+            ] as const).map((item) => {
+              const isActive = sidebarView === item.value;
+              const Icon = item.icon;
+              return (
+                <button
+                  key={item.value}
+                  type="button"
+                  role="tab"
+                  aria-selected={isActive}
+                  onClick={() => onSidebarViewChange(item.value)}
+                  className={cn(
+                    'flex min-h-[56px] flex-1 flex-col items-center justify-center gap-1 py-2 text-[11px] font-medium transition-colors',
+                    isActive ? 'text-primary' : 'text-muted-foreground hover:text-foreground'
+                  )}
+                >
+                  <Icon className="h-5 w-5" />
+                  {item.label}
+                </button>
+              );
+            })}
+          </nav>
         </div>
         </div>
       </div>

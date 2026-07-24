@@ -353,11 +353,13 @@ const emitOutgoingMessage = (message: MessageDoc, type: string, conversationId: 
   });
 };
 
-export const useConversations = () => {
+export const useConversations = (spaceId?: string | null) => {
   return useInfiniteQuery({
-    queryKey: ['conversations'],
+    queryKey: ['conversations', spaceId],
     queryFn: ({ pageParam }) =>
-      conversationsApi.getConversations(20, pageParam as string | undefined),
+      conversationsApi.getConversations(20, pageParam as string | undefined, {
+        space_id: spaceId || undefined,
+      }),
     getNextPageParam: (lastPage) => lastPage.meta?.next_cursor,
     initialPageParam: undefined,
   });

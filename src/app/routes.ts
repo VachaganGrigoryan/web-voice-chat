@@ -1,4 +1,4 @@
-export type PingsTab = 'incoming' | 'outgoing';
+export type PingsTab = 'notifications' | 'incoming' | 'outgoing';
 export type SettingsTab =
   | 'profile'
   | 'appearance'
@@ -8,7 +8,7 @@ export type SettingsTab =
   | 'discovery'
   | 'about';
 
-export const PINGS_TABS: PingsTab[] = ['incoming', 'outgoing'];
+export const PINGS_TABS: PingsTab[] = ['notifications', 'incoming', 'outgoing'];
 export const SETTINGS_TABS: SettingsTab[] = [
   'profile',
   'appearance',
@@ -28,7 +28,7 @@ export const APP_ROUTES = {
   chatConversationThread: (conversationId: string, rootMessageId: string) =>
     `/chat/${conversationId}/thread/${rootMessageId}`,
   pings: '/pings',
-  pingsTab: (tab: PingsTab = 'incoming') => `/pings/${tab}`,
+  pingsTab: (tab: PingsTab = 'notifications') => `/pings/${tab}`,
   contacts: '/contacts',
   settings: '/settings',
   settingsTab: (tab: SettingsTab = 'profile') => `/settings/${tab}`,

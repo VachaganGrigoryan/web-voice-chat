@@ -32,7 +32,24 @@ const operationCount = Object.values(spec.paths).reduce(
   0
 );
 
-assert.equal(operationCount, 118, 'Unexpected number of OpenAPI operations');
+assert.equal(operationCount, 143, 'Unexpected number of OpenAPI operations');
+
+assert.equal(
+  getJsonResponseRef('post', '/spaces', '201'),
+  '#/components/schemas/SuccessResponse_SpaceView_'
+);
+assert.equal(
+  getJsonResponseRef('post', '/webhooks', '201'),
+  '#/components/schemas/SuccessResponse_WebhookView_'
+);
+assert.equal(
+  getJsonResponseRef('post', '/slash-commands', '201'),
+  '#/components/schemas/SuccessResponse_SlashCommandView_'
+);
+assert.equal(
+  getJsonResponseRef('post', '/reports', '201'),
+  '#/components/schemas/SuccessResponse_ReportView_'
+);
 
 assert.equal(
   getJsonResponseRef('get', '/auth/passkeys', '200'),

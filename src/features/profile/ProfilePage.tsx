@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { Navigate, useParams } from 'react-router-dom';
+import { Navigate, useNavigate, useParams } from 'react-router-dom';
 import { usersApi } from '@/api/endpoints';
 import { getApiErrorStatus } from '@/api/errors';
 import { User, UserSummary } from '@/api/types';
@@ -7,7 +7,16 @@ import { APP_ROUTES } from '@/app/routes';
 import { PanelPageLayout, PanelSection } from '@/components/panel/PanelPageLayout';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/Avatar';
 import { Button } from '@/components/ui/Button';
-import { Loader2, Lock, ShieldOff, User as UserIcon, UserPlus } from 'lucide-react';
+import {
+  Building2,
+  Loader2,
+  Lock,
+  MessageCircle,
+  ShieldOff,
+  User as UserIcon,
+  UserPlus,
+  Users,
+} from 'lucide-react';
 import { useAppNavigation } from '@/navigation/appNavigation';
 import { usePings } from '@/hooks/usePings';
 
@@ -50,6 +59,7 @@ function ProfileInfoItem({ label, value, mono = false }: ProfileInfoItemProps) {
 }
 
 export default function ProfilePage() {
+  const navigate = useNavigate();
   const { goBack, goTo } = useAppNavigation();
   const { userId } = useParams<{ userId?: string }>();
   const { sendPing, blockUser, unblockUser, isSending, isBlocking, isUnblocking } = usePings();
@@ -63,7 +73,7 @@ export default function ProfilePage() {
   } = useQuery({
     queryKey: ['user-profile', userId],
     queryFn: async () => {
-      return usersApi.getUser(userId!);
+      return usersApi.getUser(userId!, 'contact_details');
     },
     enabled: !!userId,
     staleTime: 5 * 60 * 1000,
@@ -83,6 +93,11 @@ export default function ProfilePage() {
   const relationship = profile?.relationship || null;
   const statusLabel = [profile?.status_emoji, profile?.status_text].filter(Boolean).join(' ');
   const lastSeenLabel = formatLastSeen(profile?.last_seen_at);
+  const connectionSince = formatLastSeen(profile?.connection_timestamp);
+  const conversationId = profile?.conversation_id || null;
+  const sharedConversations = profile?.shared_conversations ?? [];
+  const sharedSpaces = profile?.shared_spaces ?? [];
+  const hasShared = sharedConversations.length > 0 || sharedSpaces.length > 0;
   const showUnavailableMessage = isUnavailableError(error);
   const showGenericError = !!error && !showUnavailableMessage;
   const isLimited = profile?.profile_visibility === 'limited';
@@ -131,6 +146,16 @@ export default function ProfilePage() {
             {statusLabel ? <p className="max-w-sm pt-2 text-sm text-foreground">{statusLabel}</p> : null}
             {relationship && !relationship.blocks_me ? (
               <div className="flex flex-wrap justify-center gap-2 pt-2 sm:justify-start">
+                {conversationId ? (
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={() => navigate(APP_ROUTES.chatConversation(conversationId))}
+                  >
+                    <MessageCircle className="mr-2 h-4 w-4" />
+                    Message
+                  </Button>
+                ) : null}
                 {relationship.can_ping ? (
                   <Button type="button" size="sm" onClick={handleSendPing} disabled={isSending}>
                     {isSending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <UserPlus className="mr-2 h-4 w-4" />}
@@ -194,9 +219,50 @@ export default function ProfilePage() {
               {profile?.pronouns ? <ProfileInfoItem label="Pronouns" value={profile.pronouns} /> : null}
               {profile?.timezone ? <ProfileInfoItem label="Timezone" value={profile.timezone} /> : null}
               {lastSeenLabel ? <ProfileInfoItem label="Last Seen" value={lastSeenLabel} /> : null}
+              {connectionSince ? <ProfileInfoItem label="Connected" value={connectionSince} /> : null}
               <ProfileInfoItem label="User ID" value={userId} mono />
             </dl>
           </PanelSection>
+
+          {hasShared ? (
+            <PanelSection
+              title="Shared"
+              description="Groups, channels, and spaces you both belong to."
+            >
+              <div className="space-y-2">
+                {sharedConversations.map((conversation) => (
+                  <div
+                    key={conversation.id}
+                    className="flex items-center gap-3 rounded-2xl border border-border/70 bg-muted/20 p-3"
+                  >
+                    <div className="rounded-full bg-muted p-2">
+                      <Users className="h-4 w-4 text-muted-foreground" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-sm font-medium">
+                        {conversation.title || 'Untitled conversation'}
+                      </div>
+                      <div className="text-xs capitalize text-muted-foreground">{conversation.type}</div>
+                    </div>
+                  </div>
+                ))}
+                {sharedSpaces.map((space) => (
+                  <div
+                    key={space.id}
+                    className="flex items-center gap-3 rounded-2xl border border-border/70 bg-muted/20 p-3"
+                  >
+                    <div className="rounded-full bg-muted p-2">
+                      <Building2 className="h-4 w-4 text-muted-foreground" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-sm font-medium">{space.name}</div>
+                      <div className="truncate text-xs text-muted-foreground">/{space.slug}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </PanelSection>
+          ) : null}
 
           <PanelSection title="About" description="Short personal details shared through the messaging system.">
             <div className="rounded-2xl border border-border/70 bg-muted/20 p-4 sm:p-5">

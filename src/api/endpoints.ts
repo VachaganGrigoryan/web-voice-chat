@@ -54,6 +54,10 @@ import {
   ThreadConversationView,
   TokenPair,
   User,
+  SpaceView,
+  SpaceInviteLinkView,
+  SpaceJoinRequestView,
+  RedeemSpaceInviteResponse,
 } from './types';
 
 export const authApi = {
@@ -108,9 +112,11 @@ export const usersApi = {
     apiClient
       .get<SuccessResponse<User>>('/users/me')
       .then((res) => extractResponseData(res.data)),
-  getUser: (id: string) =>
+  getUser: (id: string, include?: string) =>
     apiClient
-      .get<SuccessResponse<SelectedUserProfile>>(`/users/${id}`)
+      .get<SuccessResponse<SelectedUserProfile>>(`/users/${id}`, {
+        params: include ? { include } : undefined,
+      })
       .then((res) => extractResponseData(res.data)),
   updateProfile: (data: {
     display_name?: string;
@@ -429,7 +435,7 @@ export const conversationsApi = {
   getConversations: (
     limit = 20,
     cursor?: string,
-    options?: { archived?: boolean; folder?: string }
+    options?: { archived?: boolean; folder?: string; space_id?: string }
   ) =>
     apiClient
       .get<PaginatedResponse<Conversation>>('/conversations', {
@@ -438,6 +444,7 @@ export const conversationsApi = {
           cursor,
           archived: options?.archived ? true : undefined,
           folder: options?.folder,
+          space_id: options?.space_id,
         },
       })
       .then((res) => ({
@@ -520,6 +527,7 @@ export const conversationsApi = {
     posting_policy?: 'everyone' | 'admins';
     slug?: string;
     participant_ids?: string[];
+    space_id?: string;
   }) =>
     apiClient
       .post<SuccessResponse<Conversation>>('/conversations/channels', data)
@@ -607,7 +615,7 @@ export const conversationsApi = {
     apiClient
       .post<SuccessResponse<Conversation>>('/conversations', { peer_user_id: peerUserId })
       .then((res) => normalizeConversation(extractResponseData(res.data))),
-  createGroup: (data: { title: string; participant_ids: string[] }) =>
+  createGroup: (data: { title: string; participant_ids: string[]; space_id?: string }) =>
     apiClient
       .post<SuccessResponse<Conversation>>('/conversations/groups', data)
       .then((res) => normalizeConversation(extractResponseData(res.data))),
@@ -819,6 +827,10 @@ export const pingsApi = {
     apiClient
       .get<PaginatedResponse<ContactListItem>>('/pings/contacts', { params: { limit, cursor } })
       .then((res) => res.data),
+  removeContact: (peerUserId: string) =>
+    apiClient
+      .delete<SuccessResponse<{ removed: boolean }>>(`/pings/contacts/${peerUserId}`)
+      .then((res) => extractResponseData(res.data)),
 };
 
 export const callsApi = {
@@ -882,4 +894,54 @@ export const pollsApi = {
 export const healthApi = {
   getLive: () => apiClient.get('/health/live'),
   getReady: () => apiClient.get('/health/ready'),
+};
+
+export const spacesApi = {
+  list: () =>
+    apiClient
+      .get<SuccessResponse<SpaceView[]>>('/spaces/me')
+      .then((res) => extractResponseData(res.data)),
+  create: (data: { name: string; slug: string; kind?: string; visibility?: string }) =>
+    apiClient
+      .post<SuccessResponse<SpaceView>>('/spaces', data)
+      .then((res) => extractResponseData(res.data)),
+  get: (spaceId: string) =>
+    apiClient
+      .get<SuccessResponse<SpaceView>>(`/spaces/${spaceId}`)
+      .then((res) => extractResponseData(res.data)),
+  createInvite: (
+    spaceId: string,
+    data: { expires_at?: string | null; max_uses?: number | null; requires_approval?: boolean }
+  ) =>
+    apiClient
+      .post<SuccessResponse<SpaceInviteLinkView>>(`/spaces/${spaceId}/invites`, data)
+      .then((res) => extractResponseData(res.data)),
+  listInvites: (spaceId: string) =>
+    apiClient
+      .get<SuccessResponse<SpaceInviteLinkView[]>>(`/spaces/${spaceId}/invites`)
+      .then((res) => extractResponseData(res.data)),
+  revokeInvite: (spaceId: string, inviteId: string) =>
+    apiClient
+      .delete(`/spaces/${spaceId}/invites/${inviteId}`)
+      .then(() => undefined),
+  redeemInvite: (code: string) =>
+    apiClient
+      .post<SuccessResponse<RedeemSpaceInviteResponse>>(`/spaces/invites/${code}/redeem`)
+      .then((res) => extractResponseData(res.data)),
+  join: (spaceId: string) =>
+    apiClient
+      .post<SuccessResponse<SpaceJoinRequestView>>(`/spaces/${spaceId}/join`)
+      .then((res) => extractResponseData(res.data)),
+  listJoinRequests: (spaceId: string) =>
+    apiClient
+      .get<SuccessResponse<SpaceJoinRequestView[]>>(`/spaces/${spaceId}/join-requests`)
+      .then((res) => extractResponseData(res.data)),
+  approveJoinRequest: (spaceId: string, requestId: string) =>
+    apiClient
+      .post<SuccessResponse<SpaceJoinRequestView>>(`/spaces/${spaceId}/join-requests/${requestId}/approve`)
+      .then((res) => extractResponseData(res.data)),
+  rejectJoinRequest: (spaceId: string, requestId: string) =>
+    apiClient
+      .post<SuccessResponse<SpaceJoinRequestView>>(`/spaces/${spaceId}/join-requests/${requestId}/reject`)
+      .then((res) => extractResponseData(res.data)),
 };

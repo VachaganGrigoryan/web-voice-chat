@@ -4,13 +4,16 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { usePings } from '@/hooks/usePings';
 import { useDiscoverySearch } from '@/features/discovery/hooks/useDiscoverySearch';
+import { cn } from '@/lib/utils';
 import { Check, Clock, Loader2, MessageSquare, Search, UserPlus, X } from 'lucide-react';
 
 interface UserSearchProps {
   onSelectUser: (userId: string) => void;
+  autoFocus?: boolean;
+  className?: string;
 }
 
-export function UserSearch({ onSelectUser }: UserSearchProps) {
+export function UserSearch({ onSelectUser, autoFocus = false, className }: UserSearchProps) {
   const [input, setInput] = useState('');
   const [isOpen, setIsOpen] = useState(false);
   const wrapperRef = useRef<HTMLDivElement>(null);
@@ -34,10 +37,11 @@ export function UserSearch({ onSelectUser }: UserSearchProps) {
   };
 
   return (
-    <div ref={wrapperRef} className="relative mb-4 flex shrink-0 flex-col gap-2">
+    <div ref={wrapperRef} className={cn('relative mb-4 flex shrink-0 flex-col gap-2', className)}>
       <div className="relative">
         <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
         <Input
+          autoFocus={autoFocus}
           placeholder="Search username or enter code..."
           value={input}
           onChange={(event) => {
