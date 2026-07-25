@@ -19,7 +19,7 @@ import { useContacts } from '@/hooks/useContacts';
 import { useIsMobile } from '@/hooks/useIsMobile';
 import { useAppNavigation } from '@/navigation/appNavigation';
 import { useAuthStore } from '@/store/authStore';
-import { conversationsApi, messagesApi, spacesApi } from '@/api/endpoints';
+import { conversationsApi, spacesApi } from '@/api/endpoints';
 import { extractApiError } from '@/api/errors';
 import { startCall } from '@/features/calls/callController';
 import { ContactListItem } from '@/api/types';
@@ -166,8 +166,6 @@ function InviteToSpaceDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
-  const myUserId = useAuthStore((state) => state.userId);
-
   const spacesQuery = useQuery({
     queryKey: ['spaces', 'owned'],
     queryFn: () => spacesApi.list(),
@@ -176,13 +174,7 @@ function InviteToSpaceDialog({
 
   const inviteMutation = useMutation({
     mutationFn: async (spaceId: string) => {
-      const invite = await spacesApi.createInvite(spaceId, { requires_approval: false });
-      const conversation = await conversationsApi.createOrGetDm(peer.id);
-      const space = spacesQuery.data?.find((item) => item.id === spaceId);
-      await messagesApi.sendText({
-        conversation_id: conversation.id,
-        text: `Join my space "${space?.name ?? 'space'}" with this invite code: ${invite.code}`,
-      });
+      await spacesApi.inviteUser(spaceId, peer.id);
     },
     onSuccess: () => {
       toast.success(`Invite sent to ${contactName(peer)}`);
@@ -193,8 +185,8 @@ function InviteToSpaceDialog({
     },
   });
 
-  const ownedSpaces = (spacesQuery.data ?? []).filter(
-    (space) => space.created_by === myUserId
+  const managedSpaces = (spacesQuery.data ?? []).filter(
+    (space) => space.viewer_role === 'owner' || space.viewer_role === 'admin'
   );
 
   return (
@@ -203,20 +195,20 @@ function InviteToSpaceDialog({
         <DialogHeader>
           <DialogTitle>Invite to Space</DialogTitle>
           <DialogDescription>
-            Send {contactName(peer)} an invite link to one of your spaces.
+            Send {contactName(peer)} a direct invitation to one of your spaces.
           </DialogDescription>
         </DialogHeader>
         {spacesQuery.isLoading ? (
           <div className="flex items-center justify-center py-10">
             <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
           </div>
-        ) : ownedSpaces.length === 0 ? (
+        ) : managedSpaces.length === 0 ? (
           <div className="rounded-xl border border-border/70 bg-muted/30 p-4 text-sm text-muted-foreground">
-            You don't own any spaces to invite this contact to.
+            You don't manage any spaces to invite this contact to.
           </div>
         ) : (
           <div className="max-h-72 space-y-2 overflow-y-auto">
-            {ownedSpaces.map((space) => (
+            {managedSpaces.map((space) => (
               <button
                 key={space.id}
                 type="button"

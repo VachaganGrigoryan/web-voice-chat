@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   ChevronDown,
@@ -10,7 +11,8 @@ import {
   UserCheck,
   UserX,
   Clock,
-  Sparkles
+  Sparkles,
+  Settings
 } from 'lucide-react';
 import { spacesApi } from '@/api/endpoints';
 import { SpaceView, SpaceJoinRequestView } from '@/api/types';
@@ -19,6 +21,9 @@ import { Input } from '@/components/ui/Input';
 import { Label } from '@/components/ui/Label';
 import { cn } from '@/lib/utils';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/Dialog';
+import { toast } from 'sonner';
+import { extractApiError } from '@/api/errors';
+import { APP_ROUTES } from '@/app/routes';
 
 type SpaceSwitcherVariant = 'sidebar' | 'rail' | 'mobile';
 
@@ -33,6 +38,7 @@ export function SpaceSwitcher({
   onSpaceChange,
   variant = 'sidebar',
 }: SpaceSwitcherProps) {
+  const navigate = useNavigate();
   const [isOpen, setIsOpen] = useState(false);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isJoinOpen, setIsJoinOpen] = useState(false);
@@ -75,12 +81,13 @@ export function SpaceSwitcher({
       setInviteCode('');
       if (res.status === 'joined' && res.space) {
         onSpaceChange(res.space.id);
+        toast.success('Successfully joined the space!');
       } else {
-        alert('Join request submitted and pending approval!');
+        toast.info('Join request submitted and pending approval!');
       }
     },
     onError: (err: any) => {
-      alert(err.response?.data?.error?.message || 'Failed to redeem invite link.');
+      toast.error(extractApiError(err, 'Failed to redeem invite link.'));
     }
   });
 
@@ -88,12 +95,12 @@ export function SpaceSwitcher({
   const joinSpaceMutation = useMutation({
     mutationFn: (spaceId: string) => spacesApi.join(spaceId),
     onSuccess: () => {
-      alert('Request to join submitted!');
+      toast.success('Request to join submitted!');
       setIsJoinOpen(false);
       setDirectSpaceSlug('');
     },
     onError: (err: any) => {
-      alert(err.response?.data?.error?.message || 'Failed to submit request.');
+      toast.error(extractApiError(err, 'Failed to submit request.'));
     }
   });
 
@@ -232,6 +239,16 @@ export function SpaceSwitcher({
         >
           <Link className="h-4 w-4 shrink-0 text-amber-500" />
           <span>Join Space / Enter Invite</span>
+        </button>
+        <button
+          onClick={() => {
+            setIsOpen(false);
+            navigate(APP_ROUTES.spaces);
+          }}
+          className="flex w-full items-center gap-2 rounded-lg p-2 text-left text-xs font-medium text-foreground/80 hover:bg-muted/60 hover:text-foreground"
+        >
+          <Settings className="h-4 w-4 shrink-0 text-blue-500" />
+          <span>Manage Spaces</span>
         </button>
       </div>
     </>

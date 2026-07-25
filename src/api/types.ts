@@ -28,6 +28,7 @@ export interface User {
   bio: string | null;
   avatar: AvatarMeta | null;
   is_private: boolean;
+  main_channel_id?: string | null;
   default_discovery_enabled: boolean;
   last_seen_at: string | null;
   username_updated_at: string | null;
@@ -72,6 +73,7 @@ export interface SelectedUserProfile {
   display_name: string | null;
   bio: string | null;
   avatar: AvatarMeta | null;
+  main_channel_id?: string | null;
   status_emoji?: string | null;
   status_text?: string | null;
   status_expires_at?: string | null;
@@ -87,6 +89,44 @@ export interface SelectedUserProfile {
   conversation_id?: string | null;
   shared_conversations?: SharedConversationSummary[];
   shared_spaces?: SharedSpaceSummary[];
+}
+
+export type ChannelReadPolicy = 'members' | 'contacts' | 'public';
+
+export interface UserChannelView {
+  id: string;
+  title: string | null;
+  slug: string | null;
+  description: string | null;
+  visibility: 'private' | 'public';
+  posting_policy: 'everyone' | 'admins';
+  read_policy: ChannelReadPolicy;
+  member_count: number;
+  last_message_at: string | null;
+  created_at: string;
+  is_main: boolean;
+}
+
+export interface FeedAuthor {
+  id: string;
+  username: string | null;
+  display_name: string | null;
+  avatar: AvatarMeta | null;
+}
+
+export interface FeedPostView {
+  id: string;
+  channel_id: string;
+  author: FeedAuthor;
+  type: MessageType;
+  text: string | null;
+  attachments: MediaMeta[];
+  reactions: MessageReactionGroup[];
+  comment_count: number;
+  has_thread: boolean;
+  is_deleted: boolean;
+  created_at: string;
+  edited_at: string | null;
 }
 
 export interface TokenPair {
@@ -568,6 +608,7 @@ export interface Conversation {
   visibility: ConversationVisibility;
   posting_policy: PostingPolicy;
   space_id: string | null;
+  space_visibility?: 'space_public' | 'invite_only' | null;
   parent_conversation_id: string | null;
   root_message_id: string | null;
   slug: string | null;
@@ -849,6 +890,7 @@ export interface SpaceView {
   created_by: string;
   settings: Record<string, any>;
   created_at: string;
+  viewer_role?: 'owner' | 'admin' | 'member' | null;
 }
 
 export interface SpaceInviteLinkView {
@@ -861,6 +903,7 @@ export interface SpaceInviteLinkView {
   uses: number;
   created_by: string;
   created_at: string;
+  invitee_id?: string | null;
 }
 
 export interface SpaceJoinRequestView {
@@ -876,5 +919,29 @@ export interface RedeemSpaceInviteResponse {
   status: 'joined' | 'pending';
   space: SpaceView | null;
   join_request: SpaceJoinRequestView | null;
+}
+
+export interface SpaceMemberUserSummary {
+  id: string;
+  username: string | null;
+  display_name: string | null;
+  avatar: Record<string, any> | null;
+}
+
+export interface SpaceMemberView {
+  id: string;
+  space_id: string;
+  user_id: string;
+  role: 'owner' | 'admin' | 'member';
+  joined_at: string;
+  user: SpaceMemberUserSummary | null;
+}
+
+export interface SpaceChannelView {
+  id: string;
+  title: string | null;
+  description: string | null;
+  space_visibility: 'space_public' | 'invite_only' | null;
+  joined: boolean;
 }
 

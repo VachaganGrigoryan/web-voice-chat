@@ -7,8 +7,9 @@ import { APP_ROUTES, isPingsTab, PingsTab } from '@/app/routes';
 import { PanelPageLayout, PanelSection } from '@/components/panel/PanelPageLayout';
 import { usePings } from '@/hooks/usePings';
 import { useNotifications } from '@/hooks/useNotifications';
+import { useQueryClient } from '@tanstack/react-query';
 import { NotificationView, PingItem } from '@/api/types';
-import { conversationsApi } from '@/api/endpoints';
+import { conversationsApi, spacesApi } from '@/api/endpoints';
 import { extractApiError } from '@/api/errors';
 import { cn } from '@/lib/utils';
 import { useAppNavigation } from '@/navigation/appNavigation';
@@ -189,6 +190,11 @@ function describeNotification(
       return { title: 'User blocked', description: `You blocked ${name}.` };
     case 'message':
       return { title: 'New message', description: 'You have a new message.' };
+    case 'space_invite': {
+      const spaceName = notification.data?.space_name || 'a space';
+      const inviter = notification.data?.invited_by || 'Someone';
+      return { title: 'Space Invitation', description: `${inviter} invited you to join "${spaceName}".` };
+    }
     default:
       return { title: 'Notification', description: notification.kind };
   }
@@ -202,6 +208,9 @@ function NotificationFeedItem({
   onOpenConversation,
   isAccepting,
   isDeclining,
+  onAcceptSpaceInvite,
+  onDeclineSpaceInvite,
+  isAcceptingSpaceInvite,
 }: {
   notification: NotificationView;
   matchedPing: PingItem | null;
@@ -210,12 +219,18 @@ function NotificationFeedItem({
   onOpenConversation: (conversationId: string) => void;
   isAccepting: boolean;
   isDeclining: boolean;
+  onAcceptSpaceInvite: (code: string) => void;
+  onDeclineSpaceInvite: (notificationId: string) => void;
+  isAcceptingSpaceInvite: boolean;
 }) {
   const peer = matchedPing?.peer ?? null;
   const { title, description } = describeNotification(notification, peer?.username ?? null);
   const isUnread = notification.read_at === null;
   const relative = formatDistanceToNow(new Date(notification.created_at), { addSuffix: true });
   const canAcceptDecline = notification.kind === 'ping_received' && matchedPing !== null;
+  const isSpaceInvite = notification.kind === 'space_invite';
+  const inviteCode = notification.data?.code as string | undefined;
+  const canAcceptDeclineSpace = isSpaceInvite && !!inviteCode;
   const conversationId =
     notification.kind === 'message' ? notification.conversation_id : null;
 
@@ -243,7 +258,7 @@ function NotificationFeedItem({
         </div>
       </div>
 
-      {(canAcceptDecline || conversationId) && (
+      {(canAcceptDecline || canAcceptDeclineSpace || conversationId) && (
         <div className="mt-3 grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center sm:justify-end">
           {canAcceptDecline && matchedPing ? (
             <>
@@ -270,6 +285,30 @@ function NotificationFeedItem({
               </Button>
             </>
           ) : null}
+          {canAcceptDeclineSpace && inviteCode && (
+            <>
+              <Button
+                type="button"
+                size="sm"
+                className="w-full rounded-full sm:w-auto"
+                onClick={() => onAcceptSpaceInvite(inviteCode)}
+                disabled={isAcceptingSpaceInvite}
+              >
+                <Check className="mr-1.5 h-4 w-4" />
+                Accept
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="w-full rounded-full sm:w-auto"
+                onClick={() => onDeclineSpaceInvite(notification.id)}
+              >
+                <X className="mr-1.5 h-4 w-4" />
+                Decline
+              </Button>
+            </>
+          )}
           {conversationId ? (
             <Button
               type="button"
@@ -290,7 +329,10 @@ function NotificationFeedItem({
 
 export default function PingsPage() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [isJoinByCodeOpen, setIsJoinByCodeOpen] = useState(false);
+  const [dismissedNotificationIds, setDismissedNotificationIds] = useState<string[]>([]);
+  const [isRedeemingSpace, setIsRedeemingSpace] = useState(false);
   const { goBack, goTo } = useAppNavigation();
   const { tab } = useParams<{ tab?: string }>();
   const routeTab = isPingsTab(tab) ? tab : null;
@@ -308,6 +350,31 @@ export default function PingsPage() {
     isBlocking,
   } = usePings();
   const { notifications, isLoading: isLoadingNotifications } = useNotifications();
+
+  const handleAcceptSpaceInvite = async (code: string) => {
+    setIsRedeemingSpace(true);
+    try {
+      const res = await spacesApi.redeemInvite(code);
+      queryClient.invalidateQueries({ queryKey: ['spaces'] });
+      queryClient.invalidateQueries({ queryKey: ['notifications'] });
+      if (res.status === 'joined') {
+        toast.success('Successfully joined the space!');
+      } else {
+        toast.info('Join request submitted and pending approval!');
+      }
+    } catch (error) {
+      toast.error(extractApiError(error, 'Failed to join space'));
+    } finally {
+      setIsRedeemingSpace(false);
+    }
+  };
+
+  const handleDeclineSpaceInvite = (notificationId: string) => {
+    setDismissedNotificationIds((prev) => [...prev, notificationId]);
+    toast.success('Invitation dismissed');
+  };
+
+  const visibleNotifications = notifications.filter((n) => !dismissedNotificationIds.includes(n.id));
 
   if (!routeTab) {
     return <Navigate to={APP_ROUTES.pingsTab('notifications')} replace />;
@@ -330,7 +397,7 @@ export default function PingsPage() {
     });
   };
 
-  const unreadNotifications = notifications.filter((n) => n.read_at === null).length;
+  const unreadNotifications = visibleNotifications.filter((n) => n.read_at === null).length;
 
   const matchedPingFor = (notification: NotificationView): PingItem | null => {
     const peerId =
@@ -425,10 +492,10 @@ export default function PingsPage() {
               <div className="text-sm text-muted-foreground">Loading notifications…</div>
             </div>
           </PanelSection>
-        ) : notifications.length > 0 ? (
+        ) : visibleNotifications.length > 0 ? (
           <PanelSection title="Recent Notifications">
             <div className="space-y-3">
-              {notifications.map((notification) => (
+              {visibleNotifications.map((notification) => (
                 <NotificationFeedItem
                   key={notification.id}
                   notification={notification}
@@ -440,6 +507,9 @@ export default function PingsPage() {
                   }
                   isAccepting={isAccepting}
                   isDeclining={isDeclining}
+                  onAcceptSpaceInvite={handleAcceptSpaceInvite}
+                  onDeclineSpaceInvite={handleDeclineSpaceInvite}
+                  isAcceptingSpaceInvite={isRedeemingSpace}
                 />
               ))}
             </div>

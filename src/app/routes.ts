@@ -7,6 +7,7 @@ export type SettingsTab =
   | 'passkeys'
   | 'discovery'
   | 'about';
+export type SpacesTab = 'members' | 'channels' | 'invites' | 'requests' | 'settings';
 
 export const PINGS_TABS: PingsTab[] = ['notifications', 'incoming', 'outgoing'];
 export const SETTINGS_TABS: SettingsTab[] = [
@@ -18,6 +19,7 @@ export const SETTINGS_TABS: SettingsTab[] = [
   'discovery',
   'about',
 ];
+export const SPACES_TABS: SpacesTab[] = ['members', 'channels', 'invites', 'requests', 'settings'];
 
 export const APP_ROUTES = {
   root: '/',
@@ -32,6 +34,9 @@ export const APP_ROUTES = {
   contacts: '/contacts',
   settings: '/settings',
   settingsTab: (tab: SettingsTab = 'profile') => `/settings/${tab}`,
+  spaces: '/spaces',
+  spaceDetail: (spaceId: string) => `/spaces/${spaceId}`,
+  spaceDetailTab: (spaceId: string, tab: SpacesTab = 'channels') => `/spaces/${spaceId}/${tab}`,
   me: '/me',
   profile: (userId: string) => `/profile/${userId}`,
   invite: (token: string) => `/invite/${token}`,
@@ -44,6 +49,7 @@ const isProtectedAppPath = (path: string) =>
   path.startsWith(APP_ROUTES.contacts) ||
   path.startsWith(APP_ROUTES.settings) ||
   path.startsWith(APP_ROUTES.pings) ||
+  path.startsWith(APP_ROUTES.spaces) ||
   path === APP_ROUTES.me ||
   path.startsWith('/profile/');
 
@@ -52,6 +58,9 @@ export const isPingsTab = (value?: string): value is PingsTab =>
 
 export const isSettingsTab = (value?: string): value is SettingsTab =>
   !!value && SETTINGS_TABS.includes(value as SettingsTab);
+
+export const isSpacesTab = (value?: string): value is SpacesTab =>
+  !!value && SPACES_TABS.includes(value as SpacesTab);
 
 export const setLastAppPath = (path: string) => {
   if (typeof window === 'undefined' || !isProtectedAppPath(path)) {
@@ -74,7 +83,9 @@ export const getLastAppPath = () => {
   return value;
 };
 
-export const getDefaultAuthedPath = () => getLastAppPath() || APP_ROUTES.chat;
+// Fresh sessions land on the user's own profile page; the last-visited app path
+// (if any) still takes precedence so returning users resume where they left off.
+export const getDefaultAuthedPath = () => getLastAppPath() || APP_ROUTES.me;
 
 export const getAuthRedirectTarget = (path: string) => {
   const normalized = path.startsWith('/') ? path : APP_ROUTES.chat;

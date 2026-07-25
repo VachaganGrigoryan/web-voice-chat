@@ -54,10 +54,14 @@ import {
   ThreadConversationView,
   TokenPair,
   User,
+  UserChannelView,
+  FeedPostView,
   SpaceView,
   SpaceInviteLinkView,
   SpaceJoinRequestView,
   RedeemSpaceInviteResponse,
+  SpaceMemberView,
+  SpaceChannelView,
 } from './types';
 
 export const authApi = {
@@ -155,6 +159,37 @@ export const usersApi = {
     apiClient
       .delete<SuccessResponse<User>>('/users/me/avatar')
       .then((res) => extractResponseData(res.data)),
+  setMainChannel: (channelId: string | null) =>
+    apiClient
+      .patch<SuccessResponse<User>>('/users/me/main-channel', { channel_id: channelId })
+      .then((res) => extractResponseData(res.data)),
+  getUserChannels: (userId: string) =>
+    apiClient
+      .get<SuccessResponse<UserChannelView[]>>(`/users/${userId}/channels`)
+      .then((res) => extractResponseData(res.data)),
+};
+
+export const feedsApi = {
+  getChannelPosts: async (channelId: string, limit = 20, cursor?: string) => {
+    const response = await apiClient.get<PaginatedResponse<FeedPostView>>(
+      `/feeds/channels/${channelId}/posts`,
+      { params: { limit, cursor } }
+    );
+    return response.data;
+  },
+  getPostComments: async (channelId: string, postId: string) => {
+    const response = await apiClient.get<PaginatedResponse<FeedPostView>>(
+      `/feeds/channels/${channelId}/posts/${postId}/comments`
+    );
+    return response.data;
+  },
+  getUserFeed: async (userId: string, limit = 20, cursor?: string) => {
+    const response = await apiClient.get<PaginatedResponse<FeedPostView>>(
+      `/feeds/users/${userId}`,
+      { params: { limit, cursor } }
+    );
+    return response.data;
+  },
 };
 
 export const notificationsApi = {
@@ -525,9 +560,11 @@ export const conversationsApi = {
     description?: string;
     visibility?: 'private' | 'public';
     posting_policy?: 'everyone' | 'admins';
+    read_policy?: 'members' | 'contacts' | 'public';
     slug?: string;
     participant_ids?: string[];
     space_id?: string;
+    space_visibility?: 'space_public' | 'invite_only';
   }) =>
     apiClient
       .post<SuccessResponse<Conversation>>('/conversations/channels', data)
@@ -615,7 +652,7 @@ export const conversationsApi = {
     apiClient
       .post<SuccessResponse<Conversation>>('/conversations', { peer_user_id: peerUserId })
       .then((res) => normalizeConversation(extractResponseData(res.data))),
-  createGroup: (data: { title: string; participant_ids: string[]; space_id?: string }) =>
+  createGroup: (data: { title: string; participant_ids: string[]; space_id?: string; space_visibility?: 'space_public' | 'invite_only' }) =>
     apiClient
       .post<SuccessResponse<Conversation>>('/conversations/groups', data)
       .then((res) => normalizeConversation(extractResponseData(res.data))),
@@ -909,12 +946,23 @@ export const spacesApi = {
     apiClient
       .get<SuccessResponse<SpaceView>>(`/spaces/${spaceId}`)
       .then((res) => extractResponseData(res.data)),
+  update: (
+    spaceId: string,
+    data: { name?: string; visibility?: string; settings?: Record<string, any> }
+  ) =>
+    apiClient
+      .patch<SuccessResponse<SpaceView>>(`/spaces/${spaceId}`, data)
+      .then((res) => extractResponseData(res.data)),
   createInvite: (
     spaceId: string,
     data: { expires_at?: string | null; max_uses?: number | null; requires_approval?: boolean }
   ) =>
     apiClient
       .post<SuccessResponse<SpaceInviteLinkView>>(`/spaces/${spaceId}/invites`, data)
+      .then((res) => extractResponseData(res.data)),
+  inviteUser: (spaceId: string, userId: string) =>
+    apiClient
+      .post<SuccessResponse<SpaceInviteLinkView>>(`/spaces/${spaceId}/invites/user`, { user_id: userId })
       .then((res) => extractResponseData(res.data)),
   listInvites: (spaceId: string) =>
     apiClient
@@ -944,4 +992,16 @@ export const spacesApi = {
     apiClient
       .post<SuccessResponse<SpaceJoinRequestView>>(`/spaces/${spaceId}/join-requests/${requestId}/reject`)
       .then((res) => extractResponseData(res.data)),
+  listMembers: (spaceId: string) =>
+    apiClient
+      .get<SuccessResponse<SpaceMemberView[]>>(`/spaces/${spaceId}/members`)
+      .then((res) => extractResponseData(res.data)),
+  listChannels: (spaceId: string) =>
+    apiClient
+      .get<SuccessResponse<SpaceChannelView[]>>(`/spaces/${spaceId}/channels`)
+      .then((res) => extractResponseData(res.data)),
+  joinChannel: (spaceId: string, conversationId: string) =>
+    apiClient
+      .post(`/spaces/${spaceId}/channels/${conversationId}/join`)
+      .then(() => undefined),
 };

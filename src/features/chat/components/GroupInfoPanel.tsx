@@ -1,4 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { APP_ROUTES } from '@/app/routes';
 import {
   Camera,
   Check,
@@ -80,6 +82,7 @@ export function GroupInfoPanel({
   onExitConversation,
 }: GroupInfoPanelProps) {
   const gm = useGroupManagement(open ? conversation.id : null);
+  const navigate = useNavigate();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [isEditingTitle, setIsEditingTitle] = useState(false);
@@ -353,61 +356,72 @@ export function GroupInfoPanel({
                 return (
                   <div
                     key={member.user_id}
-                    className="flex items-center gap-3 rounded-lg px-2 py-2 hover:bg-muted/50"
+                    className="flex items-center justify-between rounded-lg px-2 py-2 hover:bg-muted/50"
                   >
-                    <Avatar className="h-9 w-9 border">
-                      {summary?.avatar ? <AvatarImage src={summary.avatar.url} /> : null}
-                      <AvatarFallback>{(label[0] || '?').toUpperCase()}</AvatarFallback>
-                    </Avatar>
-                    <div className="min-w-0 flex-1">
-                      <div className="truncate text-sm font-medium">
-                        {label}
-                        {isSelf ? <span className="text-muted-foreground"> (you)</span> : null}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onOpenChange(false);
+                        navigate(APP_ROUTES.profile(member.user_id));
+                      }}
+                      className="flex items-center gap-3 min-w-0 text-left hover:opacity-85"
+                    >
+                      <Avatar className="h-9 w-9 border">
+                        {summary?.avatar ? <AvatarImage src={summary.avatar.url} /> : null}
+                        <AvatarFallback>{(label[0] || '?').toUpperCase()}</AvatarFallback>
+                      </Avatar>
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-sm font-medium">
+                          {label}
+                          {isSelf ? <span className="text-muted-foreground font-normal"> (you)</span> : null}
+                        </div>
                       </div>
-                    </div>
-                    <RoleBadge role={member.role} />
-                    {isOwner && !isSelf && member.role !== 'owner' ? (
-                      <>
-                        <Button
+                    </button>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <RoleBadge role={member.role} />
+                      {isOwner && !isSelf && member.role !== 'owner' ? (
+                        <>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="px-2 text-xs"
+                            onClick={() =>
+                              gm.updateMemberRole.mutate({
+                                memberUserId: member.user_id,
+                                role: member.role === 'admin' ? 'member' : 'admin',
+                              })
+                            }
+                            disabled={gm.updateMemberRole.isPending}
+                          >
+                            {member.role === 'admin' ? 'Demote' : 'Make admin'}
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="px-2 text-xs"
+                            onClick={() => gm.transferOwnership.mutate(member.user_id)}
+                            disabled={gm.transferOwnership.isPending}
+                            title="Transfer ownership"
+                          >
+                            <Crown className="h-4 w-4" />
+                          </Button>
+                        </>
+                      ) : null}
+                      {canRemove ? (
+                        <button
                           type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="px-2 text-xs"
                           onClick={() =>
-                            gm.updateMemberRole.mutate({
-                              memberUserId: member.user_id,
-                              role: member.role === 'admin' ? 'member' : 'admin',
-                            })
+                            setPendingAction({ kind: 'remove', userId: member.user_id, label })
                           }
-                          disabled={gm.updateMemberRole.isPending}
+                          className="text-muted-foreground hover:text-destructive"
+                          aria-label={`Remove ${label}`}
                         >
-                          {member.role === 'admin' ? 'Demote' : 'Make admin'}
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="px-2 text-xs"
-                          onClick={() => gm.transferOwnership.mutate(member.user_id)}
-                          disabled={gm.transferOwnership.isPending}
-                          title="Transfer ownership"
-                        >
-                          <Crown className="h-4 w-4" />
-                        </Button>
-                      </>
-                    ) : null}
-                    {canRemove ? (
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setPendingAction({ kind: 'remove', userId: member.user_id, label })
-                        }
-                        className="text-muted-foreground hover:text-destructive"
-                        aria-label={`Remove ${label}`}
-                      >
-                        <UserMinus className="h-4 w-4" />
-                      </button>
-                    ) : null}
+                          <UserMinus className="h-4 w-4" />
+                        </button>
+                      ) : null}
+                    </div>
                   </div>
                 );
               })}

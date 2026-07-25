@@ -11,6 +11,8 @@ import PingsPage from '@/features/pings/PingsPage';
 import ContactsPage from '@/features/profile/ContactsPage';
 import ProfilePage from '@/features/profile/ProfilePage';
 import MyProfilePage from '@/features/profile/MyProfilePage';
+import SpacesPage from '@/features/spaces/SpacesPage';
+import SpaceDetailPage from '@/features/spaces/SpaceDetailPage';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import PublicRoute from '@/components/PublicRoute';
 import { ThemeProvider } from '@/components/ThemeProvider';
@@ -62,6 +64,9 @@ export default function App() {
               <Route path={APP_ROUTES.contacts} element={<ContactsPage />} />
               <Route path={APP_ROUTES.settings} element={<Navigate to={APP_ROUTES.settingsTab('profile')} replace />} />
               <Route path="/settings/:tab" element={<SettingsPage />} />
+              <Route path={APP_ROUTES.spaces} element={<SpacesPage />} />
+              <Route path="/spaces/:spaceId" element={<SpaceDetailPage />} />
+              <Route path="/spaces/:spaceId/:tab" element={<SpaceDetailPage />} />
               <Route path={APP_ROUTES.me} element={<MyProfilePage />} />
               <Route path="/profile/:userId" element={<ProfilePage />} />
             </Route>

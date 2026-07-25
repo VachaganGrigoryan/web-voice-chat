@@ -70,6 +70,14 @@ export function useProfile() {
     },
   });
 
+  const setMainChannelMutation = useMutation({
+    mutationFn: (channelId: string | null) => usersApi.setMainChannel(channelId),
+    onSuccess: (data) => {
+      queryClient.setQueryData(['profile', data.id], data);
+      queryClient.invalidateQueries({ queryKey: ['user-channels', data.id] });
+    },
+  });
+
   const updateNotificationPreferencesMutation = useMutation({
     mutationFn: (data: {
       timezone?: string | null;
@@ -97,6 +105,8 @@ export function useProfile() {
     isUpdatingStatus: updateStatusMutation.isPending,
     clearStatus: clearStatusMutation.mutateAsync,
     isClearingStatus: clearStatusMutation.isPending,
+    setMainChannel: setMainChannelMutation.mutateAsync,
+    isSettingMainChannel: setMainChannelMutation.isPending,
     updateNotificationPreferences: updateNotificationPreferencesMutation.mutateAsync,
     isUpdatingNotificationPreferences: updateNotificationPreferencesMutation.isPending,
   };

@@ -49,6 +49,7 @@ export const EVENTS = {
   PING_CANCELLED: 'ping_cancelled',
   USER_BLOCKED: 'user_blocked',
   CHAT_PERMISSION_UPDATED: 'chat_permission_updated',
+  SPACE_INVITE: 'space:invite',
   CALL_INCOMING: 'call.incoming',
   CALL_ACCEPTED: 'call.accepted',
   CALL_PARTICIPANT_UPDATED: 'call.participant_updated',

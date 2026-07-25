@@ -1,6 +1,7 @@
 import { type ComponentType, useState } from 'react';
 import {
   Bell,
+  Compass,
   Contact,
   LogOut,
   MessageSquare,
@@ -29,6 +30,7 @@ interface ChatActionRailProps {
   onSelectView: (view: SidebarView) => void;
   onOpenPings: () => void;
   onOpenContacts: () => void;
+  onOpenSpaces: () => void;
   onNewGroup: () => void;
   onNewChannel: () => void;
   onOpenProfile: () => void;
@@ -87,6 +89,7 @@ export function ChatActionRail({
   onSelectView,
   onOpenPings,
   onOpenContacts,
+  onOpenSpaces,
   onNewGroup,
   onNewChannel,
   onOpenProfile,
@@ -129,6 +132,7 @@ export function ChatActionRail({
         showDot={pendingIncomingCount > 0}
       />
       <RailButton icon={Contact} label="Contacts" onClick={onOpenContacts} />
+      <RailButton icon={Compass} label="Spaces" onClick={onOpenSpaces} />
       <RailButton
         icon={MessageSquare}
         label="Chats"
@@ -147,6 +151,7 @@ export function ChatActionRail({
         onClick={() => onSelectView('calls')}
         active={sidebarView === 'calls'}
       />
+      <RailButton icon={UserRound} label="My page" onClick={onOpenProfile} />
 
       {/* Consolidated creation button */}
       <div className="relative">

@@ -15,6 +15,7 @@ import {
   BellOff,
   Check,
   ChevronLeft,
+  Compass,
   Contact,
   FolderInput,
   Image as ImageIcon,
@@ -86,6 +87,7 @@ interface ChatSidebarProps {
   onOpenOwnProfile: () => void;
   onOpenPings: () => void;
   onOpenContacts: () => void;
+  onOpenSpaces: () => void;
   onLogout: () => void;
   onNewGroup: () => void;
   onNewChannel: () => void;
@@ -593,6 +595,7 @@ export function ChatSidebar({
   onOpenOwnProfile,
   onOpenPings,
   onOpenContacts,
+  onOpenSpaces,
   onLogout,
   onNewGroup,
   onNewChannel,
@@ -903,6 +906,17 @@ export function ChatSidebar({
                   >
                     <Contact className="h-4 w-4 shrink-0" />
                     Contacts
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMobileUserMenuOpen(false);
+                      onOpenSpaces();
+                    }}
+                    className="flex w-full items-center gap-2 rounded-lg p-2 text-left text-sm font-medium text-foreground/80 transition-colors hover:bg-muted/60 hover:text-foreground"
+                  >
+                    <Compass className="h-4 w-4 shrink-0" />
+                    Spaces
                   </button>
                   <div className="my-1 border-t opacity-40" />
                   <button

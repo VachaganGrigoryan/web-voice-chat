@@ -1094,6 +1094,7 @@ export default function ChatLayout() {
         onSelectView={setSidebarView}
         onOpenPings={() => navigate(APP_ROUTES.pingsTab('incoming'))}
         onOpenContacts={() => navigate(APP_ROUTES.contacts)}
+        onOpenSpaces={() => navigate(APP_ROUTES.spaces)}
         onNewGroup={() => setIsGroupDialogOpen(true)}
         onNewChannel={() => setIsChannelDialogOpen(true)}
         onOpenProfile={() => navigate(APP_ROUTES.me)}
@@ -1123,6 +1124,7 @@ export default function ChatLayout() {
         onOpenOwnProfile={() => navigate(APP_ROUTES.me)}
         onOpenPings={() => navigate(APP_ROUTES.pingsTab('incoming'))}
         onOpenContacts={() => navigate(APP_ROUTES.contacts)}
+        onOpenSpaces={() => navigate(APP_ROUTES.spaces)}
         onLogout={handleLogout}
         onNewGroup={() => setIsGroupDialogOpen(true)}
         onNewChannel={() => setIsChannelDialogOpen(true)}

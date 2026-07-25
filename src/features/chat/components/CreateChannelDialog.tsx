@@ -17,6 +17,7 @@ import { useConversationActions } from '../hooks/useConversationActions';
 
 type Visibility = 'private' | 'public';
 type PostingPolicy = 'everyone' | 'admins';
+type ReadPolicy = 'members' | 'contacts' | 'public';
 
 const SLUG_PATTERN = /^[a-z0-9](?:[a-z0-9-]{1,78}[a-z0-9])$/;
 
@@ -57,22 +58,33 @@ interface CreateChannelDialogProps {
   onOpenChange: (open: boolean) => void;
   onCreated: (conversationId: string) => void;
   spaceId?: string | null;
+  defaultVisibility?: Visibility;
+  defaultReadPolicy?: ReadPolicy;
 }
 
-export function CreateChannelDialog({ open, onOpenChange, onCreated, spaceId }: CreateChannelDialogProps) {
+export function CreateChannelDialog({
+  open,
+  onOpenChange,
+  onCreated,
+  spaceId,
+  defaultVisibility = 'private',
+  defaultReadPolicy = 'members',
+}: CreateChannelDialogProps) {
   const { createChannel } = useConversationActions();
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [visibility, setVisibility] = useState<Visibility>('private');
+  const [visibility, setVisibility] = useState<Visibility>(defaultVisibility);
   const [postingPolicy, setPostingPolicy] = useState<PostingPolicy>('admins');
+  const [readPolicy, setReadPolicy] = useState<ReadPolicy>(defaultReadPolicy);
   const [slug, setSlug] = useState('');
   const [error, setError] = useState<string | null>(null);
 
   const reset = () => {
     setTitle('');
     setDescription('');
-    setVisibility('private');
+    setVisibility(defaultVisibility);
     setPostingPolicy('admins');
+    setReadPolicy(defaultReadPolicy);
     setSlug('');
     setError(null);
   };
@@ -94,6 +106,7 @@ export function CreateChannelDialog({ open, onOpenChange, onCreated, spaceId }: 
         description: description.trim() || undefined,
         visibility,
         posting_policy: postingPolicy,
+        read_policy: readPolicy,
         slug: visibility === 'public' ? slug.trim() : undefined,
         space_id: spaceId || undefined,
       });
@@ -160,6 +173,19 @@ export function CreateChannelDialog({ open, onOpenChange, onCreated, spaceId }: 
                 ]}
               />
             </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label>Who can view</Label>
+            <ChoicePills<ReadPolicy>
+              value={readPolicy}
+              onChange={setReadPolicy}
+              options={[
+                { value: 'members', label: 'Members' },
+                { value: 'contacts', label: 'Contacts' },
+                { value: 'public', label: 'Everyone' },
+              ]}
+            />
           </div>
 
           {visibility === 'public' ? (

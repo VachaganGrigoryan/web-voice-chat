@@ -32,7 +32,7 @@ const operationCount = Object.values(spec.paths).reduce(
   0
 );
 
-assert.equal(operationCount, 143, 'Unexpected number of OpenAPI operations');
+assert.equal(operationCount, 149, 'Unexpected number of OpenAPI operations');
 
 assert.equal(
   getJsonResponseRef('post', '/spaces', '201'),
