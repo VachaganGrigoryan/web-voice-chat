@@ -28,6 +28,7 @@ import {
   NotificationLevel,
   NotificationView,
   PaginatedResponse,
+  ParticipantRole,
   ParticipantView,
   PreKeyBundle,
   PreKeyInput,
@@ -674,7 +675,7 @@ export const conversationsApi = {
   updateMemberRole: (
     conversationId: string,
     memberUserId: string,
-    role: 'admin' | 'member'
+    role: ParticipantRole
   ) =>
     apiClient
       .patch<SuccessResponse<ParticipantView>>(

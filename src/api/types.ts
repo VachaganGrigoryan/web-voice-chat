@@ -515,7 +515,16 @@ export interface DeleteCallHistoryResponse {
 
 export type ConversationType = 'dm' | 'group' | 'channel' | 'thread';
 
-export type ParticipantRole = 'owner' | 'admin' | 'member' | 'subscriber';
+/**
+ * Name of the role a participant holds — 'Admin', 'Moderator', 'Member',
+ * 'Guest', or a custom role defined for that conversation. Ownership is NOT a
+ * role: read `owner_type`/`owner_id` on the conversation instead.
+ */
+export type ParticipantRole = string;
+
+export const ROLE_ADMIN = 'Admin';
+export const ROLE_MODERATOR = 'Moderator';
+export const ROLE_MEMBER = 'Member';
 export type NotificationLevel = 'all' | 'mentions' | 'none';
 export type ConversationVisibility = 'private' | 'public';
 export type PostingPolicy = 'everyone' | 'admins';
@@ -524,7 +533,7 @@ export type PostingPolicy = 'everyone' | 'admins';
 export interface ParticipantView {
   conversation_id: string;
   user_id: string;
-  role: ParticipantRole;
+  role: ParticipantRole | null;
   permissions: Record<string, boolean> | null;
   joined_at: string;
   last_read_at: string | null;
@@ -603,6 +612,9 @@ export interface Conversation {
   participant_ids: string[];
   participant_users: UserSummary[];
   created_by: string;
+  /** Who owns this conversation; ownership is not a role (§51). */
+  owner_type?: 'user' | 'space' | null;
+  owner_id?: string | null;
   title: string | null;
   image?: AvatarMeta | null;
   visibility: ConversationVisibility;
@@ -890,7 +902,9 @@ export interface SpaceView {
   created_by: string;
   settings: Record<string, any>;
   created_at: string;
-  viewer_role?: 'owner' | 'admin' | 'member' | null;
+  owner_user_id: string;
+  /** Name of the role the viewer holds here, or null. Ownership is separate. */
+  viewer_role?: ParticipantRole | null;
 }
 
 export interface SpaceInviteLinkView {
@@ -932,7 +946,7 @@ export interface SpaceMemberView {
   id: string;
   space_id: string;
   user_id: string;
-  role: 'owner' | 'admin' | 'member';
+  role: ParticipantRole | null;
   joined_at: string;
   user: SpaceMemberUserSummary | null;
 }
