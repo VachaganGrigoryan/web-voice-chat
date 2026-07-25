@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate, Navigate } from 'react-router-dom';
 import { useSpaces } from '@/hooks/useSpaces';
+import { ROLE_ADMIN } from '@/api/types';
+import { useAuthStore } from '@/store/authStore';
 import { useAppNavigation } from '@/navigation/appNavigation';
 import { PanelPageLayout, PanelSection } from '@/components/panel/PanelPageLayout';
 import { Button } from '@/components/ui/Button';
@@ -39,6 +41,7 @@ import { extractApiError } from '@/api/errors';
 import { APP_ROUTES } from '@/app/routes';
 
 export default function SpaceDetailPage() {
+  const myUserId = useAuthStore((state) => state.userId);
   const { spaceId, tab = 'channels' } = useParams<{ spaceId: string; tab?: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -97,7 +100,8 @@ export default function SpaceDetailPage() {
     return <Navigate to={APP_ROUTES.spaces} replace />;
   }
 
-  const isManager = space?.viewer_role === 'owner' || space?.viewer_role === 'admin';
+  const isOwner = !!(space && myUserId && space.owner_user_id === myUserId);
+  const isManager = isOwner || space?.viewer_role === ROLE_ADMIN;
 
   const handleCreateChannel = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -339,9 +343,9 @@ export default function SpaceDetailPage() {
                       </div>
                     </div>
                     <span className={`inline-flex px-2 py-0.5 rounded-full text-3xs font-bold uppercase tracking-wider ${
-                      m.role === 'owner'
+                      space?.owner_user_id === m.user_id
                         ? 'bg-red-500/10 text-red-500 border border-red-500/25'
-                        : m.role === 'admin'
+                        : m.role === ROLE_ADMIN
                         ? 'bg-amber-500/10 text-amber-500 border border-amber-500/25'
                         : 'bg-muted text-muted-foreground border border-border'
                     }`}>

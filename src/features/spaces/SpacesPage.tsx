@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useSpaces } from '@/hooks/useSpaces';
+import { ROLE_ADMIN } from '@/api/types';
+import { useAuthStore } from '@/store/authStore';
 import { useAppNavigation } from '@/navigation/appNavigation';
 import { PanelPageLayout, PanelSection } from '@/components/panel/PanelPageLayout';
 import { Button } from '@/components/ui/Button';
@@ -64,11 +66,15 @@ export default function SpacesPage() {
     }
   };
 
+  const userId = useAuthStore((state) => state.userId);
+
   // Group spaces
   const managedSpaces = spaces.filter(
-    (s) => s.viewer_role === 'owner' || s.viewer_role === 'admin'
+    (s) => s.owner_user_id === userId || s.viewer_role === ROLE_ADMIN
   );
-  const joinedSpaces = spaces.filter((s) => s.viewer_role === 'member');
+  const joinedSpaces = spaces.filter(
+    (s) => s.owner_user_id !== userId && s.viewer_role !== ROLE_ADMIN
+  );
 
   const headerActions = (
     <div className="flex gap-2">

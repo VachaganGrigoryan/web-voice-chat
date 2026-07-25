@@ -19,6 +19,7 @@ import { useContacts } from '@/hooks/useContacts';
 import { useIsMobile } from '@/hooks/useIsMobile';
 import { useAppNavigation } from '@/navigation/appNavigation';
 import { useAuthStore } from '@/store/authStore';
+import { ROLE_ADMIN } from '@/api/types';
 import { conversationsApi, spacesApi } from '@/api/endpoints';
 import { extractApiError } from '@/api/errors';
 import { startCall } from '@/features/calls/callController';
@@ -166,6 +167,7 @@ function InviteToSpaceDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
+  const myUserId = useAuthStore((state) => state.userId);
   const spacesQuery = useQuery({
     queryKey: ['spaces', 'owned'],
     queryFn: () => spacesApi.list(),
@@ -186,7 +188,8 @@ function InviteToSpaceDialog({
   });
 
   const managedSpaces = (spacesQuery.data ?? []).filter(
-    (space) => space.viewer_role === 'owner' || space.viewer_role === 'admin'
+    (space) =>
+      space.owner_user_id === myUserId || space.viewer_role === ROLE_ADMIN
   );
 
   return (

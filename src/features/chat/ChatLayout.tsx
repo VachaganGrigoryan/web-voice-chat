@@ -61,7 +61,7 @@ import { useChatReadState } from './hooks/useChatReadState';
 import { useThreadPanelLayout } from './hooks/useThreadPanelLayout';
 import { startCall, useCallStore } from '@/features/calls/callController';
 import { useNotificationSoundStore } from '@/utils/notificationSound';
-import { NotificationLevel, PresenceState, ThreadConversationView } from '@/api/types';
+import { NotificationLevel, PresenceState, ROLE_ADMIN, ROLE_MODERATOR, ThreadConversationView } from '@/api/types';
 import { parseMessage } from './utils/messageParser';
 
 type SidebarDestructiveAction =
@@ -505,8 +505,14 @@ export default function ChatLayout() {
       return true;
     }
 
+    if (
+      selectedConversation?.owner_type === 'user' &&
+      selectedConversation.owner_id === userId
+    ) {
+      return true;
+    }
     const role = pinMembers?.find((member) => member.user_id === userId)?.role;
-    return role === 'owner' || role === 'admin';
+    return role === ROLE_ADMIN || role === ROLE_MODERATOR;
   }, [pinMembers, selectedConversation?.type, userId]);
 
   const isActiveMessagePinned = !!(

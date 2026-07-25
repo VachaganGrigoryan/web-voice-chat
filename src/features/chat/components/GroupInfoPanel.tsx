@@ -15,7 +15,7 @@ import {
   Users,
 } from 'lucide-react';
 
-import { Conversation, ParticipantRole, UserSummary } from '@/api/types';
+import { Conversation, ParticipantRole, ROLE_ADMIN, ROLE_MEMBER, UserSummary } from '@/api/types';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/Avatar';
 import { Button } from '@/components/ui/Button';
 import {
@@ -49,26 +49,25 @@ type PendingAction =
   | { kind: 'delete' }
   | { kind: 'leave' };
 
-function roleLabel(role: ParticipantRole): string {
-  if (role === 'owner') return 'Owner';
-  if (role === 'admin') return 'Admin';
-  return 'Member';
+function roleLabel(role: ParticipantRole | null, isOwner: boolean): string {
+  if (isOwner) return 'Owner';
+  return role ?? ROLE_MEMBER;
 }
 
-function RoleBadge({ role }: { role: ParticipantRole }) {
-  if (role === 'member') return null;
-  const Icon = role === 'owner' ? Crown : Shield;
+function RoleBadge({ role, isOwner }: { role: ParticipantRole | null; isOwner: boolean }) {
+  if (!isOwner && (!role || role === ROLE_MEMBER)) return null;
+  const Icon = isOwner ? Crown : Shield;
   return (
     <span
       className={cn(
         'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium',
-        role === 'owner'
+        isOwner
           ? 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-400'
           : 'bg-primary/10 text-primary'
       )}
     >
       <Icon className="h-3 w-3" />
-      {roleLabel(role)}
+      {roleLabel(role, isOwner)}
     </span>
   );
 }
@@ -81,7 +80,7 @@ export function GroupInfoPanel({
   contacts,
   onExitConversation,
 }: GroupInfoPanelProps) {
-  const gm = useGroupManagement(open ? conversation.id : null);
+  const gm = useGroupManagement(open ? conversation.id : null, conversation);
   const navigate = useNavigate();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -348,6 +347,9 @@ export function GroupInfoPanel({
                 const label =
                   summary?.display_name || summary?.username || member.user_id;
                 const isSelf = member.user_id === currentUserId;
+                const isMemberOwner =
+                  conversation.owner_type === 'user' &&
+                  conversation.owner_id === member.user_id;
                 const canRemove =
                   canManage &&
                   !isSelf &&
@@ -378,8 +380,8 @@ export function GroupInfoPanel({
                       </div>
                     </button>
                     <div className="flex items-center gap-2 shrink-0">
-                      <RoleBadge role={member.role} />
-                      {isOwner && !isSelf && member.role !== 'owner' ? (
+                      <RoleBadge role={member.role} isOwner={isMemberOwner} />
+                      {isOwner && !isSelf && !isMemberOwner ? (
                         <>
                           <Button
                             type="button"
@@ -389,12 +391,13 @@ export function GroupInfoPanel({
                             onClick={() =>
                               gm.updateMemberRole.mutate({
                                 memberUserId: member.user_id,
-                                role: member.role === 'admin' ? 'member' : 'admin',
+                                role:
+                                  member.role === ROLE_ADMIN ? ROLE_MEMBER : ROLE_ADMIN,
                               })
                             }
                             disabled={gm.updateMemberRole.isPending}
                           >
-                            {member.role === 'admin' ? 'Demote' : 'Make admin'}
+                            {member.role === ROLE_ADMIN ? 'Demote' : 'Make admin'}
                           </Button>
                           <Button
                             type="button"
