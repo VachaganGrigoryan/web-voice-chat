@@ -6,7 +6,6 @@ import type {
   OpenApiMediaUploadType,
   OpenApiMessageState,
   OpenApiMessageType,
-  OpenApiPingStatus,
   OpenApiPreviewMediaKind,
   OpenApiReplyMode,
 } from './openapi-contract';
@@ -48,9 +47,10 @@ export interface NotificationView {
   id: string;
   user_id: string;
   kind: string;
-  source_type: string | null;
-  source_id: string | null;
-  conversation_id: string | null;
+  actor_user_id: string;
+  resource_type: 'user' | 'conversation' | 'channel' | 'space';
+  resource_id: string;
+  message_id: string | null;
   read_at: string | null;
   data: Record<string, unknown>;
   created_at: string;
@@ -83,7 +83,7 @@ export interface SelectedUserProfile {
   presence_state?: PresenceState;
   last_seen_at?: string | null;
   profile_visibility: 'full' | 'limited';
-  relationship: ContactState;
+  relationship: ConnectionState;
   // Populated only when requested via `?include=contact_details` on an accepted contact.
   connection_timestamp?: string | null;
   conversation_id?: string | null;
@@ -458,13 +458,14 @@ export interface ConversationReadUpdate {
   [key: string]: unknown;
 }
 
-export type PingStatus =
+export type ConnectionStatus =
   | 'none'
-  | 'incoming_pending'
-  | 'outgoing_pending'
-  | 'accepted'
+  | 'pending'
+  | 'active'
   | 'declined'
+  | 'revoked'
   | 'blocked';
+export type ConnectionDirection = 'incoming' | 'outgoing';
 
 export interface UserSummary {
   id: string;
@@ -476,7 +477,9 @@ export interface UserSummary {
   last_seen_at?: string | null;
   can_ping?: boolean;
   chat_allowed?: boolean;
-  ping_status?: PingStatus;
+  connection_status?: ConnectionStatus;
+  connection_direction?: ConnectionDirection | null;
+  relationship_id?: string | null;
   is_ghost?: boolean;
 }
 
@@ -489,10 +492,12 @@ export interface PresenceStatus {
   last_seen_at: string | null;
 }
 
-export interface ContactState {
+export interface ConnectionState {
   can_ping: boolean;
   chat_allowed: boolean;
-  ping_status: PingStatus;
+  connection_status: ConnectionStatus;
+  direction: ConnectionDirection | null;
+  relationship_id: string | null;
   blocked_by_me: boolean;
   blocks_me: boolean;
 }
@@ -505,7 +510,6 @@ export interface ClearConversationResponse {
 export interface DeleteConversationResponse {
   conversation_id: string;
   cleared_count: number;
-  ping_deleted: boolean;
 }
 
 export interface DeleteCallHistoryResponse {
@@ -726,32 +730,62 @@ export interface DiscoveredUser extends UserSummary {
   discovered_via: OpenApiDiscoveryVia | null;
 }
 
-export interface Ping {
+export interface RelationshipState {
+  muted_until: string | null;
+  archived: boolean;
+  pinned: boolean;
+  hidden: boolean;
+  folder: string | null;
+  last_read_message_id: string | null;
+  notification_level: NotificationLevel;
+}
+
+export interface Relationship {
   id: string;
-  from_user_id: string;
-  to_user_id: string;
-  status: OpenApiPingStatus;
+  kind: 'connection' | 'follow' | 'membership';
+  user_id: string;
+  target_type: 'user' | 'conversation' | 'space' | 'channel';
+  target_id: string;
+  status: 'pending' | 'active' | 'declined' | 'revoked';
+  initiation: 'request' | 'invite' | 'direct' | 'system';
+  initiated_by: string;
+  approved_by: string | null;
+  pair_id: string | null;
+  role_ids: string[];
+  state: RelationshipState;
+  requested_at: string;
+  activated_at: string | null;
+  ended_at: string | null;
   created_at: string;
   updated_at: string;
-  responded_at: string | null;
 }
 
-export interface PingListItem {
-  ping: Ping;
-  peer: {
-    id: string;
-    username: string;
-    display_name: string | null;
-    avatar: AvatarMeta | null;
-    is_online: boolean;
-  };
+export interface PeerUserSummary {
+  id: string;
+  username: string;
+  display_name: string | null;
+  avatar: AvatarMeta | null;
+  is_online: boolean;
 }
 
-export type PingItem = PingListItem;
-export type PingResponse = Ping;
-
-export interface ContactListItem extends PingListItem {
+export interface ConnectionListItem {
+  relationship: Relationship;
+  peer: PeerUserSummary;
+  direction: ConnectionDirection;
   conversation_id: string | null;
+}
+
+export interface BlockView {
+  id: string;
+  blocker_id: string;
+  blocked_id: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface BlockedUserListItem {
+  block: BlockView;
+  user: PeerUserSummary;
 }
 
 export interface SharedConversationSummary {
@@ -958,4 +992,3 @@ export interface SpaceChannelView {
   space_visibility: 'space_public' | 'invite_only' | null;
   joined: boolean;
 }
-

@@ -17,9 +17,6 @@ export type OpenApiReplyMode = (typeof OPENAPI_REPLY_MODES)[number];
 export const OPENAPI_MESSAGE_STATES = ["sent", "scheduled"] as const;
 export type OpenApiMessageState = (typeof OPENAPI_MESSAGE_STATES)[number];
 
-export const OPENAPI_PING_STATUSES = ["pending", "accepted", "declined", "cancelled", "expired", "blocked"] as const;
-export type OpenApiPingStatus = (typeof OPENAPI_PING_STATUSES)[number];
-
 export const OPENAPI_CALL_TYPES = ["audio", "video"] as const;
 export type OpenApiCallType = (typeof OPENAPI_CALL_TYPES)[number];
 

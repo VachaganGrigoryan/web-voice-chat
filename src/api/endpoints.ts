@@ -7,7 +7,10 @@ import {
   CallHistoryItem,
   CallSession,
   ClearConversationResponse,
-  ContactListItem,
+  BlockedUserListItem,
+  BlockView,
+  ConnectionDirection,
+  ConnectionListItem,
   ConvertThreadToGroupResponse,
   Conversation,
   ConversationFolder,
@@ -36,8 +39,7 @@ import {
   PasskeyDeleteResult,
   PasskeyRegistrationOptionsPayload,
   PasskeyResponse,
-  Ping,
-  PingItem,
+  Relationship,
   PushTokenView,
   PresenceStatus,
   PreviewMediaKind,
@@ -824,51 +826,49 @@ export const discoveryApi = {
       .then((res) => extractResponseData(res.data)),
 };
 
-export const pingsApi = {
-  sendPing: (to_user_id: string) =>
+export const connectionsApi = {
+  request: (userId: string) =>
     apiClient
-      .post<SuccessResponse<Ping>>('/pings', { to_user_id })
+      .post<SuccessResponse<Relationship>>(`/connections/${userId}/ping`)
       .then((res) => extractResponseData(res.data)),
-  getIncoming: (limit = 20, cursor?: string) =>
+  getPending: (direction: ConnectionDirection, limit = 20, cursor?: string) =>
     apiClient
-      .get<PaginatedResponse<PingItem>>('/pings/incoming', { params: { limit, cursor } })
+      .get<PaginatedResponse<ConnectionListItem>>('/connections/pending', {
+        params: { direction, limit, cursor },
+      })
       .then((res) => res.data),
-  getOutgoing: (limit = 20, cursor?: string) =>
-    apiClient
-      .get<PaginatedResponse<PingItem>>('/pings/outgoing', { params: { limit, cursor } })
-      .then((res) => res.data),
-  acceptPing: (ping_id: string) =>
-    apiClient
-      .post<SuccessResponse<Ping>>(`/pings/${ping_id}/accept`)
-      .then((res) => extractResponseData(res.data)),
-  declinePing: (ping_id: string) =>
-    apiClient
-      .post<SuccessResponse<Ping>>(`/pings/${ping_id}/decline`)
-      .then((res) => extractResponseData(res.data)),
-  cancelPing: (ping_id: string) =>
-    apiClient
-      .post<SuccessResponse<Ping>>(`/pings/${ping_id}/cancel`)
-      .then((res) => extractResponseData(res.data)),
-  blockUser: (peer_user_id: string) =>
-    apiClient
-      .post<SuccessResponse<Ping>>('/pings/block', { peer_user_id })
-      .then((res) => extractResponseData(res.data)),
-  unblockUser: (peer_user_id: string) =>
-    apiClient
-      .post<SuccessResponse<Ping>>('/pings/unblock', { peer_user_id })
-      .then((res) => extractResponseData(res.data)),
-  getBlockedUsers: () =>
-    apiClient
-      .get<SuccessResponse<Ping[]>>('/pings/blocked')
-      .then((res) => extractResponseData(res.data)),
   getContacts: (limit = 20, cursor?: string) =>
     apiClient
-      .get<PaginatedResponse<ContactListItem>>('/pings/contacts', { params: { limit, cursor } })
+      .get<PaginatedResponse<ConnectionListItem>>('/connections', {
+        params: { limit, cursor },
+      })
       .then((res) => res.data),
-  removeContact: (peerUserId: string) =>
+  accept: (relationshipId: string) =>
     apiClient
-      .delete<SuccessResponse<{ removed: boolean }>>(`/pings/contacts/${peerUserId}`)
+      .post<SuccessResponse<Relationship>>(`/connections/${relationshipId}/accept`)
       .then((res) => extractResponseData(res.data)),
+  decline: (relationshipId: string) =>
+    apiClient
+      .post<SuccessResponse<Relationship>>(`/connections/${relationshipId}/decline`)
+      .then((res) => extractResponseData(res.data)),
+  revoke: (relationshipId: string) =>
+    apiClient
+      .delete<SuccessResponse<Relationship>>(`/connections/${relationshipId}`)
+      .then((res) => extractResponseData(res.data)),
+};
+
+export const blocksApi = {
+  block: (userId: string) =>
+    apiClient
+      .post<SuccessResponse<BlockView>>(`/blocks/${userId}`)
+      .then((res) => extractResponseData(res.data)),
+  unblock: (userId: string) => apiClient.delete<void>(`/blocks/${userId}`),
+  list: (limit = 20, cursor?: string) =>
+    apiClient
+      .get<PaginatedResponse<BlockedUserListItem>>('/blocks', {
+        params: { limit, cursor },
+      })
+      .then((res) => res.data),
 };
 
 export const callsApi = {

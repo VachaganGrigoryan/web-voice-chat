@@ -32,7 +32,12 @@ const operationCount = Object.values(spec.paths).reduce(
   0
 );
 
-assert.equal(operationCount, 149, 'Unexpected number of OpenAPI operations');
+assert.equal(operationCount, 188, 'Unexpected number of OpenAPI operations');
+assert.equal(
+  Object.keys(spec.paths).some((route) => route.startsWith('/pings')),
+  false,
+  'Legacy pings routes must not be present'
+);
 
 assert.equal(
   getJsonResponseRef('post', '/spaces', '201'),
@@ -80,17 +85,30 @@ assert.equal(
   '#/components/schemas/SuccessResponse_MessageDoc_'
 );
 assert.equal(
-  getJsonResponseRef('post', '/pings/{ping_id}/cancel', '200'),
-  '#/components/schemas/SuccessResponse_PingResponse_'
+  getJsonResponseRef('post', '/connections/{user_id}/ping', '201'),
+  '#/components/schemas/SuccessResponse_RelationshipView_'
 );
 assert.equal(
-  getJsonResponseRef('post', '/pings/block', '200'),
-  '#/components/schemas/SuccessResponse_PingResponse_'
+  getJsonResponseRef('post', '/connections/{relationship_id}/accept', '200'),
+  '#/components/schemas/SuccessResponse_RelationshipView_'
 );
 assert.equal(
-  getJsonResponseRef('get', '/pings/blocked', '200'),
-  '#/components/schemas/SuccessResponse_list_PingResponse__'
+  getJsonResponseRef('get', '/connections', '200'),
+  '#/components/schemas/PaginatedResponse_list_ConnectionListItem__'
 );
+assert.equal(
+  getJsonResponseRef('get', '/connections/pending', '200'),
+  '#/components/schemas/PaginatedResponse_list_ConnectionListItem__'
+);
+assert.equal(
+  getJsonResponseRef('post', '/blocks/{user_id}', '201'),
+  '#/components/schemas/SuccessResponse_BlockView_'
+);
+assert.equal(
+  getJsonResponseRef('get', '/blocks', '200'),
+  '#/components/schemas/PaginatedResponse_list_BlockedUserListItem__'
+);
+assert.ok(getOperation('delete', '/blocks/{user_id}').responses?.['204']);
 assert.equal(
   getJsonResponseRef('get', '/calls/active', '200'),
   '#/components/schemas/SuccessResponse_Union_CallSession__NoneType__'

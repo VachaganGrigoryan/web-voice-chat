@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
-import { pingsApi } from '@/api/endpoints';
+import { connectionsApi } from '@/api/endpoints';
 import { useSocketStore } from '@/socket/socket';
 import { EVENTS } from '@/socket/events';
 import { toast } from 'sonner';
@@ -14,29 +14,29 @@ export function useContacts() {
     if (!socket) return;
 
     const invalidate = () => {
-      queryClient.invalidateQueries({ queryKey: ['pings', 'contacts'] });
+      queryClient.invalidateQueries({ queryKey: ['connections', 'contacts'] });
     };
 
-    socket.on(EVENTS.PING_ACCEPTED, invalidate);
-    socket.on(EVENTS.USER_BLOCKED, invalidate);
-    socket.on(EVENTS.CHAT_PERMISSION_UPDATED, invalidate);
+    socket.on(EVENTS.RELATIONSHIP_ACTIVATED, invalidate);
+    socket.on(EVENTS.RELATIONSHIP_REVOKED, invalidate);
+    socket.on(EVENTS.BLOCK_CREATED, invalidate);
 
     return () => {
-      socket.off(EVENTS.PING_ACCEPTED, invalidate);
-      socket.off(EVENTS.USER_BLOCKED, invalidate);
-      socket.off(EVENTS.CHAT_PERMISSION_UPDATED, invalidate);
+      socket.off(EVENTS.RELATIONSHIP_ACTIVATED, invalidate);
+      socket.off(EVENTS.RELATIONSHIP_REVOKED, invalidate);
+      socket.off(EVENTS.BLOCK_CREATED, invalidate);
     };
   }, [socket, queryClient]);
 
   const contactsQuery = useQuery({
-    queryKey: ['pings', 'contacts'],
-    queryFn: () => pingsApi.getContacts().then((res) => res.data),
+    queryKey: ['connections', 'contacts'],
+    queryFn: () => connectionsApi.getContacts().then((res) => res.data),
   });
 
   const removeContactMutation = useMutation({
-    mutationFn: (peerUserId: string) => pingsApi.removeContact(peerUserId),
+    mutationFn: (relationshipId: string) => connectionsApi.revoke(relationshipId),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['pings', 'contacts'] });
+      queryClient.invalidateQueries({ queryKey: ['connections', 'contacts'] });
       queryClient.invalidateQueries({ queryKey: ['conversations'] });
       toast.success('Contact removed');
     },
