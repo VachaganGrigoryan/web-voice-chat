@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useSpaces } from '@/hooks/useSpaces';
 import { ROLE_ADMIN } from '@/api/types';
+import type { SpaceJoinPolicy, SpaceKind } from '@/api/types';
 import { useAuthStore } from '@/store/authStore';
 import { useAppNavigation } from '@/navigation/appNavigation';
 import { PanelPageLayout, PanelSection } from '@/components/panel/PanelPageLayout';
@@ -29,8 +30,9 @@ export default function SpacesPage() {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [spaceName, setSpaceName] = useState('');
   const [spaceSlug, setSpaceSlug] = useState('');
-  const [spaceKind, setSpaceKind] = useState<'org' | 'workspace' | 'subspace'>('workspace');
+  const [spaceKind, setSpaceKind] = useState<SpaceKind>('workspace');
   const [spaceVisibility, setSpaceVisibility] = useState<'public' | 'private'>('public');
+  const [spaceJoinPolicy, setSpaceJoinPolicy] = useState<SpaceJoinPolicy>('approval');
 
   // Join by Code Dialog State
   const [isJoinOpen, setIsJoinOpen] = useState(false);
@@ -45,6 +47,7 @@ export default function SpacesPage() {
         slug: spaceSlug,
         kind: spaceKind,
         visibility: spaceVisibility,
+        join_policy: spaceJoinPolicy,
       });
       setIsCreateOpen(false);
       setSpaceName('');
@@ -162,12 +165,10 @@ export default function SpacesPage() {
                       <CardContent className="px-5 py-0 pb-4">
                         <div className="flex items-center gap-2 mt-1">
                           <span className="inline-flex items-center gap-1 text-2xs text-muted-foreground bg-muted/65 px-2 py-0.5 rounded-md">
-                            {s.kind === 'org' ? (
-                              <Users className="h-3 w-3" />
-                            ) : s.kind === 'workspace' ? (
+                            {s.kind === 'workspace' ? (
                               <Radio className="h-3 w-3" />
                             ) : (
-                              <Compass className="h-3 w-3" />
+                              <Users className="h-3 w-3" />
                             )}
                             {s.kind}
                           </span>
@@ -291,8 +292,21 @@ export default function SpacesPage() {
                   className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   <option value="workspace">Workspace</option>
-                  <option value="org">Organization</option>
-                  <option value="subspace">Subspace</option>
+                  <option value="community">Community</option>
+                </select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="space-join-policy">Join policy</Label>
+                <select
+                  id="space-join-policy"
+                  value={spaceJoinPolicy}
+                  onChange={(e) => setSpaceJoinPolicy(e.target.value as SpaceJoinPolicy)}
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <option value="open">Open — anyone may join</option>
+                  <option value="approval">Approval — requests need review</option>
+                  <option value="invite_only">Invite only</option>
+                  <option value="closed">Closed — no new members</option>
                 </select>
               </div>
               <div className="space-y-2">

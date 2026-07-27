@@ -7,7 +7,14 @@ export type SettingsTab =
   | 'passkeys'
   | 'discovery'
   | 'about';
-export type SpacesTab = 'members' | 'channels' | 'invites' | 'requests' | 'settings';
+export type SpacesTab =
+  | 'members'
+  | 'channels'
+  | 'groups'
+  | 'roles'
+  | 'invites'
+  | 'requests'
+  | 'settings';
 
 export const PINGS_TABS: PingsTab[] = ['notifications', 'incoming', 'outgoing'];
 export const SETTINGS_TABS: SettingsTab[] = [
@@ -19,7 +26,15 @@ export const SETTINGS_TABS: SettingsTab[] = [
   'discovery',
   'about',
 ];
-export const SPACES_TABS: SpacesTab[] = ['members', 'channels', 'invites', 'requests', 'settings'];
+export const SPACES_TABS: SpacesTab[] = [
+  'members',
+  'channels',
+  'groups',
+  'roles',
+  'invites',
+  'requests',
+  'settings',
+];
 
 export const APP_ROUTES = {
   root: '/',
