@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { membershipsApi, rolesApi, spacesApi } from '@/api/endpoints';
+import type { SpaceChannelCreateRequest, SpaceGroupCreateRequest } from '@/api/types';
 import { toast } from 'sonner';
 import { extractApiError } from '@/api/errors';
 import { EVENTS } from '@/socket/events';
@@ -56,6 +57,12 @@ export function useSpaces(spaceId?: string) {
     enabled: !!spaceId,
   });
 
+  const groupsQuery = useQuery({
+    queryKey: ['spaces', spaceId, 'groups'],
+    queryFn: () => spacesApi.listGroups(spaceId!),
+    enabled: !!spaceId,
+  });
+
   const invitesQuery = useQuery({
     queryKey: ['spaces', spaceId, 'invites'],
     queryFn: () => spacesApi.listInvites(spaceId!),
@@ -94,7 +101,7 @@ export function useSpaces(spaceId?: string) {
   });
 
   const createInviteMutation = useMutation({
-    mutationFn: ({ spaceId, data }: { spaceId: string; data: { expires_at?: string | null; max_uses?: number | null; requires_approval?: boolean } }) =>
+    mutationFn: ({ spaceId, data }: { spaceId: string; data: { expires_at?: string | null; max_uses?: number | null; approval_required?: boolean } }) =>
       spacesApi.createInvite(spaceId, data),
     onSuccess: () => {
       if (spaceId) {
@@ -195,8 +202,8 @@ export function useSpaces(spaceId?: string) {
   });
 
   const joinChannelMutation = useMutation({
-    mutationFn: ({ spaceId, conversationId }: { spaceId: string; conversationId: string }) =>
-      spacesApi.joinChannel(spaceId, conversationId),
+    mutationFn: ({ spaceId, channelId }: { spaceId: string; channelId: string }) =>
+      spacesApi.joinChannel(spaceId, channelId),
     onSuccess: () => {
       if (spaceId) {
         queryClient.invalidateQueries({ queryKey: ['spaces', spaceId, 'channels'] });
@@ -206,6 +213,105 @@ export function useSpaces(spaceId?: string) {
     },
     onError: (error) => {
       toast.error(extractApiError(error, 'Failed to join channel'));
+    },
+  });
+
+  const createChannelMutation = useMutation({
+    mutationFn: ({
+      spaceId,
+      data,
+    }: {
+      spaceId: string;
+      data: SpaceChannelCreateRequest;
+    }) => spacesApi.createChannel(spaceId, data),
+    onSuccess: () => {
+      if (spaceId) {
+        // The create response is a full Channel, not a SpaceChannelView, so
+        // refetch the list rather than appending a differently-shaped object.
+        queryClient.invalidateQueries({ queryKey: ['spaces', spaceId, 'channels'] });
+      }
+      toast.success('Channel created');
+    },
+    onError: (error) => {
+      toast.error(extractApiError(error, 'Failed to create channel'));
+    },
+  });
+
+  const createGroupMutation = useMutation({
+    mutationFn: ({
+      spaceId,
+      data,
+    }: {
+      spaceId: string;
+      data: SpaceGroupCreateRequest;
+    }) => spacesApi.createGroup(spaceId, data),
+    onSuccess: () => {
+      if (spaceId) {
+        queryClient.invalidateQueries({ queryKey: ['spaces', spaceId, 'groups'] });
+        queryClient.invalidateQueries({ queryKey: ['conversations'] });
+      }
+      toast.success('Group created');
+    },
+    onError: (error) => {
+      toast.error(extractApiError(error, 'Failed to create group'));
+    },
+  });
+
+  const invalidateRoles = () => {
+    if (spaceId) {
+      queryClient.invalidateQueries({ queryKey: ['spaces', spaceId, 'roles'] });
+    }
+  };
+
+  const createRoleMutation = useMutation({
+    mutationFn: ({
+      spaceId,
+      data,
+    }: {
+      spaceId: string;
+      data: { name: string; permissions: string[]; priority?: number };
+    }) => rolesApi.create('space', spaceId, data),
+    onSuccess: () => {
+      invalidateRoles();
+      toast.success('Role created');
+    },
+    onError: (error) => {
+      toast.error(extractApiError(error, 'Failed to create role'));
+    },
+  });
+
+  const updateRoleMutation = useMutation({
+    mutationFn: ({
+      spaceId,
+      roleId,
+      data,
+    }: {
+      spaceId: string;
+      roleId: string;
+      data: { name?: string; permissions?: string[]; priority?: number };
+    }) => rolesApi.update('space', spaceId, roleId, data),
+    onSuccess: () => {
+      invalidateRoles();
+      toast.success('Role updated');
+    },
+    onError: (error) => {
+      toast.error(extractApiError(error, 'Failed to update role'));
+    },
+  });
+
+  const deleteRoleMutation = useMutation({
+    mutationFn: ({ spaceId, roleId }: { spaceId: string; roleId: string }) =>
+      rolesApi.remove('space', spaceId, roleId),
+    onSuccess: () => {
+      invalidateRoles();
+      // A deleted role may have been assigned to members.
+      if (spaceId) {
+        queryClient.invalidateQueries({ queryKey: ['spaces', spaceId, 'members'] });
+      }
+      toast.success('Role deleted');
+    },
+    onError: (error) => {
+      toast.error(extractApiError(error, 'Failed to delete role'));
     },
   });
 
@@ -239,6 +345,8 @@ export function useSpaces(spaceId?: string) {
     roles: rolesQuery.data || [],
     channels: channelsQuery.data || [],
     isLoadingChannels: channelsQuery.isLoading,
+    groups: groupsQuery.data || [],
+    isLoadingGroups: groupsQuery.isLoading,
     invites: invitesQuery.data || [],
     isLoadingInvites: invitesQuery.isLoading,
     joinRequests: joinRequestsQuery.data || [],
@@ -265,6 +373,16 @@ export function useSpaces(spaceId?: string) {
     isRejectingRequest: rejectRequestMutation.isPending,
     joinChannel: joinChannelMutation.mutateAsync,
     isJoiningChannel: joinChannelMutation.isPending,
+    createChannel: createChannelMutation.mutateAsync,
+    isCreatingChannel: createChannelMutation.isPending,
+    createGroup: createGroupMutation.mutateAsync,
+    isCreatingGroup: createGroupMutation.isPending,
+    createRole: createRoleMutation.mutateAsync,
+    isCreatingRole: createRoleMutation.isPending,
+    updateRole: updateRoleMutation.mutateAsync,
+    isUpdatingRole: updateRoleMutation.isPending,
+    deleteRole: deleteRoleMutation.mutateAsync,
+    isDeletingRole: deleteRoleMutation.isPending,
     assignMemberRoles: assignMemberRolesMutation.mutateAsync,
     isAssigningMemberRoles: assignMemberRolesMutation.isPending,
   };

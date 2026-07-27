@@ -70,6 +70,11 @@ import {
   RedeemSpaceInviteResponse,
   SpaceMemberView,
   SpaceChannelView,
+  SpaceChannelCreateRequest,
+  SpaceGroupView,
+  SpaceGroupCreateRequest,
+  SpaceKind,
+  SpaceJoinPolicy,
 } from './types';
 
 export const authApi = {
@@ -1013,13 +1018,43 @@ export const membershipsApi = {
       .then((res) => extractResponseData(res.data)),
 };
 
+const roleScopePath = (scopeType: MembershipTargetType) =>
+  scopeType === 'space' ? 'spaces' : `${scopeType}s`;
+
 export const rolesApi = {
   list: (scopeType: MembershipTargetType, resourceId: string) =>
     apiClient
       .get<SuccessResponse<Role[]>>(
-        `/${scopeType === 'space' ? 'spaces' : `${scopeType}s`}/${resourceId}/roles`
+        `/${roleScopePath(scopeType)}/${resourceId}/roles`
       )
       .then((res) => extractResponseData(res.data)),
+  create: (
+    scopeType: MembershipTargetType,
+    resourceId: string,
+    data: { name: string; permissions: string[]; priority?: number }
+  ) =>
+    apiClient
+      .post<SuccessResponse<Role>>(
+        `/${roleScopePath(scopeType)}/${resourceId}/roles`,
+        data
+      )
+      .then((res) => extractResponseData(res.data)),
+  update: (
+    scopeType: MembershipTargetType,
+    resourceId: string,
+    roleId: string,
+    data: { name?: string; permissions?: string[]; priority?: number }
+  ) =>
+    apiClient
+      .patch<SuccessResponse<Role>>(
+        `/${roleScopePath(scopeType)}/${resourceId}/roles/${roleId}`,
+        data
+      )
+      .then((res) => extractResponseData(res.data)),
+  remove: (scopeType: MembershipTargetType, resourceId: string, roleId: string) =>
+    apiClient.delete<void>(
+      `/${roleScopePath(scopeType)}/${resourceId}/roles/${roleId}`
+    ),
 };
 
 export const blocksApi = {
@@ -1104,7 +1139,13 @@ export const spacesApi = {
     apiClient
       .get<SuccessResponse<SpaceView[]>>('/spaces/me')
       .then((res) => extractResponseData(res.data)),
-  create: (data: { name: string; slug: string; kind?: string; visibility?: string }) =>
+  create: (data: {
+    name: string;
+    slug: string;
+    kind?: SpaceKind;
+    visibility?: 'private' | 'public';
+    join_policy?: SpaceJoinPolicy;
+  }) =>
     apiClient
       .post<SuccessResponse<SpaceView>>('/spaces', data)
       .then((res) => extractResponseData(res.data)),
@@ -1121,7 +1162,12 @@ export const spacesApi = {
       .then((res) => extractResponseData(res.data)),
   createInvite: (
     spaceId: string,
-    data: { expires_at?: string | null; max_uses?: number | null; requires_approval?: boolean }
+    data: {
+      expires_at?: string | null;
+      max_uses?: number | null;
+      approval_required?: boolean;
+      role_ids?: string[];
+    }
   ) =>
     apiClient
       .post<SuccessResponse<SpaceInviteLinkView>>(`/spaces/${spaceId}/invites`, data)
@@ -1148,10 +1194,20 @@ export const spacesApi = {
     apiClient
       .get<SuccessResponse<SpaceJoinRequestView[]>>(`/spaces/${spaceId}/join-requests`)
       .then((res) => extractResponseData(res.data)),
+  // A join request is approved by an authority holding `member.approve`, not by
+  // the requester accepting their own membership — those are different routes.
   approveJoinRequest: (spaceId: string, requestId: string) =>
-    membershipsApi.accept('space', spaceId, requestId),
+    apiClient
+      .post<SuccessResponse<SpaceJoinRequestView>>(
+        `/spaces/${spaceId}/join-requests/${requestId}/approve`
+      )
+      .then((res) => extractResponseData(res.data)),
   rejectJoinRequest: (spaceId: string, requestId: string) =>
-    membershipsApi.decline('space', spaceId, requestId),
+    apiClient
+      .post<SuccessResponse<SpaceJoinRequestView>>(
+        `/spaces/${spaceId}/join-requests/${requestId}/reject`
+      )
+      .then((res) => extractResponseData(res.data)),
   listMembers: (spaceId: string) =>
     apiClient
       .get<SuccessResponse<SpaceMemberView[]>>(`/spaces/${spaceId}/members`)
@@ -1160,6 +1216,22 @@ export const spacesApi = {
     apiClient
       .get<SuccessResponse<SpaceChannelView[]>>(`/spaces/${spaceId}/channels`)
       .then((res) => extractResponseData(res.data)),
-  joinChannel: (_spaceId: string, channelId: string) =>
-    membershipsApi.join('channel', channelId),
+  /** Returns the full `Channel`, not the trimmed `SpaceChannelView` the list
+   * endpoint yields — refetch the list rather than appending this. */
+  createChannel: (spaceId: string, data: SpaceChannelCreateRequest) =>
+    apiClient
+      .post<SuccessResponse<Channel>>(`/spaces/${spaceId}/channels`, data)
+      .then((res) => extractResponseData(res.data)),
+  joinChannel: (spaceId: string, channelId: string) =>
+    apiClient
+      .post<void>(`/spaces/${spaceId}/channels/${channelId}/join`)
+      .then(() => undefined),
+  listGroups: (spaceId: string) =>
+    apiClient
+      .get<SuccessResponse<SpaceGroupView[]>>(`/spaces/${spaceId}/groups`)
+      .then((res) => extractResponseData(res.data)),
+  createGroup: (spaceId: string, data: SpaceGroupCreateRequest) =>
+    apiClient
+      .post<SuccessResponse<SpaceGroupView>>(`/spaces/${spaceId}/groups`, data)
+      .then((res) => extractResponseData(res.data)),
 };

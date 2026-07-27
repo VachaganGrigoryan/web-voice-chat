@@ -1020,16 +1020,21 @@ export interface SuccessResponse<T> {
   request_id?: string | null;
 }
 
+export type SpaceKind = 'workspace' | 'community';
+export type SpaceJoinPolicy = 'open' | 'approval' | 'invite_only' | 'closed';
+
 export interface SpaceView {
   id: string;
   name: string;
   slug: string;
-  kind: 'org' | 'workspace' | 'subspace';
+  kind: SpaceKind;
   visibility: 'private' | 'public';
-  avatar: string | null;
+  join_policy: SpaceJoinPolicy;
+  avatar: Record<string, any> | null;
   created_by: string;
   settings: Record<string, any>;
   created_at: string;
+  updated_at: string;
   owner_user_id: string;
   /** Name of the role the viewer holds here, or null. Ownership is separate. */
   viewer_role?: ParticipantRole | null;
@@ -1037,30 +1042,34 @@ export interface SpaceView {
 
 export interface SpaceInviteLinkView {
   id: string;
-  space_id: string;
+  target_type: 'space';
+  target_id: string;
   code: string;
-  requires_approval: boolean;
+  created_by: string;
   expires_at: string | null;
   max_uses: number | null;
   uses: number;
-  created_by: string;
-  created_at: string;
+  approval_required: boolean;
+  role_ids: string[];
+  revoked: boolean;
   invitee_id?: string | null;
 }
 
 export interface SpaceJoinRequestView {
   id: string;
-  space_id: string;
+  target_type: 'space';
+  target_id: string;
   user_id: string;
   status: 'pending' | 'approved' | 'rejected';
-  created_by: string;
+  invite_code: string | null;
   created_at: string;
+  responded_at: string | null;
 }
 
 export interface RedeemSpaceInviteResponse {
   status: 'joined' | 'pending';
   space: SpaceView | null;
-  join_request: SpaceJoinRequestView | null;
+  membership: Relationship;
 }
 
 export interface SpaceMemberUserSummary {
@@ -1079,10 +1088,46 @@ export interface SpaceMemberView {
   user: SpaceMemberUserSummary | null;
 }
 
+/**
+ * A channel owned by a space. `joined` reports an explicit channel membership,
+ * which is distinct from read access: a `members`-visibility channel is
+ * readable by any active space member without one.
+ */
 export interface SpaceChannelView {
   id: string;
-  title: string | null;
+  name: string;
+  slug: string;
   description: string | null;
-  space_visibility: 'space_public' | 'invite_only' | null;
+  kind: 'profile' | 'text' | 'announcement';
+  visibility: ChannelVisibility;
+  posting_policy: ChannelPostingPolicy;
   joined: boolean;
+}
+
+export interface SpaceChannelCreateRequest {
+  name: string;
+  slug: string;
+  description?: string | null;
+  kind?: 'text' | 'announcement';
+  visibility?: ChannelVisibility;
+  posting_policy?: ChannelPostingPolicy;
+  comment_policy?: ChannelCommentPolicy;
+  tags?: string[];
+}
+
+/**
+ * A group conversation owned by a space. Participation is always explicit — a
+ * space member is not implicitly a participant — so `joined` is authoritative.
+ */
+export interface SpaceGroupView {
+  id: string;
+  title: string | null;
+  participant_count: number;
+  joined: boolean;
+  created_at: string;
+}
+
+export interface SpaceGroupCreateRequest {
+  title: string;
+  participant_ids: string[];
 }
