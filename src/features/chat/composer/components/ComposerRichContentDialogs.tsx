@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Loader2, LocateFixed, MapPin, Send, UserRound } from 'lucide-react';
 import { toast } from 'sonner';
-import type { ContactListItem, RichContactInput, RichLocationInput } from '@/api/types';
+import type { ConnectionListItem, RichContactInput, RichLocationInput } from '@/api/types';
 import { Button } from '@/components/ui/Button';
 import {
   Dialog,
@@ -22,7 +22,7 @@ interface LocationDialogProps {
 
 interface ContactDialogProps {
   open: boolean;
-  contacts: ContactListItem[];
+  contacts: ConnectionListItem[];
   isSending: boolean;
   onOpenChange: (open: boolean) => void;
   onSend: (contact: RichContactInput) => Promise<void>;
@@ -36,7 +36,7 @@ const isValidCoordinate = (latitude: number, longitude: number) =>
   longitude >= -180 &&
   longitude <= 180;
 
-function contactLabel(contact: ContactListItem) {
+function contactLabel(contact: ConnectionListItem) {
   return contact.peer.display_name || contact.peer.username || contact.peer.id;
 }
 

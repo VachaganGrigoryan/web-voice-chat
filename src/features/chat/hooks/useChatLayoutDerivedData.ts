@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { Conversation, Ping, PingItem } from '@/api/types';
+import { ConnectionListItem, Conversation, Relationship } from '@/api/types';
 
 function getPeerDisplayName(peerUser?: Conversation['peer_user'] | null) {
   if (!peerUser) {
@@ -15,8 +15,8 @@ function getPeerDisplayName(peerUser?: Conversation['peer_user'] | null) {
 
 interface UseChatLayoutDerivedDataParams {
   conversations: Conversation[];
-  incoming: PingItem[];
-  outgoing: PingItem[];
+  incoming: ConnectionListItem[];
+  outgoing: ConnectionListItem[];
   selectedUser: string | null;
 }
 
@@ -27,7 +27,7 @@ export function useChatLayoutDerivedData({
   selectedUser,
 }: UseChatLayoutDerivedDataParams) {
   const pendingIncomingCount = useMemo(
-    () => incoming.filter((item) => item.ping.status === 'pending').length,
+    () => incoming.length,
     [incoming]
   );
 
@@ -45,16 +45,24 @@ export function useChatLayoutDerivedData({
     selectedConversation?.type === 'dm' ? selectedConversationUser?.id || null : null;
   const selectedUserSummary = selectedConversationUser;
 
-  const incomingPing = useMemo<Ping | null>(
-    () => (selectedPeerUserId ? incoming.find((item) => item?.peer?.id === selectedPeerUserId)?.ping || null : null),
+  const incomingPing = useMemo<Relationship | null>(
+    () =>
+      selectedPeerUserId
+        ? incoming.find((item) => item.peer.id === selectedPeerUserId)?.relationship ?? null
+        : null,
     [selectedPeerUserId, incoming]
   );
 
   const pingStatus = useMemo(() => {
     if (!selectedPeerUserId) return 'none';
-    if (selectedUserSummary?.ping_status) return selectedUserSummary.ping_status;
+    if (selectedUserSummary?.connection_status === 'active') return 'active';
     if (incomingPing?.status === 'pending') return 'incoming_pending';
-    if (outgoing.find((item) => item?.peer?.id === selectedPeerUserId)?.ping.status === 'pending') return 'outgoing_pending';
+    if (outgoing.some((item) => item.peer.id === selectedPeerUserId)) {
+      return 'outgoing_pending';
+    }
+    if (selectedUserSummary?.connection_status) {
+      return selectedUserSummary.connection_status;
+    }
     return 'none';
   }, [selectedPeerUserId, selectedUserSummary, incomingPing, outgoing]);
 
@@ -66,14 +74,13 @@ export function useChatLayoutDerivedData({
     }
 
     if (selectedUserSummary) {
-      return selectedUserSummary.chat_allowed || selectedUserSummary.ping_status === 'accepted';
+      return (
+        selectedUserSummary.chat_allowed ||
+        selectedUserSummary.connection_status === 'active'
+      );
     }
 
-    return (
-      !!selectedPeerUserId &&
-      (incoming.some((item) => item?.peer?.id === selectedPeerUserId && item?.ping?.status === 'accepted') ||
-        outgoing.some((item) => item?.peer?.id === selectedPeerUserId && item?.ping?.status === 'accepted'))
-    );
+    return false;
   }, [selectedUser, selectedPeerUserId, selectedUserSummary, incoming, outgoing, contacts]);
   const displaySelectedUser =
     selectedConversation?.type === 'group'

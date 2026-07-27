@@ -14,7 +14,7 @@ import {
   DialogTitle,
 } from '@/components/ui/Dialog';
 import { PanelPageLayout, PanelSection } from '@/components/panel/PanelPageLayout';
-import { usePings } from '@/hooks/usePings';
+import { useConnections } from '@/hooks/useConnections';
 import { useContacts } from '@/hooks/useContacts';
 import { useIsMobile } from '@/hooks/useIsMobile';
 import { useAppNavigation } from '@/navigation/appNavigation';
@@ -23,7 +23,7 @@ import { ROLE_ADMIN } from '@/api/types';
 import { conversationsApi, spacesApi } from '@/api/endpoints';
 import { extractApiError } from '@/api/errors';
 import { startCall } from '@/features/calls/callController';
-import { ContactListItem } from '@/api/types';
+import { ConnectionListItem } from '@/api/types';
 import {
   Ban,
   Building2,
@@ -42,7 +42,7 @@ function contactName(contact: { display_name: string | null; username: string })
   return contact.display_name || contact.username;
 }
 
-type ContactPeer = ContactListItem['peer'];
+type ContactPeer = ConnectionListItem['peer'];
 type ContactDirection = 'incoming' | 'outgoing';
 
 function DirectionTag({ direction }: { direction: ContactDirection }) {
@@ -239,17 +239,16 @@ export default function ContactsPage() {
   const navigate = useNavigate();
   const isMobile = useIsMobile();
   const { goBack, goTo } = useAppNavigation();
-  const myUserId = useAuthStore((state) => state.userId);
   const { contacts, isLoadingContacts, removeContact, isRemoving } = useContacts();
-  const { blockUser, isBlocking } = usePings();
+  const { blockUser, isBlocking } = useConnections();
 
   const [inviteConvContact, setInviteConvContact] = useState<ContactPeer | null>(null);
   const [inviteSpaceContact, setInviteSpaceContact] = useState<ContactPeer | null>(null);
-  const [removeTarget, setRemoveTarget] = useState<ContactListItem | null>(null);
+  const [removeTarget, setRemoveTarget] = useState<ConnectionListItem | null>(null);
   const [menu, setMenu] = useState<{ peerId: string; anchorRect: DOMRect | null } | null>(null);
 
   const messageMutation = useMutation({
-    mutationFn: (item: ContactListItem) =>
+    mutationFn: (item: ConnectionListItem) =>
       item.conversation_id
         ? Promise.resolve(item.conversation_id)
         : conversationsApi.createOrGetDm(item.peer.id).then((conversation) => conversation.id),
@@ -261,8 +260,8 @@ export default function ContactsPage() {
     },
   });
 
-  const directionFor = (item: ContactListItem): ContactDirection =>
-    item.ping.from_user_id === myUserId ? 'outgoing' : 'incoming';
+  const directionFor = (item: ConnectionListItem): ContactDirection =>
+    item.direction;
 
   const openProfile = (peerId: string) => navigate(APP_ROUTES.profile(peerId));
   const handleCall = (peer: ContactPeer) =>
@@ -270,7 +269,7 @@ export default function ContactsPage() {
 
   const activeContact = menu ? contacts.find((c) => c.peer.id === menu.peerId) ?? null : null;
 
-  const buildMenuItems = (item: ContactListItem): ContactMenuItem[] => {
+  const buildMenuItems = (item: ConnectionListItem): ContactMenuItem[] => {
     const mobileOnly: ContactMenuItem[] = isMobile
       ? [
           { key: 'profile', label: 'View profile', icon: User, onSelect: () => openProfile(item.peer.id) },
@@ -480,7 +479,7 @@ export default function ContactsPage() {
               onClick={async () => {
                 if (!removeTarget) return;
                 try {
-                  await removeContact(removeTarget.peer.id);
+                  await removeContact(removeTarget.relationship.id);
                 } finally {
                   setRemoveTarget(null);
                 }

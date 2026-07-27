@@ -1,4 +1,4 @@
-import type { ContactListItem, CreatePollRequest } from '@/api/types';
+import type { ConnectionListItem, CreatePollRequest } from '@/api/types';
 import type { SendMediaInput, SendRichContentInput, SendTextInput } from '@/hooks/useChat';
 import { ComposerReplyTarget } from '../types/message';
 
@@ -10,7 +10,7 @@ export interface ChatComposerProps {
   onSendMedia: (data: SendMediaInput) => Promise<unknown>;
   onSendRichContent: (data: SendRichContentInput) => Promise<unknown>;
   onCreatePoll: (data: CreatePollRequest) => Promise<unknown>;
-  contacts?: ContactListItem[];
+  contacts?: ConnectionListItem[];
   replyTarget?: ComposerReplyTarget | null;
   onClearReplyTarget?: () => void;
   isUploading?: boolean;

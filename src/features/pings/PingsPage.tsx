@@ -5,10 +5,10 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/Avatar';
 import { Button } from '@/components/ui/Button';
 import { APP_ROUTES, isPingsTab, PingsTab } from '@/app/routes';
 import { PanelPageLayout, PanelSection } from '@/components/panel/PanelPageLayout';
-import { usePings } from '@/hooks/usePings';
+import { useConnections } from '@/hooks/useConnections';
 import { useNotifications } from '@/hooks/useNotifications';
 import { useQueryClient } from '@tanstack/react-query';
-import { NotificationView, PingItem } from '@/api/types';
+import { ConnectionListItem, NotificationView } from '@/api/types';
 import { conversationsApi, spacesApi } from '@/api/endpoints';
 import { extractApiError } from '@/api/errors';
 import { cn } from '@/lib/utils';
@@ -80,27 +80,23 @@ function buildPingMetaLabel(
   };
 }
 
-function PingStatusBadge({ status }: { status: PingItem['ping']['status'] }) {
+function PingStatusBadge({ status }: { status: ConnectionListItem['relationship']['status'] }) {
   const badgeClassName =
-    status === 'accepted'
+    status === 'active'
       ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-300'
       : status === 'declined'
         ? 'border-destructive/20 bg-destructive/10 text-destructive'
-        : status === 'cancelled'
+        : status === 'revoked'
           ? 'border-muted-foreground/20 bg-muted text-muted-foreground'
-          : status === 'blocked'
-            ? 'border-slate-300 bg-slate-100 text-slate-700 dark:border-slate-800 dark:bg-slate-900/40 dark:text-slate-300'
-            : 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-300';
+          : 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-300';
   const label =
-    status === 'accepted'
-      ? 'Accepted'
+    status === 'active'
+      ? 'Connected'
       : status === 'declined'
         ? 'Declined'
-        : status === 'cancelled'
+        : status === 'revoked'
           ? 'Cancelled'
-          : status === 'blocked'
-            ? 'Blocked'
-            : 'Pending';
+          : 'Pending';
 
   return (
     <span className={cn('inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold', badgeClassName)}>
@@ -114,7 +110,7 @@ function PingPersonCard({
   metaLabel,
   actions,
 }: {
-  item: PingItem;
+  item: ConnectionListItem;
   metaLabel: PingMetaLabel;
   actions?: ReactNode;
 }) {
@@ -134,7 +130,7 @@ function PingPersonCard({
               {item.peer.username ? <div className="truncate text-xs text-muted-foreground">@{item.peer.username}</div> : null}
             </div>
             <div className="shrink-0">
-              <PingStatusBadge status={item.ping.status} />
+              <PingStatusBadge status={item.relationship.status} />
             </div>
           </div>
 
@@ -178,16 +174,10 @@ function describeNotification(
 ): { title: string; description: string } {
   const name = peerName ? `@${peerName}` : 'Someone';
   switch (notification.kind) {
-    case 'ping_received':
+    case 'connection_request':
       return { title: 'New connection request', description: `${name} wants to connect with you.` };
-    case 'ping_accepted':
+    case 'connection_accepted':
       return { title: 'Connection accepted', description: `${name} accepted your connection request.` };
-    case 'ping_declined':
-      return { title: 'Connection declined', description: `${name} declined your connection request.` };
-    case 'ping_cancelled':
-      return { title: 'Request withdrawn', description: `${name} withdrew a connection request.` };
-    case 'user_blocked':
-      return { title: 'User blocked', description: `You blocked ${name}.` };
     case 'message':
       return { title: 'New message', description: 'You have a new message.' };
     case 'space_invite': {
@@ -202,7 +192,7 @@ function describeNotification(
 
 function NotificationFeedItem({
   notification,
-  matchedPing,
+  matchedConnection,
   onAccept,
   onDecline,
   onOpenConversation,
@@ -213,9 +203,9 @@ function NotificationFeedItem({
   isAcceptingSpaceInvite,
 }: {
   notification: NotificationView;
-  matchedPing: PingItem | null;
-  onAccept: (ping: PingItem) => void;
-  onDecline: (pingId: string) => void;
+  matchedConnection: ConnectionListItem | null;
+  onAccept: (connection: ConnectionListItem) => void;
+  onDecline: (relationshipId: string) => void;
   onOpenConversation: (conversationId: string) => void;
   isAccepting: boolean;
   isDeclining: boolean;
@@ -223,16 +213,19 @@ function NotificationFeedItem({
   onDeclineSpaceInvite: (notificationId: string) => void;
   isAcceptingSpaceInvite: boolean;
 }) {
-  const peer = matchedPing?.peer ?? null;
+  const peer = matchedConnection?.peer ?? null;
   const { title, description } = describeNotification(notification, peer?.username ?? null);
   const isUnread = notification.read_at === null;
   const relative = formatDistanceToNow(new Date(notification.created_at), { addSuffix: true });
-  const canAcceptDecline = notification.kind === 'ping_received' && matchedPing !== null;
+  const canAcceptDecline =
+    notification.kind === 'connection_request' && matchedConnection !== null;
   const isSpaceInvite = notification.kind === 'space_invite';
   const inviteCode = notification.data?.code as string | undefined;
   const canAcceptDeclineSpace = isSpaceInvite && !!inviteCode;
   const conversationId =
-    notification.kind === 'message' ? notification.conversation_id : null;
+    notification.kind === 'message' && notification.resource_type === 'conversation'
+      ? notification.resource_id
+      : null;
 
   return (
     <div
@@ -245,8 +238,6 @@ function NotificationFeedItem({
         <div className="rounded-full bg-muted p-2">
           {notification.kind === 'message' ? (
             <MessageSquare className="h-4 w-4 text-muted-foreground" />
-          ) : notification.kind === 'user_blocked' ? (
-            <ShieldAlert className="h-4 w-4 text-muted-foreground" />
           ) : (
             <Bell className="h-4 w-4 text-muted-foreground" />
           )}
@@ -260,13 +251,13 @@ function NotificationFeedItem({
 
       {(canAcceptDecline || canAcceptDeclineSpace || conversationId) && (
         <div className="mt-3 grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center sm:justify-end">
-          {canAcceptDecline && matchedPing ? (
+          {canAcceptDecline && matchedConnection ? (
             <>
               <Button
                 type="button"
                 size="sm"
                 className="w-full rounded-full sm:w-auto"
-                onClick={() => onAccept(matchedPing)}
+                onClick={() => onAccept(matchedConnection)}
                 disabled={isAccepting}
               >
                 <Check className="mr-1.5 h-4 w-4" />
@@ -277,7 +268,7 @@ function NotificationFeedItem({
                 size="sm"
                 variant="outline"
                 className="w-full rounded-full sm:w-auto"
-                onClick={() => onDecline(matchedPing.ping.id)}
+                onClick={() => onDecline(matchedConnection.relationship.id)}
                 disabled={isDeclining}
               >
                 <X className="mr-1.5 h-4 w-4" />
@@ -348,7 +339,7 @@ export default function PingsPage() {
     isDeclining,
     isCancelling,
     isBlocking,
-  } = usePings();
+  } = useConnections();
   const { notifications, isLoading: isLoadingNotifications } = useNotifications();
 
   const handleAcceptSpaceInvite = async (code: string) => {
@@ -380,10 +371,8 @@ export default function PingsPage() {
     return <Navigate to={APP_ROUTES.pingsTab('notifications')} replace />;
   }
 
-  const pendingIncoming = incoming.filter((item) => item.ping.status === 'pending');
-  const incomingHistory = incoming.filter((item) => item.ping.status !== 'pending');
-  const pendingOutgoing = outgoing.filter((item) => item.ping.status === 'pending');
-  const outgoingHistory = outgoing.filter((item) => item.ping.status !== 'pending');
+  const pendingIncoming = incoming;
+  const pendingOutgoing = outgoing;
 
   const handleClose = () => {
     goTo(APP_ROUTES.chat);
@@ -399,11 +388,13 @@ export default function PingsPage() {
 
   const unreadNotifications = visibleNotifications.filter((n) => n.read_at === null).length;
 
-  const matchedPingFor = (notification: NotificationView): PingItem | null => {
+  const matchedConnectionFor = (
+    notification: NotificationView
+  ): ConnectionListItem | null => {
     const peerId =
       typeof notification.data?.peer_user_id === 'string'
         ? notification.data.peer_user_id
-        : null;
+        : notification.actor_user_id;
     if (!peerId) return null;
     return (
       pendingIncoming.find((item) => item.peer.id === peerId) ?? null
@@ -499,9 +490,13 @@ export default function PingsPage() {
                 <NotificationFeedItem
                   key={notification.id}
                   notification={notification}
-                  matchedPing={matchedPingFor(notification)}
-                  onAccept={(ping) => acceptPing(ping.ping.id).then(() => openChat(ping.peer.id))}
-                  onDecline={(pingId) => declinePing(pingId)}
+                  matchedConnection={matchedConnectionFor(notification)}
+                  onAccept={(connection) =>
+                    acceptPing(connection.relationship.id).then(() =>
+                      openChat(connection.peer.id)
+                    )
+                  }
+                  onDecline={(relationshipId) => declinePing(relationshipId)}
                   onOpenConversation={(conversationId) =>
                     navigate(APP_ROUTES.chatConversation(conversationId))
                   }
@@ -538,16 +533,24 @@ export default function PingsPage() {
               <div className="space-y-3">
                 {pendingIncoming.map((item) => (
                   <PingPersonCard
-                    key={item.ping.id}
+                    key={item.relationship.id}
                     item={item}
-                    metaLabel={buildPingMetaLabel('Received', 'Recv', item.ping.created_at)}
+                    metaLabel={buildPingMetaLabel(
+                      'Received',
+                      'Recv',
+                      item.relationship.requested_at
+                    )}
                     actions={
                       <>
                         <Button
                           type="button"
                           size="sm"
                           className="w-full rounded-full sm:w-auto"
-                          onClick={() => acceptPing(item.ping.id).then(() => openChat(item.peer.id))}
+                          onClick={() =>
+                            acceptPing(item.relationship.id).then(() =>
+                              openChat(item.peer.id)
+                            )
+                          }
                           disabled={isAccepting}
                         >
                           <Check className="mr-1.5 h-4 w-4" />
@@ -558,7 +561,7 @@ export default function PingsPage() {
                           size="sm"
                           variant="outline"
                           className="w-full rounded-full sm:w-auto"
-                          onClick={() => declinePing(item.ping.id)}
+                          onClick={() => declinePing(item.relationship.id)}
                           disabled={isDeclining}
                         >
                           <X className="mr-1.5 h-4 w-4" />
@@ -583,38 +586,7 @@ export default function PingsPage() {
             </PanelSection>
           ) : null}
 
-          {incomingHistory.length > 0 ? (
-            <PanelSection
-              title="Recent Incoming Activity"
-              description="Resolved ping requests remain visible here for quick context."
-            >
-              <div className="space-y-3">
-                {incomingHistory.map((item) => (
-                  <PingPersonCard
-                    key={item.ping.id}
-                    item={item}
-                    metaLabel={buildPingMetaLabel('Updated', 'Upd', item.ping.updated_at)}
-                    actions={
-                      item.ping.status === 'accepted' ? (
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          className="col-span-2 w-full rounded-full sm:col-span-1 sm:w-auto"
-                          onClick={() => openChat(item.peer.id)}
-                        >
-                          <MessageSquare className="mr-1.5 h-4 w-4" />
-                          Open Chat
-                        </Button>
-                      ) : undefined
-                    }
-                  />
-                ))}
-              </div>
-            </PanelSection>
-          ) : null}
-
-          {!pendingIncoming.length && !incomingHistory.length ? (
+          {!pendingIncoming.length ? (
             <EmptyState
               icon={<Bell className="h-8 w-8 text-muted-foreground" />}
               title="No incoming pings"
@@ -632,16 +604,20 @@ export default function PingsPage() {
               <div className="space-y-3">
                 {pendingOutgoing.map((item) => (
                   <PingPersonCard
-                    key={item.ping.id}
+                    key={item.relationship.id}
                     item={item}
-                    metaLabel={buildPingMetaLabel('Sent', 'Sent', item.ping.created_at)}
+                    metaLabel={buildPingMetaLabel(
+                      'Sent',
+                      'Sent',
+                      item.relationship.requested_at
+                    )}
                     actions={
                       <Button
                         type="button"
                         size="sm"
                         variant="outline"
                         className="col-span-2 w-full rounded-full sm:col-span-1 sm:w-auto"
-                        onClick={() => cancelPing(item.ping.id)}
+                        onClick={() => cancelPing(item.relationship.id)}
                         disabled={isCancelling}
                       >
                         <X className="mr-1.5 h-4 w-4" />
@@ -654,38 +630,7 @@ export default function PingsPage() {
             </PanelSection>
           ) : null}
 
-          {outgoingHistory.length > 0 ? (
-            <PanelSection
-              title="Recent Outgoing Activity"
-              description="Track accepted, declined, cancelled, or blocked requests."
-            >
-              <div className="space-y-3">
-                {outgoingHistory.map((item) => (
-                  <PingPersonCard
-                    key={item.ping.id}
-                    item={item}
-                    metaLabel={buildPingMetaLabel('Updated', 'Upd', item.ping.updated_at)}
-                    actions={
-                      item.ping.status === 'accepted' ? (
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          className="col-span-2 w-full rounded-full sm:col-span-1 sm:w-auto"
-                          onClick={() => openChat(item.peer.id)}
-                        >
-                          <MessageSquare className="mr-1.5 h-4 w-4" />
-                          Open Chat
-                        </Button>
-                      ) : undefined
-                    }
-                  />
-                ))}
-              </div>
-            </PanelSection>
-          ) : null}
-
-          {!pendingOutgoing.length && !outgoingHistory.length ? (
+          {!pendingOutgoing.length ? (
             <EmptyState
               icon={<UserPlus className="h-8 w-8 text-muted-foreground" />}
               title="No outgoing pings"

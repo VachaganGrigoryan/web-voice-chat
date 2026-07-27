@@ -7,7 +7,7 @@ import { getApiErrorStatus } from '@/api/errors';
 import { User, UserSummary } from '@/api/types';
 import { APP_ROUTES } from '@/app/routes';
 import { Button } from '@/components/ui/Button';
-import { usePings } from '@/hooks/usePings';
+import { useConnections } from '@/hooks/useConnections';
 
 import { ProfilePageShell, type ProfileDetailItem } from './components/ProfilePageShell';
 
@@ -45,7 +45,7 @@ function ProfileMessage({ children }: { children: React.ReactNode }) {
 export default function ProfilePage() {
   const navigate = useNavigate();
   const { userId } = useParams<{ userId?: string }>();
-  const { sendPing, blockUser, unblockUser, isSending, isBlocking, isUnblocking } = usePings();
+  const { sendPing, blockUser, unblockUser, isSending, isBlocking, isUnblocking } = useConnections();
 
   const {
     data: profile,

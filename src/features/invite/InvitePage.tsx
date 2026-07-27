@@ -95,19 +95,24 @@ export default function InvitePage() {
             <Button
               onClick={() => void openChat(user.id)}
               className="h-12 w-full text-base"
-              disabled={user.ping_status === 'outgoing_pending' || (user.ping_status === 'none' && !user.can_ping)}
+              disabled={
+                user.connection_status === 'pending' ||
+                (user.connection_status === 'none' && !user.can_ping)
+              }
             >
-              {user.chat_allowed || user.ping_status === 'accepted' ? (
+              {user.chat_allowed || user.connection_status === 'active' ? (
                 <>
                   <MessageSquare className="mr-2 h-5 w-5" />
                   Message
                 </>
-              ) : user.ping_status === 'outgoing_pending' ? (
+              ) : user.connection_status === 'pending' &&
+                user.connection_direction === 'outgoing' ? (
                 <>
                   <Loader2 className="mr-2 h-5 w-5 animate-spin" />
                   Request Pending
                 </>
-              ) : user.ping_status === 'incoming_pending' ? (
+              ) : user.connection_status === 'pending' &&
+                user.connection_direction === 'incoming' ? (
                 <>
                   <Bell className="mr-2 h-5 w-5" />
                   Respond to Request

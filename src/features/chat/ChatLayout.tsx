@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useChat, useConversations, useThreadMessages } from '@/hooks/useChat';
 import { useCallHistory } from '@/hooks/useCallHistory';
-import { usePings } from '@/hooks/usePings';
+import { useConnections } from '@/hooks/useConnections';
 import { useContacts } from '@/hooks/useContacts';
 import { APP_ROUTES } from '@/app/routes';
 import { extractApiError } from '@/api/errors';
@@ -222,7 +222,7 @@ export default function ChatLayout() {
     isSending: isSendingPing,
     isAccepting: isAcceptingPing,
     isDeclining: isDecliningPing,
-  } = usePings();
+  } = useConnections();
   const { contacts: pingContacts } = useContacts();
   const syncAudioQueue = useChatAudioPlayerStore((state) => state.syncQueue);
   const closeAudioPlayer = useChatAudioPlayerStore((state) => state.close);
@@ -867,8 +867,8 @@ export default function ChatLayout() {
 
           toast.success(
             result.cleared_count > 0
-              ? `Deleted chat with ${pendingDestructiveAction.label}. ${formatCount(result.cleared_count, 'message')} cleared${result.ping_deleted ? ', ping removed.' : '.'}`
-              : `Deleted chat with ${pendingDestructiveAction.label}${result.ping_deleted ? ' and removed the ping.' : '.'}`
+              ? `Deleted chat with ${pendingDestructiveAction.label}. ${formatCount(result.cleared_count, 'message')} cleared.`
+              : `Deleted chat with ${pendingDestructiveAction.label}.`
           );
           break;
         }
