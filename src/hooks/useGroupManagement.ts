@@ -1,10 +1,12 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 
-import { conversationsApi } from '@/api/endpoints';
+import { conversationsApi, membershipsApi } from '@/api/endpoints';
 import { Conversation, ParticipantRole, ParticipantView, ROLE_ADMIN } from '@/api/types';
 import { useAuthStore } from '@/store/authStore';
+import { EVENTS } from '@/socket/events';
+import { useSocketStore } from '@/socket/socket';
 
 const membersKey = (conversationId: string) => ['members', conversationId] as const;
 
@@ -36,6 +38,7 @@ export const useGroupManagement = (
 ) => {
   const queryClient = useQueryClient();
   const { userId: currentUserId } = useAuthStore();
+  const { socket } = useSocketStore();
 
   const membersQuery = useGroupMembers(conversationId);
   const members = useMemo<ParticipantView[]>(
@@ -67,6 +70,23 @@ export const useGroupManagement = (
     queryClient.invalidateQueries({ queryKey: ['conversations'] });
   };
 
+  useEffect(() => {
+    if (!socket || !conversationId) return;
+
+    const reconcileMemberships = () => {
+      invalidateMembers();
+      invalidateConversations();
+    };
+    socket.on(EVENTS.RELATIONSHIP_REQUESTED, reconcileMemberships);
+    socket.on(EVENTS.RELATIONSHIP_ACTIVATED, reconcileMemberships);
+    socket.on(EVENTS.RELATIONSHIP_REVOKED, reconcileMemberships);
+    return () => {
+      socket.off(EVENTS.RELATIONSHIP_REQUESTED, reconcileMemberships);
+      socket.off(EVENTS.RELATIONSHIP_ACTIVATED, reconcileMemberships);
+      socket.off(EVENTS.RELATIONSHIP_REVOKED, reconcileMemberships);
+    };
+  }, [conversationId, queryClient, socket]);
+
   const rename = useMutation({
     mutationFn: (title: string) =>
       conversationsApi.updateGroup(conversationId as string, { title }),
@@ -92,7 +112,11 @@ export const useGroupManagement = (
 
   const addMembers = useMutation({
     mutationFn: (participantIds: string[]) =>
-      conversationsApi.addMembers(conversationId as string, participantIds),
+      Promise.all(
+        participantIds.map((participantId) =>
+          membershipsApi.invite('conversation', conversationId as string, participantId)
+        )
+      ),
     onSuccess: () => {
       invalidateMembers();
       invalidateConversations();

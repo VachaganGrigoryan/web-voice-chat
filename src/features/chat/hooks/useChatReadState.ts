@@ -52,6 +52,8 @@ export function useChatReadState({
     if (socket) {
       messageIds.forEach((messageId) => {
         socket.emit(EVENTS.MESSAGE_READ, {
+          container_type: payload.container_type,
+          container_id: payload.container_id,
           conversation_id: payload.conversation_id,
           message_id: messageId,
         });
@@ -112,7 +114,8 @@ export function useChatReadState({
           (page.data || []).forEach((message: MessageDoc) => {
             const summary = message.receipt_summary;
             if (
-              message.conversation_id === conversationId &&
+              message.container_type === 'conversation' &&
+              message.container_id === conversationId &&
               message.sender_id !== userId &&
               (!summary || summary.read_count < summary.recipient_count)
             ) {
@@ -128,6 +131,8 @@ export function useChatReadState({
 
     if (collectedIds.size > 0) {
       applyMessageStatusUpdateToCaches(queryClient, {
+        container_type: 'conversation',
+        container_id: conversationId,
         conversation_id: conversationId,
         message_ids: [...collectedIds],
         status: 'read',
@@ -142,7 +147,10 @@ export function useChatReadState({
       const pages = old.pages.map((page: any) => ({
         ...page,
         data: (page.data || []).map((message: MessageDoc) => {
-          if (message.conversation_id !== conversationId) {
+          if (
+            message.container_type !== 'conversation' ||
+            message.container_id !== conversationId
+          ) {
             return message;
           }
 
@@ -198,6 +206,8 @@ export function useChatReadState({
     visibleIds.forEach((id) => mainReadEmittedMessagesRef.current.add(id));
 
     emitMessageRead(visibleIds, {
+      container_type: 'conversation',
+      container_id: unreadVisibleMessages[0].raw.container_id,
       conversation_id: unreadVisibleMessages[0]?.chatId,
       message_ids: visibleIds,
       status: 'read',
@@ -233,6 +243,8 @@ export function useChatReadState({
     unreadIds.forEach((id) => threadReadEmittedMessagesRef.current.add(id));
 
     emitMessageRead(unreadIds, {
+      container_type: 'conversation',
+      container_id: selectedThreadConversationId,
       conversation_id: selectedThreadConversationId,
       thread_root_id: selectedThreadRootId,
       message_ids: unreadIds,

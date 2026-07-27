@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Loader2, MessageSquare, Pencil, Trash2 } from 'lucide-react';
+import { Loader2, MessageSquare, Send } from 'lucide-react';
 import { toast } from 'sonner';
 
-import { feedsApi, messagesApi } from '@/api/endpoints';
+import { channelsApi, feedsApi } from '@/api/endpoints';
 import { extractApiError } from '@/api/errors';
 import type { FeedPostView } from '@/api/types';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/Avatar';
@@ -49,12 +49,37 @@ function PostAttachments({ post }: { post: FeedPostView }) {
   );
 }
 
-function PostComments({ channelId, postId }: { channelId: string; postId: string }) {
+function PostComments({
+  channelId,
+  postId,
+  canComment,
+}: {
+  channelId: string;
+  postId: string;
+  canComment: boolean;
+}) {
+  const queryClient = useQueryClient();
+  const [commentText, setCommentText] = useState('');
   const { data, isLoading, isError } = useQuery({
     queryKey: ['post-comments', channelId, postId],
     queryFn: () => feedsApi.getPostComments(channelId, postId),
   });
   const comments = data?.data ?? [];
+  const commentMutation = useMutation({
+    mutationFn: (text: string) =>
+      channelsApi.createMessage(channelId, {
+        text,
+        reply_mode: 'thread',
+        reply_to_message_id: postId,
+      }),
+    onSuccess: () => {
+      setCommentText('');
+      queryClient.invalidateQueries({ queryKey: ['post-comments', channelId, postId] });
+      queryClient.invalidateQueries({ queryKey: ['channel-feed', channelId] });
+      queryClient.invalidateQueries({ queryKey: ['feeds'] });
+    },
+    onError: (error) => toast.error(extractApiError(error, 'Could not add comment')),
+  });
 
   if (isLoading) {
     return (
@@ -66,11 +91,11 @@ function PostComments({ channelId, postId }: { channelId: string; postId: string
   if (isError) {
     return <p className="pt-2 text-xs text-muted-foreground">Failed to load comments.</p>;
   }
-  if (comments.length === 0) {
-    return <p className="pt-2 text-xs text-muted-foreground">No comments yet.</p>;
-  }
   return (
     <div className="space-y-2 pt-3">
+      {comments.length === 0 ? (
+        <p className="text-xs text-muted-foreground">No comments yet.</p>
+      ) : null}
       {comments.map((comment) => (
         <div key={comment.id} className="flex gap-2">
           <Avatar className="h-7 w-7 shrink-0">
@@ -89,6 +114,34 @@ function PostComments({ channelId, postId }: { channelId: string; postId: string
           </div>
         </div>
       ))}
+      {canComment ? (
+        <div className="flex items-end gap-2 pt-2">
+          <label htmlFor={`comment-${postId}`} className="sr-only">
+            Add a comment
+          </label>
+          <textarea
+            id={`comment-${postId}`}
+            value={commentText}
+            onChange={(event) => setCommentText(event.target.value)}
+            rows={2}
+            placeholder="Write a comment…"
+            className="min-w-0 flex-1 resize-none rounded-xl border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          />
+          <Button
+            type="button"
+            size="icon"
+            aria-label="Post comment"
+            disabled={!commentText.trim() || commentMutation.isPending}
+            onClick={() => commentMutation.mutate(commentText.trim())}
+          >
+            {commentMutation.isPending ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Send className="h-4 w-4" />
+            )}
+          </Button>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -96,32 +149,11 @@ function PostComments({ channelId, postId }: { channelId: string; postId: string
 interface ProfilePostCardProps {
   post: FeedPostView;
   channelId: string;
-  canManage: boolean;
+  canComment: boolean;
 }
 
-export function ProfilePostCard({ post, channelId, canManage }: ProfilePostCardProps) {
-  const queryClient = useQueryClient();
-  const [editing, setEditing] = useState(false);
-  const [editText, setEditText] = useState(post.text ?? '');
+export function ProfilePostCard({ post, channelId, canComment }: ProfilePostCardProps) {
   const [showComments, setShowComments] = useState(false);
-
-  const invalidateFeed = () =>
-    queryClient.invalidateQueries({ queryKey: ['channel-feed', channelId] });
-
-  const editMutation = useMutation({
-    mutationFn: (text: string) => messagesApi.editMessage(channelId, post.id, text),
-    onSuccess: () => {
-      setEditing(false);
-      invalidateFeed();
-    },
-    onError: (error) => toast.error(extractApiError(error, 'Could not edit post')),
-  });
-
-  const deleteMutation = useMutation({
-    mutationFn: () => messagesApi.deleteMessage(channelId, post.id),
-    onSuccess: invalidateFeed,
-    onError: (error) => toast.error(extractApiError(error, 'Could not delete post')),
-  });
 
   const totalReactions = post.reactions.reduce((sum, group) => sum + group.count, 0);
 
@@ -141,61 +173,10 @@ export function ProfilePostCard({ post, channelId, canManage }: ProfilePostCardP
             {post.edited_at ? ' · edited' : ''}
           </div>
         </div>
-        {canManage && !post.is_deleted ? (
-          <div className="flex items-center gap-1">
-            <button
-              type="button"
-              onClick={() => {
-                setEditText(post.text ?? '');
-                setEditing((v) => !v);
-              }}
-              aria-label="Edit post"
-              className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
-            >
-              <Pencil className="h-4 w-4" />
-            </button>
-            <button
-              type="button"
-              onClick={() => deleteMutation.mutate()}
-              disabled={deleteMutation.isPending}
-              aria-label="Delete post"
-              className="rounded-md p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-            >
-              {deleteMutation.isPending ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Trash2 className="h-4 w-4" />
-              )}
-            </button>
-          </div>
-        ) : null}
       </header>
 
       {post.is_deleted ? (
         <p className="text-sm italic text-muted-foreground">This post was deleted.</p>
-      ) : editing ? (
-        <div className="space-y-2">
-          <textarea
-            value={editText}
-            onChange={(event) => setEditText(event.target.value)}
-            rows={3}
-            className="w-full resize-none rounded-xl border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          />
-          <div className="flex justify-end gap-2">
-            <Button type="button" size="sm" variant="ghost" onClick={() => setEditing(false)}>
-              Cancel
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              onClick={() => editText.trim() && editMutation.mutate(editText.trim())}
-              disabled={!editText.trim() || editMutation.isPending}
-            >
-              {editMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-              Save
-            </Button>
-          </div>
-        </div>
       ) : (
         <div className="space-y-3">
           {post.text ? (
@@ -215,7 +196,7 @@ export function ProfilePostCard({ post, channelId, canManage }: ProfilePostCardP
               <span>{totalReactions}</span>
             </span>
           ) : null}
-          {post.has_thread || post.comment_count > 0 ? (
+          {canComment || post.has_thread || post.comment_count > 0 ? (
             <button
               type="button"
               onClick={() => setShowComments((v) => !v)}
@@ -228,7 +209,13 @@ export function ProfilePostCard({ post, channelId, canManage }: ProfilePostCardP
         </footer>
       ) : null}
 
-      {showComments ? <PostComments channelId={channelId} postId={post.id} /> : null}
+      {showComments ? (
+        <PostComments
+          channelId={channelId}
+          postId={post.id}
+          canComment={canComment}
+        />
+      ) : null}
     </article>
   );
 }

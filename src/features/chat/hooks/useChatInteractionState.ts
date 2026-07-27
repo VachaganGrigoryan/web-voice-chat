@@ -1,7 +1,12 @@
 import { useEffect, useState, type MouseEvent as ReactMouseEvent } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { conversationsApi } from '@/api/endpoints';
-import type { SendMediaInput, SendRichContentInput, SendTextInput } from '@/hooks/useChat';
+import type {
+  SendMediaInput,
+  SendRichContentInput,
+  SendTextInput,
+  ToggleReactionInput,
+} from '@/hooks/useChat';
 import { triggerHaptic } from '@/utils/haptics';
 import { ConversationMenuState } from '../components/ConversationActionsMenu';
 import { MessageMenuAnchor } from '../components/MessageShell';
@@ -57,17 +62,12 @@ interface UseChatInteractionStateParams {
   threadImageGallery: MediaViewerImageItem[];
   navigateToConversation: (conversationId: string, threadRootId?: string | null) => void;
   openThreadPanelInFullMode: () => void;
-  sendText: (data: {
-    conversation_id: string;
-    text: string;
-    reply_mode?: ComposerReplyTarget['mode'] | null;
-    reply_to_message_id?: string;
-  }) => Promise<unknown>;
+  sendText: (data: SendTextInput) => Promise<unknown>;
   sendRichContent: (data: SendRichContentInput) => Promise<unknown>;
   sendVoice: (data: SendMediaInput) => Promise<unknown>;
   editMessage: (data: { conversationId?: string; messageId: string; text: string }) => Promise<unknown>;
   deleteMessage: (data: { conversationId?: string; messageId: string }) => Promise<unknown>;
-  toggleReaction: (data: { conversationId?: string; messageId: string; emoji: string }) => Promise<unknown>;
+  toggleReaction: (data: ToggleReactionInput) => Promise<unknown>;
 }
 
 export const closedMediaViewerState: MediaViewerState = {
@@ -240,7 +240,8 @@ export function useChatInteractionState({
     if (!selectedThreadConversationId || isSelectedThreadLocked) return;
     await sendText({
       ...data,
-      conversation_id: selectedThreadConversationId,
+      container_type: 'conversation',
+      container_id: selectedThreadConversationId,
       reply_mode: null,
       reply_to_message_id: threadReplyTarget?.messageId,
     });
@@ -252,7 +253,8 @@ export function useChatInteractionState({
     if (!selectedThreadConversationId || isSelectedThreadLocked) return;
     await sendRichContent({
       ...data,
-      conversation_id: selectedThreadConversationId,
+      container_type: 'conversation',
+      container_id: selectedThreadConversationId,
       reply_mode: null,
       reply_to_message_id: data.reply_to_message_id ?? threadReplyTarget?.messageId,
     });
@@ -272,7 +274,8 @@ export function useChatInteractionState({
     if (!selectedThreadConversationId || isSelectedThreadLocked) return;
     await sendVoice({
       ...data,
-      conversation_id: selectedThreadConversationId,
+      container_type: 'conversation',
+      container_id: selectedThreadConversationId,
       reply_mode: null,
       reply_to_message_id: data.reply_to_message_id ?? threadReplyTarget?.messageId,
     });
@@ -293,7 +296,13 @@ export function useChatInteractionState({
   const handleToggleReaction = async (messageId: string, emoji: string) => {
     const targetMessage =
       activeMessage?.id === messageId ? activeMessage : null;
-    await toggleReaction({ conversationId: targetMessage?.chatId, messageId, emoji });
+    if (!targetMessage) return;
+    await toggleReaction({
+      container_type: targetMessage.raw.container_type,
+      container_id: targetMessage.raw.container_id,
+      messageId,
+      emoji,
+    });
     triggerHaptic('reaction');
   };
 

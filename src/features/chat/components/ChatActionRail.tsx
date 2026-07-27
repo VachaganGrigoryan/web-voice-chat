@@ -9,6 +9,7 @@ import {
   Phone,
   Plus,
   Radio,
+  Rss,
   Settings,
   UserRound,
   Users,
@@ -31,6 +32,7 @@ interface ChatActionRailProps {
   onOpenPings: () => void;
   onOpenContacts: () => void;
   onOpenSpaces: () => void;
+  onOpenFeeds: () => void;
   onNewGroup: () => void;
   onNewChannel: () => void;
   onOpenProfile: () => void;
@@ -90,6 +92,7 @@ export function ChatActionRail({
   onOpenPings,
   onOpenContacts,
   onOpenSpaces,
+  onOpenFeeds,
   onNewGroup,
   onNewChannel,
   onOpenProfile,
@@ -133,6 +136,7 @@ export function ChatActionRail({
       />
       <RailButton icon={Contact} label="Contacts" onClick={onOpenContacts} />
       <RailButton icon={Compass} label="Spaces" onClick={onOpenSpaces} />
+      <RailButton icon={Rss} label="Home feed" onClick={onOpenFeeds} />
       <RailButton
         icon={MessageSquare}
         label="Chats"

@@ -107,6 +107,71 @@ export interface UserChannelView {
   is_main: boolean;
 }
 
+export type MessageContainerType = 'conversation' | 'channel';
+
+export interface MessageContainerRef {
+  container_type: MessageContainerType;
+  container_id: string;
+}
+
+export type ChannelKind = 'profile' | 'text' | 'announcement';
+export type ChannelVisibility = 'public' | 'members' | 'private';
+export type ChannelJoinPolicy = 'open' | 'approval' | 'invite_only' | 'closed';
+export type ChannelPostingPolicy = 'owner' | 'moderators' | 'members' | 'everyone';
+export type ChannelCommentPolicy = 'disabled' | 'followers' | 'members' | 'everyone';
+
+export interface Channel {
+  id: string;
+  owner: {
+    type: 'user' | 'space';
+    id: string;
+  };
+  space_id: string | null;
+  kind: ChannelKind;
+  slug: string;
+  name: string;
+  description: string | null;
+  avatar: AvatarMeta | null;
+  banner: AvatarMeta | null;
+  visibility: ChannelVisibility;
+  join_policy: ChannelJoinPolicy;
+  posting_policy: ChannelPostingPolicy;
+  comment_policy: ChannelCommentPolicy;
+  tags: string[];
+  message_count: number;
+  follower_count: number;
+  last_message_id: string | null;
+  last_activity_at: string | null;
+  legacy_conversation_id: string | null;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateChannelRequest {
+  name: string;
+  slug: string;
+  kind?: Exclude<ChannelKind, 'profile'>;
+  description?: string | null;
+  visibility?: ChannelVisibility;
+  join_policy?: ChannelJoinPolicy;
+  posting_policy?: ChannelPostingPolicy;
+  comment_policy?: ChannelCommentPolicy;
+  tags?: string[];
+}
+
+export interface UpdateChannelRequest {
+  name?: string | null;
+  description?: string | null;
+  avatar?: AvatarMeta | null;
+  banner?: AvatarMeta | null;
+  visibility?: ChannelVisibility | null;
+  join_policy?: ChannelJoinPolicy | null;
+  posting_policy?: ChannelPostingPolicy | null;
+  comment_policy?: ChannelCommentPolicy | null;
+  tags?: string[] | null;
+}
+
 export interface FeedAuthor {
   id: string;
   username: string | null;
@@ -243,6 +308,9 @@ export interface MessageReactionGroup {
 
 export interface ThreadSummary {
   thread_root_id: string;
+  container_type: MessageContainerType;
+  container_id: string;
+  /** @deprecated Use `container_id`. Present for conversation compatibility. */
   conversation_id: string;
   is_thread_root: boolean;
   thread_reply_count: number;
@@ -305,7 +373,8 @@ export interface RichLinkPreviewInput {
 }
 
 export interface SendRichContentRequest {
-  conversation_id: string;
+  container_type: 'conversation';
+  container_id: string;
   // Polls are created via `pollsApi.create` (/polls), not this rich-content path.
   type: Extract<MessageType, 'sticker' | 'voice' | 'location' | 'contact' | 'link_preview'>;
   text?: string | null;
@@ -400,7 +469,10 @@ export interface MessageSearchResults {
 }
 
 export interface MessageDoc {
+  container_type: MessageContainerType;
+  container_id: string;
   id: string;
+  /** @deprecated Use `container_id`. Present for conversation compatibility. */
   conversation_id: string;
   sender_id: string;
   type: MessageType;
@@ -435,6 +507,9 @@ export interface MessageDoc {
 
 export interface MessageReactionsUpdate {
   message_id: string;
+  container_type: MessageContainerType;
+  container_id: string;
+  /** @deprecated Use `container_id`. Present for conversation compatibility. */
   conversation_id: string;
   reactions: MessageReactionGroup[];
   updated_at: string;
@@ -442,6 +517,9 @@ export interface MessageReactionsUpdate {
 
 export interface DeleteMessageResponse {
   message_id: string;
+  container_type: MessageContainerType;
+  container_id: string;
+  /** @deprecated Use `container_id`. Present for conversation compatibility. */
   conversation_id: string;
   actor_user_id: string;
   deleted_for_everyone: boolean;
@@ -517,7 +595,7 @@ export interface DeleteCallHistoryResponse {
   hidden_count: number;
 }
 
-export type ConversationType = 'dm' | 'group' | 'channel' | 'thread';
+export type ConversationType = 'dm' | 'group';
 
 /**
  * Name of the role a participant holds — 'Admin', 'Moderator', 'Member',
@@ -756,6 +834,22 @@ export interface Relationship {
   requested_at: string;
   activated_at: string | null;
   ended_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AssignRelationshipRolesRequest {
+  role_ids: string[];
+}
+
+export interface Role {
+  id: string;
+  scope_type: 'space' | 'conversation' | 'channel';
+  scope_id: string;
+  name: string;
+  permissions: string[];
+  priority: number;
+  system: boolean;
   created_at: string;
   updated_at: string;
 }

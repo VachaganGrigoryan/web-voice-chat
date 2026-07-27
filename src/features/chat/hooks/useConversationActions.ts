@@ -18,11 +18,6 @@ export const useConversationActions = () => {
     ]);
   };
 
-  const createChannel = useMutation({
-    mutationFn: conversationsApi.createChannel,
-    onSuccess: invalidateInbox,
-  });
-
   const redeemInvite = useMutation({
     mutationFn: (code: string) => conversationsApi.redeemInvite(code),
     onSuccess: (result) => {
@@ -76,7 +71,6 @@ export const useConversationActions = () => {
   });
 
   return {
-    createChannel,
     redeemInvite,
     setInboxState,
     setInboxStateBulk,

@@ -32,6 +32,10 @@ export const APP_ROUTES = {
   pings: '/pings',
   pingsTab: (tab: PingsTab = 'notifications') => `/pings/${tab}`,
   contacts: '/contacts',
+  feeds: '/feeds',
+  userFeed: (username: string) => `/feeds/users/${encodeURIComponent(username)}`,
+  channelFeed: (channelId: string) => `/feeds/channels/${channelId}`,
+  channel: (channelId: string) => `/channels/${channelId}`,
   settings: '/settings',
   settingsTab: (tab: SettingsTab = 'profile') => `/settings/${tab}`,
   spaces: '/spaces',
@@ -47,6 +51,8 @@ const LAST_APP_PATH_STORAGE_KEY = 'voca:last-app-path';
 const isProtectedAppPath = (path: string) =>
   path.startsWith(APP_ROUTES.chat) ||
   path.startsWith(APP_ROUTES.contacts) ||
+  path.startsWith(APP_ROUTES.feeds) ||
+  path.startsWith('/channels/') ||
   path.startsWith(APP_ROUTES.settings) ||
   path.startsWith(APP_ROUTES.pings) ||
   path.startsWith(APP_ROUTES.spaces) ||

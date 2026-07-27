@@ -10,6 +10,7 @@ import {
   CreatePollRequest,
   CreatePollResponse,
   DeleteConversationResponse,
+  MessageContainerRef,
   MessageDoc,
   MessageReactionGroup,
   MessageReactionsUpdate,
@@ -20,9 +21,9 @@ import {
 } from '@/api/types';
 import { useAuthStore } from '@/store/authStore';
 import { resolveMessageContent } from '@/api/messageContent';
+import { messageQueryKey, threadMessageQueryKey } from '@/api/queryKeys';
 
-interface BaseSendMediaInput {
-  conversation_id: string;
+interface BaseSendMediaInput extends MessageContainerRef {
   file: File;
   text?: string;
   duration_ms?: number;
@@ -43,8 +44,7 @@ export type SendMediaInput =
       media_kind?: never;
     });
 
-export interface SendTextInput {
-  conversation_id: string;
+export interface SendTextInput extends MessageContainerRef {
   text: string;
   reply_mode?: ReplyMode | null;
   reply_to_message_id?: string;
@@ -52,33 +52,41 @@ export interface SendTextInput {
 
 export type SendRichContentInput = SendRichContentRequest;
 
+export interface ToggleReactionInput extends MessageContainerRef {
+  messageId: string;
+  emoji: string;
+}
+
 const prependMessageToCache = (queryClient: ReturnType<typeof useQueryClient>, conversationId: string, message: MessageDoc) => {
-  queryClient.setQueryData(['messages', conversationId], (old: any) => {
-    if (!old) {
+  queryClient.setQueryData(
+    messageQueryKey({ container_type: 'conversation', container_id: conversationId }),
+    (old: any) => {
+      if (!old) {
+        return {
+          pages: [{ data: [message], meta: { next_cursor: null, limit: 20, total: 1 }, success: true }],
+          pageParams: [undefined],
+        };
+      }
+
+      const firstPage = old.pages?.[0];
+      const existingMessages = firstPage?.data || [];
+
+      if (existingMessages.some((current: MessageDoc) => current.id === message.id)) {
+        return old;
+      }
+
+      const newPages = [...old.pages];
+      newPages[0] = {
+        ...firstPage,
+        data: [message, ...existingMessages],
+      };
+
       return {
-        pages: [{ data: [message], meta: { next_cursor: null, limit: 20, total: 1 }, success: true }],
-        pageParams: [undefined],
+        ...old,
+        pages: newPages,
       };
     }
-
-    const firstPage = old.pages?.[0];
-    const existingMessages = firstPage?.data || [];
-
-    if (existingMessages.some((current: MessageDoc) => current.id === message.id)) {
-      return old;
-    }
-
-    const newPages = [...old.pages];
-    newPages[0] = {
-      ...firstPage,
-      data: [message, ...existingMessages],
-    };
-
-    return {
-      ...old,
-      pages: newPages,
-    };
-  });
+  );
 };
 
 const prependThreadMessageToCache = (
@@ -86,7 +94,7 @@ const prependThreadMessageToCache = (
   threadRootId: string,
   message: MessageDoc
 ) => {
-  queryClient.setQueryData(['threadMessages', threadRootId], (old: any) => {
+  queryClient.setQueryData(threadMessageQueryKey(message, threadRootId), (old: any) => {
     if (!old) {
       return {
         pages: [{ data: [message], meta: { next_cursor: null, limit: 20, total: 1 }, success: true }],
@@ -124,7 +132,10 @@ const clearConversationMessageCaches = (
   cacheConversationId: string,
   conversationId: string
 ) => {
-  queryClient.setQueryData(['messages', cacheConversationId], () => createEmptyInfiniteData());
+  queryClient.setQueryData(
+    messageQueryKey({ container_type: 'conversation', container_id: cacheConversationId }),
+    () => createEmptyInfiniteData()
+  );
 
   queryClient.setQueriesData({ queryKey: ['threadMessages'] }, (old: any) => {
     if (!old?.pages) return old;
@@ -367,7 +378,13 @@ export const useConversations = (spaceId?: string | null) => {
 
 export const useThreadMessages = (threadConversationId: string | null) => {
   return useInfiniteQuery({
-    queryKey: ['threadMessages', threadConversationId],
+    queryKey: threadMessageQueryKey(
+      {
+        container_type: 'conversation',
+        container_id: threadConversationId ?? '',
+      },
+      threadConversationId ?? ''
+    ),
     queryFn: async () => {
       if (!threadConversationId) {
         return toSinglePageResponse([], 0);
@@ -435,10 +452,17 @@ export const useChat = (selectedUser: string | null = null, openThreadRootId: st
     error: messagesError,
     isError: isMessagesError,
   } = useInfiniteQuery({
-    queryKey: ['messages', selectedUser],
+    queryKey: messageQueryKey({
+      container_type: 'conversation',
+      container_id: selectedUser ?? '',
+    }),
     queryFn: ({ pageParam }) => {
       if (!selectedUser) return Promise.resolve({ data: [], meta: { next_cursor: null, limit: 20, total: 0 }, success: true });
-      return messagesApi.getHistory(selectedUser, 20, pageParam as string | undefined);
+      return messagesApi.getHistory(
+        { container_type: 'conversation', container_id: selectedUser },
+        20,
+        pageParam as string | undefined
+      );
     },
     getNextPageParam: (lastPage) => lastPage.meta?.next_cursor,
     enabled: !!selectedUser,
@@ -467,7 +491,7 @@ export const useChat = (selectedUser: string | null = null, openThreadRootId: st
             }
           : newMessage;
 
-        emitOutgoingMessage(messageWithClientBatchId, variables.type, newMessage.conversation_id);
+        emitOutgoingMessage(messageWithClientBatchId, variables.type, newMessage.container_id);
         integrateCreatedMessage(queryClient, selectedUser, messageWithClientBatchId);
       }
     },
@@ -477,7 +501,7 @@ export const useChat = (selectedUser: string | null = null, openThreadRootId: st
     mutationFn: (data: SendTextInput) => messagesApi.sendText(data),
     onSuccess: (newMessage) => {
       if (selectedUser) {
-        emitOutgoingMessage(newMessage, 'text', newMessage.conversation_id);
+        emitOutgoingMessage(newMessage, 'text', newMessage.container_id);
         integrateCreatedMessage(queryClient, selectedUser, newMessage);
       }
     },
@@ -487,7 +511,7 @@ export const useChat = (selectedUser: string | null = null, openThreadRootId: st
     mutationFn: (data: SendRichContentInput) => messagesApi.sendRichContent(data),
     onSuccess: (newMessage) => {
       if (selectedUser) {
-        emitOutgoingMessage(newMessage, newMessage.type, newMessage.conversation_id);
+        emitOutgoingMessage(newMessage, newMessage.type, newMessage.container_id);
         integrateCreatedMessage(queryClient, selectedUser, newMessage);
       }
     },
@@ -499,7 +523,7 @@ export const useChat = (selectedUser: string | null = null, openThreadRootId: st
       // Seed the poll query cache so the card renders tallies without an extra fetch.
       queryClient.setQueryData(pollQueryKey(poll.id), poll);
       if (selectedUser) {
-        emitOutgoingMessage(message, message.type, message.conversation_id);
+        emitOutgoingMessage(message, message.type, message.container_id);
         integrateCreatedMessage(queryClient, selectedUser, message);
       }
     },
@@ -594,17 +618,16 @@ export const useChat = (selectedUser: string | null = null, openThreadRootId: st
 
   const toggleReactionMutation = useMutation({
     mutationFn: ({
-      conversationId,
+      container_type,
+      container_id,
       messageId,
       emoji,
-    }: {
-      conversationId?: string;
-      messageId: string;
-      emoji: string;
-    }) =>
-      (conversationId || selectedUser)
-        ? messagesApi.toggleReaction(conversationId || (selectedUser as string), messageId, emoji)
-        : Promise.reject(new Error('No conversation selected')),
+    }: ToggleReactionInput) =>
+      messagesApi.toggleReaction(
+        { container_type, container_id },
+        messageId,
+        emoji
+      ),
     onMutate: async ({ messageId, emoji }) => {
       if (!currentUserId) {
         return;
@@ -627,6 +650,8 @@ export const useChat = (selectedUser: string | null = null, openThreadRootId: st
 
         localPayload = {
           message_id: messageId,
+          container_type: foundMessage.container_type,
+          container_id: foundMessage.container_id,
           conversation_id: foundMessage.conversation_id,
           reactions: toggleLocalReactionGroups(
             foundMessage.reactions || [],
@@ -672,7 +697,9 @@ export const useChat = (selectedUser: string | null = null, openThreadRootId: st
     deleteMessage: deleteMessageMutation.mutateAsync as (data: { conversationId?: string; messageId: string }) => Promise<any>,
     clearConversation: clearConversationMutation.mutateAsync as (conversationId: string) => Promise<ClearConversationResponse>,
     deleteConversation: deleteConversationMutation.mutateAsync as (conversationId: string) => Promise<DeleteConversationResponse>,
-    toggleReaction: toggleReactionMutation.mutateAsync as (data: { conversationId?: string; messageId: string; emoji: string }) => Promise<any>,
+    toggleReaction: toggleReactionMutation.mutateAsync as (
+      data: ToggleReactionInput
+    ) => Promise<MessageDoc>,
     isSending: sendMessageMutation.isPending || sendTextMutation.isPending || sendRichContentMutation.isPending,
     isEditingMessage: editMessageMutation.isPending,
     isDeletingMessage: deleteMessageMutation.isPending,

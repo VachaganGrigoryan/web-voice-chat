@@ -1,12 +1,14 @@
-import { useRef, useState } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { ImagePlus, Loader2, Send, X } from 'lucide-react';
+import { useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Loader2, Send } from 'lucide-react';
 import { toast } from 'sonner';
 
-import { messagesApi } from '@/api/endpoints';
+import { channelsApi } from '@/api/endpoints';
 import { extractApiError } from '@/api/errors';
 import { Button } from '@/components/ui/Button';
 import { useChannelFeed } from '@/hooks/useChannelFeed';
+import { useFollowTarget } from '@/hooks/useFollowRelationships';
+import { useAuthStore } from '@/store/authStore';
 
 import { ProfilePostCard } from './ProfilePostCard';
 
@@ -16,29 +18,16 @@ interface ProfilePostComposerProps {
 
 function ProfilePostComposer({ channelId }: ProfilePostComposerProps) {
   const queryClient = useQueryClient();
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const [text, setText] = useState('');
-  const [image, setImage] = useState<File | null>(null);
 
   const reset = () => {
     setText('');
-    setImage(null);
-    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   const publishMutation = useMutation({
     mutationFn: async () => {
       const trimmed = text.trim();
-      if (image) {
-        return messagesApi.uploadMedia({
-          conversation_id: channelId,
-          file: image,
-          type: 'media',
-          media_kind: 'image',
-          text: trimmed || undefined,
-        });
-      }
-      return messagesApi.sendText({ conversation_id: channelId, text: trimmed });
+      return channelsApi.createMessage(channelId, { text: trimmed });
     },
     onSuccess: () => {
       reset();
@@ -47,7 +36,7 @@ function ProfilePostComposer({ channelId }: ProfilePostComposerProps) {
     onError: (error) => toast.error(extractApiError(error, 'Could not publish post')),
   });
 
-  const canSend = (text.trim().length > 0 || image !== null) && !publishMutation.isPending;
+  const canSend = text.trim().length > 0 && !publishMutation.isPending;
 
   return (
     <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">
@@ -63,40 +52,7 @@ function ProfilePostComposer({ channelId }: ProfilePostComposerProps) {
         className="w-full resize-none rounded-xl border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
       />
 
-      {image ? (
-        <div className="mt-2 flex items-center gap-2 rounded-lg border border-border bg-muted/40 px-3 py-1.5 text-xs text-muted-foreground">
-          <span className="truncate">{image.name}</span>
-          <button
-            type="button"
-            onClick={() => {
-              setImage(null);
-              if (fileInputRef.current) fileInputRef.current.value = '';
-            }}
-            aria-label="Remove image"
-            className="ml-auto rounded p-0.5 hover:bg-muted hover:text-foreground"
-          >
-            <X className="h-3.5 w-3.5" />
-          </button>
-        </div>
-      ) : null}
-
-      <div className="mt-2 flex items-center justify-between">
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/*"
-          className="hidden"
-          onChange={(event) => setImage(event.target.files?.[0] ?? null)}
-        />
-        <Button
-          type="button"
-          size="sm"
-          variant="ghost"
-          onClick={() => fileInputRef.current?.click()}
-        >
-          <ImagePlus className="mr-2 h-4 w-4" />
-          Image
-        </Button>
+      <div className="mt-2 flex justify-end">
         <Button
           type="button"
           size="sm"
@@ -117,19 +73,40 @@ function ProfilePostComposer({ channelId }: ProfilePostComposerProps) {
 
 interface ProfileChannelTimelineProps {
   channelId: string;
-  canPost: boolean;
 }
 
-export function ProfileChannelTimeline({ channelId, canPost }: ProfileChannelTimelineProps) {
+export function ProfileChannelTimeline({ channelId }: ProfileChannelTimelineProps) {
+  const currentUserId = useAuthStore((state) => state.userId);
+  const channelQuery = useQuery({
+    queryKey: ['channels', channelId],
+    queryFn: () => channelsApi.get(channelId),
+    enabled: Boolean(channelId),
+  });
+  const follow = useFollowTarget('channel', channelId);
   const { data, isLoading, isError, fetchNextPage, hasNextPage, isFetchingNextPage } =
     useChannelFeed(channelId);
+  const channel = channelQuery.data;
+  const isOwner = Boolean(
+    currentUserId &&
+      channel?.owner.type === 'user' &&
+      channel.owner.id === currentUserId
+  );
+  const canPublish =
+    Boolean(channel) &&
+    (isOwner || channel?.posting_policy === 'everyone');
+  const canComment =
+    Boolean(channel) &&
+    channel?.comment_policy !== 'disabled' &&
+    (isOwner ||
+      channel?.comment_policy === 'everyone' ||
+      (channel?.comment_policy === 'followers' && follow.isFollowing));
 
   // Backend already returns newest-first; keep that order for a timeline.
   const posts = data?.pages.flatMap((page) => page.data) ?? [];
 
   return (
     <div className="space-y-4">
-      {canPost ? <ProfilePostComposer channelId={channelId} /> : null}
+      {canPublish ? <ProfilePostComposer channelId={channelId} /> : null}
 
       {isLoading ? (
         <div className="flex items-center justify-center py-12">
@@ -141,12 +118,17 @@ export function ProfileChannelTimeline({ channelId, canPost }: ProfileChannelTim
         </div>
       ) : posts.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-border bg-muted/20 p-8 text-center text-sm text-muted-foreground">
-          {canPost ? 'No posts yet. Share your first post above.' : 'No posts yet.'}
+          {canPublish ? 'No posts yet. Share your first post above.' : 'No posts yet.'}
         </div>
       ) : (
         <div className="space-y-4">
           {posts.map((post) => (
-            <ProfilePostCard key={post.id} post={post} channelId={channelId} canManage={canPost} />
+            <ProfilePostCard
+              key={post.id}
+              post={post}
+              channelId={channelId}
+              canComment={canComment}
+            />
           ))}
           {hasNextPage ? (
             <div className="flex justify-center pt-2">

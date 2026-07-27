@@ -167,7 +167,8 @@ export default function ChatComposer({
     if (previewUrl && previewUrl !== dismissedLinkPreviewUrl) {
       textInput.stopTyping();
       await onSendRichContent({
-        conversation_id: receiverId,
+        container_type: 'conversation',
+        container_id: receiverId,
         type: 'link_preview',
         text: trimmedText,
         link_preview: {
@@ -214,7 +215,8 @@ export default function ChatComposer({
   const handleSendLocation = async (location: Parameters<typeof onSendRichContent>[0]['location']) => {
     if (!location) return;
     await onSendRichContent({
-      conversation_id: receiverId,
+      container_type: 'conversation',
+      container_id: receiverId,
       type: 'location',
       location,
     });
@@ -224,7 +226,8 @@ export default function ChatComposer({
   const handleSendContact = async (contact: Parameters<typeof onSendRichContent>[0]['contact']) => {
     if (!contact) return;
     await onSendRichContent({
-      conversation_id: receiverId,
+      container_type: 'conversation',
+      container_id: receiverId,
       type: 'contact',
       contact,
     });

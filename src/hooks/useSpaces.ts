@@ -1,10 +1,30 @@
+import { useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { spacesApi } from '@/api/endpoints';
+import { membershipsApi, rolesApi, spacesApi } from '@/api/endpoints';
 import { toast } from 'sonner';
 import { extractApiError } from '@/api/errors';
+import { EVENTS } from '@/socket/events';
+import { useSocketStore } from '@/socket/socket';
 
 export function useSpaces(spaceId?: string) {
   const queryClient = useQueryClient();
+  const { socket } = useSocketStore();
+
+  useEffect(() => {
+    if (!socket) return;
+
+    const reconcileMemberships = () => {
+      queryClient.invalidateQueries({ queryKey: ['spaces'] });
+    };
+    socket.on(EVENTS.RELATIONSHIP_REQUESTED, reconcileMemberships);
+    socket.on(EVENTS.RELATIONSHIP_ACTIVATED, reconcileMemberships);
+    socket.on(EVENTS.RELATIONSHIP_REVOKED, reconcileMemberships);
+    return () => {
+      socket.off(EVENTS.RELATIONSHIP_REQUESTED, reconcileMemberships);
+      socket.off(EVENTS.RELATIONSHIP_ACTIVATED, reconcileMemberships);
+      socket.off(EVENTS.RELATIONSHIP_REVOKED, reconcileMemberships);
+    };
+  }, [queryClient, socket]);
 
   // Queries
   const spacesQuery = useQuery({
@@ -21,6 +41,12 @@ export function useSpaces(spaceId?: string) {
   const membersQuery = useQuery({
     queryKey: ['spaces', spaceId, 'members'],
     queryFn: () => spacesApi.listMembers(spaceId!),
+    enabled: !!spaceId,
+  });
+
+  const rolesQuery = useQuery({
+    queryKey: ['spaces', spaceId, 'roles'],
+    queryFn: () => rolesApi.list('space', spaceId!),
     enabled: !!spaceId,
   });
 
@@ -183,6 +209,25 @@ export function useSpaces(spaceId?: string) {
     },
   });
 
+  const assignMemberRolesMutation = useMutation({
+    mutationFn: ({
+      relationshipId,
+      roleIds,
+    }: {
+      relationshipId: string;
+      roleIds: string[];
+    }) => membershipsApi.assignRoles(relationshipId, roleIds),
+    onSuccess: () => {
+      if (spaceId) {
+        queryClient.invalidateQueries({ queryKey: ['spaces', spaceId, 'members'] });
+      }
+      toast.success('Member role updated');
+    },
+    onError: (error) => {
+      toast.error(extractApiError(error, 'Failed to update member role'));
+    },
+  });
+
   return {
     // Data
     spaces: spacesQuery.data || [],
@@ -191,6 +236,7 @@ export function useSpaces(spaceId?: string) {
     isLoadingSpace: detailQuery.isLoading,
     members: membersQuery.data || [],
     isLoadingMembers: membersQuery.isLoading,
+    roles: rolesQuery.data || [],
     channels: channelsQuery.data || [],
     isLoadingChannels: channelsQuery.isLoading,
     invites: invitesQuery.data || [],
@@ -219,5 +265,7 @@ export function useSpaces(spaceId?: string) {
     isRejectingRequest: rejectRequestMutation.isPending,
     joinChannel: joinChannelMutation.mutateAsync,
     isJoiningChannel: joinChannelMutation.isPending,
+    assignMemberRoles: assignMemberRolesMutation.mutateAsync,
+    isAssigningMemberRoles: assignMemberRolesMutation.isPending,
   };
 }

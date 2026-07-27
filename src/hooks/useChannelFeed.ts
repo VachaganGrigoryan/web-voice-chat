@@ -7,7 +7,7 @@ const PAGE_SIZE = 30;
 export function useChannelFeed(channelId: string) {
   return useInfiniteQuery({
     queryKey: ['channel-feed', channelId],
-    queryFn: ({ pageParam }) => feedsApi.getChannelPosts(channelId, PAGE_SIZE, pageParam),
+    queryFn: ({ pageParam }) => feedsApi.getChannel(channelId, PAGE_SIZE, pageParam),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (lastPage) => lastPage.meta.next_cursor ?? undefined,
     enabled: Boolean(channelId),

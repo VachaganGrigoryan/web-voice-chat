@@ -6,6 +6,10 @@ import {
   CallDoc,
   CallHistoryItem,
   CallSession,
+  Channel,
+  CreateChannelRequest,
+  UpdateChannelRequest,
+  MessageContainerRef,
   ClearConversationResponse,
   BlockedUserListItem,
   BlockView,
@@ -49,6 +53,7 @@ import {
   RedeemInviteResult,
   ReplyMode,
   RegenerateCodeResponse,
+  Role,
   SavedMessageView,
   SelectedUserProfile,
   SendRichContentRequest,
@@ -173,6 +178,19 @@ export const usersApi = {
 };
 
 export const feedsApi = {
+  getHome: async (limit = 20, cursor?: string) => {
+    const response = await apiClient.get<PaginatedResponse<FeedPostView>>('/feeds', {
+      params: { limit, cursor },
+    });
+    return response.data;
+  },
+  getChannel: async (channelId: string, limit = 20, cursor?: string) => {
+    const response = await apiClient.get<PaginatedResponse<FeedPostView>>(
+      `/feeds/channels/${channelId}`,
+      { params: { limit, cursor } }
+    );
+    return response.data;
+  },
   getChannelPosts: async (channelId: string, limit = 20, cursor?: string) => {
     const response = await apiClient.get<PaginatedResponse<FeedPostView>>(
       `/feeds/channels/${channelId}/posts`,
@@ -186,9 +204,9 @@ export const feedsApi = {
     );
     return response.data;
   },
-  getUserFeed: async (userId: string, limit = 20, cursor?: string) => {
+  getUserFeed: async (username: string, limit = 20, cursor?: string) => {
     const response = await apiClient.get<PaginatedResponse<FeedPostView>>(
-      `/feeds/users/${userId}`,
+      `/feeds/users/${encodeURIComponent(username)}`,
       { params: { limit, cursor } }
     );
     return response.data;
@@ -236,8 +254,7 @@ export const notificationsApi = {
 };
 
 export const messagesApi = {
-  uploadMedia: async (data: {
-    conversation_id: string;
+  uploadMedia: async (data: MessageContainerRef & {
     file: File;
     text?: string;
     duration_ms?: number;
@@ -255,6 +272,10 @@ export const messagesApi = {
         media_kind?: never;
       }
   )) => {
+    if (data.container_type !== 'conversation') {
+      throw new Error('Channel media uploads are not supported by the current API contract');
+    }
+
     const formData = new FormData();
     formData.append('type', data.type);
     formData.append('file', data.file);
@@ -267,7 +288,7 @@ export const messagesApi = {
     if (data.reply_to_message_id) formData.append('reply_to_message_id', data.reply_to_message_id);
 
     const response = await apiClient.post<SuccessResponse<MessageDoc>>(
-      `/conversations/${data.conversation_id}/messages/media`,
+      `/conversations/${data.container_id}/messages/media`,
       formData,
       {
         headers: { 'Content-Type': 'multipart/form-data' },
@@ -277,14 +298,17 @@ export const messagesApi = {
     );
     return extractResponseData(response.data);
   },
-  sendText: async (data: {
-    conversation_id: string;
+  sendText: async (data: MessageContainerRef & {
     text: string;
     reply_mode?: ReplyMode | null;
     reply_to_message_id?: string;
   }) => {
+    const path =
+      data.container_type === 'channel'
+        ? `/channels/${data.container_id}/messages`
+        : `/conversations/${data.container_id}/messages/text`;
     const response = await apiClient.post<SuccessResponse<MessageDoc>>(
-      `/conversations/${data.conversation_id}/messages/text`,
+      path,
       {
         text: data.text,
         reply_mode: data.reply_mode ?? null,
@@ -295,7 +319,7 @@ export const messagesApi = {
   },
   sendRichContent: async (data: SendRichContentRequest) => {
     const response = await apiClient.post<SuccessResponse<MessageDoc>>(
-      `/conversations/${data.conversation_id}/messages/content`,
+      `/conversations/${data.container_id}/messages/content`,
       {
         type: data.type,
         text: data.text ?? null,
@@ -308,12 +332,29 @@ export const messagesApi = {
     );
     return extractResponseData(response.data);
   },
-  getHistory: async (conversationId: string, limit = 20, cursor?: string) => {
+  getHistory: async (
+    container: MessageContainerRef,
+    limit = 20,
+    cursor?: string
+  ) => {
+    const path =
+      container.container_type === 'channel'
+        ? `/channels/${container.container_id}/messages`
+        : `/conversations/${container.container_id}/messages`;
     const response = await apiClient.get<PaginatedResponse<MessageDoc>>(
-      `/conversations/${conversationId}/messages`,
+      path,
       { params: { limit, cursor } }
     );
     return response.data;
+  },
+  markContainerRead: (container: MessageContainerRef, messageId: string) => {
+    const path =
+      container.container_type === 'channel'
+        ? `/channels/${container.container_id}/messages/${messageId}/read`
+        : `/conversations/${container.container_id}/messages/${messageId}/read`;
+    return apiClient
+      .post<SuccessResponse<MessageDoc>>(path)
+      .then((res) => extractResponseData(res.data));
   },
   getMessage: (conversationId: string, messageId: string) =>
     apiClient
@@ -358,13 +399,23 @@ export const messagesApi = {
         `/conversations/${conversationId}/messages/${messageId}/thread-summary`
       )
       .then((res) => extractResponseData(res.data)),
-  toggleReaction: (conversationId: string, messageId: string, emoji: string) =>
-    apiClient
+  toggleReaction: (
+    container: MessageContainerRef,
+    messageId: string,
+    emoji: string
+  ) => {
+    if (container.container_type !== 'conversation') {
+      return Promise.reject(
+        new Error('Channel reactions are not supported by the current API contract')
+      );
+    }
+    return apiClient
       .post<SuccessResponse<MessageDoc>>(
-        `/conversations/${conversationId}/messages/${messageId}/reactions`,
+        `/conversations/${container.container_id}/messages/${messageId}/reactions`,
         { emoji }
       )
-      .then((res) => extractResponseData(res.data)),
+      .then((res) => extractResponseData(res.data));
+  },
   removeOwnReaction: (conversationId: string, messageId: string, emoji: string) =>
     apiClient
       .delete<SuccessResponse<MessageDoc>>(
@@ -558,20 +609,6 @@ export const conversationsApi = {
         ...updates,
       })
       .then((res) => extractResponseData(res.data)),
-  createChannel: (data: {
-    title: string;
-    description?: string;
-    visibility?: 'private' | 'public';
-    posting_policy?: 'everyone' | 'admins';
-    read_policy?: 'members' | 'contacts' | 'public';
-    slug?: string;
-    participant_ids?: string[];
-    space_id?: string;
-    space_visibility?: 'space_public' | 'invite_only';
-  }) =>
-    apiClient
-      .post<SuccessResponse<Conversation>>('/conversations/channels', data)
-      .then((res) => normalizeConversation(extractResponseData(res.data))),
   getPublicBySlug: (slug: string) =>
     apiClient
       .get<SuccessResponse<Conversation>>(`/conversations/public/${encodeURIComponent(slug)}`)
@@ -614,14 +651,14 @@ export const conversationsApi = {
       .then((res) => extractResponseData(res.data)),
   approveJoinRequest: (conversationId: string, requestId: string) =>
     apiClient
-      .post<SuccessResponse<ConversationJoinRequest>>(
-        `/conversations/${conversationId}/join-requests/${requestId}/approve`
+      .post<SuccessResponse<Relationship>>(
+        `/conversations/${conversationId}/members/${requestId}/accept`
       )
       .then((res) => extractResponseData(res.data)),
   rejectJoinRequest: (conversationId: string, requestId: string) =>
     apiClient
-      .post<SuccessResponse<ConversationJoinRequest>>(
-        `/conversations/${conversationId}/join-requests/${requestId}/reject`
+      .post<SuccessResponse<Relationship>>(
+        `/conversations/${conversationId}/members/${requestId}/decline`
       )
       .then((res) => extractResponseData(res.data)),
   updateInboxState: (
@@ -857,6 +894,134 @@ export const connectionsApi = {
       .then((res) => extractResponseData(res.data)),
 };
 
+export const followsApi = {
+  followUser: (userId: string) =>
+    apiClient
+      .post<SuccessResponse<Relationship>>(`/users/${userId}/follow`)
+      .then((res) => extractResponseData(res.data)),
+  unfollowUser: (userId: string) =>
+    apiClient
+      .delete<SuccessResponse<boolean>>(`/users/${userId}/follow`)
+      .then((res) => extractResponseData(res.data)),
+  followChannel: (channelId: string) =>
+    apiClient
+      .post<SuccessResponse<Relationship>>(`/channels/${channelId}/follow`)
+      .then((res) => extractResponseData(res.data)),
+  unfollowChannel: (channelId: string) =>
+    apiClient
+      .delete<SuccessResponse<boolean>>(`/channels/${channelId}/follow`)
+      .then((res) => extractResponseData(res.data)),
+  listFollowers: (userId: string, limit = 100) =>
+    apiClient
+      .get<SuccessResponse<Relationship[]>>(`/users/${userId}/followers`, {
+        params: { limit },
+      })
+      .then((res) => extractResponseData(res.data)),
+  listFollowing: (userId: string, limit = 100) =>
+    apiClient
+      .get<SuccessResponse<Relationship[]>>(`/users/${userId}/following`, {
+        params: { limit },
+      })
+      .then((res) => extractResponseData(res.data)),
+};
+
+export const channelsApi = {
+  create: (data: CreateChannelRequest) =>
+    apiClient
+      .post<SuccessResponse<Channel>>('/channels', data)
+      .then((res) => extractResponseData(res.data)),
+  get: (channelId: string) =>
+    apiClient
+      .get<SuccessResponse<Channel>>(`/channels/${channelId}`)
+      .then((res) => extractResponseData(res.data)),
+  update: (channelId: string, data: UpdateChannelRequest) =>
+    apiClient
+      .patch<SuccessResponse<Channel>>(`/channels/${channelId}`, data)
+      .then((res) => extractResponseData(res.data)),
+  listMessages: (channelId: string, limit = 20, cursor?: string) =>
+    messagesApi.getHistory(
+      { container_type: 'channel', container_id: channelId },
+      limit,
+      cursor
+    ),
+  createMessage: (
+    channelId: string,
+    data: {
+      text: string;
+      reply_mode?: ReplyMode | null;
+      reply_to_message_id?: string | null;
+    }
+  ) =>
+    messagesApi.sendText({
+      container_type: 'channel',
+      container_id: channelId,
+      text: data.text,
+      reply_mode: data.reply_mode,
+      reply_to_message_id: data.reply_to_message_id ?? undefined,
+    }),
+  markMessageRead: (channelId: string, messageId: string) =>
+    messagesApi.markContainerRead(
+      { container_type: 'channel', container_id: channelId },
+      messageId
+    ),
+};
+
+type MembershipTargetType = 'space' | 'conversation' | 'channel';
+
+const membershipPath = (
+  targetType: MembershipTargetType,
+  targetId: string,
+  suffix: string
+) => `/${targetType === 'space' ? 'spaces' : `${targetType}s`}/${targetId}/${suffix}`;
+
+export const membershipsApi = {
+  join: (targetType: Exclude<MembershipTargetType, 'space'>, targetId: string) =>
+    apiClient
+      .post<SuccessResponse<Relationship>>(membershipPath(targetType, targetId, 'join'))
+      .then((res) => extractResponseData(res.data)),
+  invite: (targetType: MembershipTargetType, targetId: string, userId: string) =>
+    apiClient
+      .post<SuccessResponse<Relationship>>(
+        membershipPath(targetType, targetId, `invite/${userId}`)
+      )
+      .then((res) => extractResponseData(res.data)),
+  accept: (
+    targetType: MembershipTargetType,
+    targetId: string,
+    relationshipId: string
+  ) =>
+    apiClient
+      .post<SuccessResponse<Relationship>>(
+        membershipPath(targetType, targetId, `members/${relationshipId}/accept`)
+      )
+      .then((res) => extractResponseData(res.data)),
+  decline: (
+    targetType: MembershipTargetType,
+    targetId: string,
+    relationshipId: string
+  ) =>
+    apiClient
+      .post<SuccessResponse<Relationship>>(
+        membershipPath(targetType, targetId, `members/${relationshipId}/decline`)
+      )
+      .then((res) => extractResponseData(res.data)),
+  assignRoles: (relationshipId: string, roleIds: string[]) =>
+    apiClient
+      .put<SuccessResponse<Relationship>>(`/relationships/${relationshipId}/roles`, {
+        role_ids: roleIds,
+      })
+      .then((res) => extractResponseData(res.data)),
+};
+
+export const rolesApi = {
+  list: (scopeType: MembershipTargetType, resourceId: string) =>
+    apiClient
+      .get<SuccessResponse<Role[]>>(
+        `/${scopeType === 'space' ? 'spaces' : `${scopeType}s`}/${resourceId}/roles`
+      )
+      .then((res) => extractResponseData(res.data)),
+};
+
 export const blocksApi = {
   block: (userId: string) =>
     apiClient
@@ -962,9 +1127,7 @@ export const spacesApi = {
       .post<SuccessResponse<SpaceInviteLinkView>>(`/spaces/${spaceId}/invites`, data)
       .then((res) => extractResponseData(res.data)),
   inviteUser: (spaceId: string, userId: string) =>
-    apiClient
-      .post<SuccessResponse<SpaceInviteLinkView>>(`/spaces/${spaceId}/invites/user`, { user_id: userId })
-      .then((res) => extractResponseData(res.data)),
+    membershipsApi.invite('space', spaceId, userId),
   listInvites: (spaceId: string) =>
     apiClient
       .get<SuccessResponse<SpaceInviteLinkView[]>>(`/spaces/${spaceId}/invites`)
@@ -986,13 +1149,9 @@ export const spacesApi = {
       .get<SuccessResponse<SpaceJoinRequestView[]>>(`/spaces/${spaceId}/join-requests`)
       .then((res) => extractResponseData(res.data)),
   approveJoinRequest: (spaceId: string, requestId: string) =>
-    apiClient
-      .post<SuccessResponse<SpaceJoinRequestView>>(`/spaces/${spaceId}/join-requests/${requestId}/approve`)
-      .then((res) => extractResponseData(res.data)),
+    membershipsApi.accept('space', spaceId, requestId),
   rejectJoinRequest: (spaceId: string, requestId: string) =>
-    apiClient
-      .post<SuccessResponse<SpaceJoinRequestView>>(`/spaces/${spaceId}/join-requests/${requestId}/reject`)
-      .then((res) => extractResponseData(res.data)),
+    membershipsApi.decline('space', spaceId, requestId),
   listMembers: (spaceId: string) =>
     apiClient
       .get<SuccessResponse<SpaceMemberView[]>>(`/spaces/${spaceId}/members`)
@@ -1001,8 +1160,6 @@ export const spacesApi = {
     apiClient
       .get<SuccessResponse<SpaceChannelView[]>>(`/spaces/${spaceId}/channels`)
       .then((res) => extractResponseData(res.data)),
-  joinChannel: (spaceId: string, conversationId: string) =>
-    apiClient
-      .post(`/spaces/${spaceId}/channels/${conversationId}/join`)
-      .then(() => undefined),
+  joinChannel: (_spaceId: string, channelId: string) =>
+    membershipsApi.join('channel', channelId),
 };

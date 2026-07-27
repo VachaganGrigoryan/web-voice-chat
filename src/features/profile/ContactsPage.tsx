@@ -20,7 +20,7 @@ import { useIsMobile } from '@/hooks/useIsMobile';
 import { useAppNavigation } from '@/navigation/appNavigation';
 import { useAuthStore } from '@/store/authStore';
 import { ROLE_ADMIN } from '@/api/types';
-import { conversationsApi, spacesApi } from '@/api/endpoints';
+import { conversationsApi, membershipsApi, spacesApi } from '@/api/endpoints';
 import { extractApiError } from '@/api/errors';
 import { startCall } from '@/features/calls/callController';
 import { ConnectionListItem } from '@/api/types';
@@ -95,7 +95,7 @@ function InviteToConversationDialog({
 
   const addMemberMutation = useMutation({
     mutationFn: (conversationId: string) =>
-      conversationsApi.addMembers(conversationId, [peer.id]),
+      membershipsApi.invite('conversation', conversationId, peer.id),
     onSuccess: () => {
       toast.success(`Invited ${contactName(peer)}`);
       onOpenChange(false);
@@ -107,7 +107,7 @@ function InviteToConversationDialog({
 
   const invitable = (conversationsQuery.data ?? []).filter(
     (conversation) =>
-      (conversation.type === 'group' || conversation.type === 'channel') &&
+      conversation.type === 'group' &&
       !conversation.participant_ids.includes(peer.id)
   );
 
@@ -115,7 +115,7 @@ function InviteToConversationDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Invite to Group / Channel</DialogTitle>
+          <DialogTitle>Invite to group</DialogTitle>
           <DialogDescription>
             Add {contactName(peer)} to one of your groups or channels.
           </DialogDescription>

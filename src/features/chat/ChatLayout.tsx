@@ -401,10 +401,7 @@ export default function ChatLayout() {
     : null;
 
   const sidebarContacts = useMemo(
-    () =>
-      contacts.filter(
-        (conversation) => !conversation.archived && conversation.type !== 'thread'
-      ),
+    () => contacts.filter((conversation) => !conversation.archived),
     [contacts]
   );
 
@@ -494,9 +491,7 @@ export default function ChatLayout() {
   // DMs allow either participant to manage message pins; larger conversations
   // follow the owner/admin pin right.
   const isPinCapableConversation =
-    selectedConversation?.type === 'group' ||
-    selectedConversation?.type === 'channel' ||
-    selectedConversation?.type === 'thread';
+    selectedConversation?.type === 'group';
   const { data: pinMembers } = useGroupMembers(
     isPinCapableConversation ? selectedConversation?.id ?? null : null
   );
@@ -1075,14 +1070,11 @@ export default function ChatLayout() {
       <CreateChannelDialog
         open={isChannelDialogOpen}
         onOpenChange={setIsChannelDialogOpen}
-        spaceId={selectedSpaceId}
-        onCreated={(conversationId) => {
-          navigate(APP_ROUTES.chatConversation(conversationId));
-          resetConversationUnreadCount(conversationId);
+        onCreated={(channelId) => {
+          navigate(APP_ROUTES.channel(channelId));
         }}
       />
-      {selectedConversation &&
-      (selectedConversation.type === 'group' || selectedConversation.type === 'channel') ? (
+      {selectedConversation?.type === 'group' ? (
         <InviteToConversationDialog
           open={isInviteDialogOpen}
           onOpenChange={setIsInviteDialogOpen}
@@ -1101,6 +1093,7 @@ export default function ChatLayout() {
         onOpenPings={() => navigate(APP_ROUTES.pingsTab('incoming'))}
         onOpenContacts={() => navigate(APP_ROUTES.contacts)}
         onOpenSpaces={() => navigate(APP_ROUTES.spaces)}
+        onOpenFeeds={() => navigate(APP_ROUTES.feeds)}
         onNewGroup={() => setIsGroupDialogOpen(true)}
         onNewChannel={() => setIsChannelDialogOpen(true)}
         onOpenProfile={() => navigate(APP_ROUTES.me)}
@@ -1131,6 +1124,7 @@ export default function ChatLayout() {
         onOpenPings={() => navigate(APP_ROUTES.pingsTab('incoming'))}
         onOpenContacts={() => navigate(APP_ROUTES.contacts)}
         onOpenSpaces={() => navigate(APP_ROUTES.spaces)}
+        onOpenFeeds={() => navigate(APP_ROUTES.feeds)}
         onLogout={handleLogout}
         onNewGroup={() => setIsGroupDialogOpen(true)}
         onNewChannel={() => setIsChannelDialogOpen(true)}
@@ -1169,10 +1163,7 @@ export default function ChatLayout() {
               presenceState={selectedPresenceState}
               isGhost={isSelectedConversationGhost}
               conversationType={selectedConversation?.type}
-              showInvite={
-                selectedConversation?.type === 'group' ||
-                selectedConversation?.type === 'channel'
-              }
+              showInvite={selectedConversation?.type === 'group'}
               onOpenInvite={() => setIsInviteDialogOpen(true)}
               notificationLevel={selectedConversation?.notification_level}
               mutedUntil={selectedConversation?.muted_until}
@@ -1370,8 +1361,10 @@ export default function ChatLayout() {
                         displayedThreadRootMessage?.id === messageId
                           ? displayedThreadRootMessage
                           : threadReplyMessages.find((message) => message.id === messageId);
+                      if (!targetMessage) return;
                       await toggleReaction({
-                        conversationId: targetMessage?.chatId,
+                        container_type: targetMessage.raw.container_type,
+                        container_id: targetMessage.raw.container_id,
                         messageId,
                         emoji,
                       });

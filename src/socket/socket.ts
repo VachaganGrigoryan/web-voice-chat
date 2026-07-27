@@ -8,6 +8,7 @@ import { useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   MessageDeletedEvent,
+  MessageContainerRef,
   MessageDoc,
   MessageReactionsUpdate,
   PollView,
@@ -18,10 +19,11 @@ import {
 import { resolveMessageContent } from '@/api/messageContent';
 import { socketClient } from './socketClient';
 import { useAuthStore } from '@/store/authStore';
+import { messageQueryKey, threadMessageQueryKey } from '@/api/queryKeys';
 
 export type MessageStatusScope = 'main' | 'thread';
 
-interface MessageStatusPayloadBase {
+interface MessageStatusPayloadBase extends MessageContainerRef {
   status?: 'sent' | 'delivered' | 'read';
   receipt_summary?: MessageDoc['receipt_summary'];
   conversation_id?: string;
@@ -259,7 +261,7 @@ const removeMessageAcrossCacheGroup = (
 const findCachedMessage = (
   queryClient: ReturnType<typeof useQueryClient>,
   messageId: string,
-  conversationId?: string
+  container?: Partial<MessageContainerRef>
 ) => {
   const queryGroups = [
     ...queryClient.getQueriesData<any>({ queryKey: ['messages'] }),
@@ -274,7 +276,10 @@ const findCachedMessage = (
           return false;
         }
 
-        return conversationId ? message.conversation_id === conversationId : true;
+        return container?.container_type && container.container_id
+          ? message.container_type === container.container_type &&
+              message.container_id === container.container_id
+          : true;
       });
 
     if (matchedMessage) {
@@ -384,6 +389,8 @@ const updateConversationPreview = (
   queryClient: ReturnType<typeof useQueryClient>,
   message: MessageDoc
 ) => {
+  if (message.container_type !== 'conversation') return;
+
   queryClient.setQueryData(['conversations'], (old: any) => {
     if (!old?.pages) return old;
 
@@ -423,7 +430,12 @@ const rebuildConversationPreview = (
         }
 
         changed = true;
-        const messageHistory = queryClient.getQueryData<any>(['messages', conversationId]);
+        const messageHistory = queryClient.getQueryData<any>(
+          messageQueryKey({
+            container_type: 'conversation',
+            container_id: conversationId,
+          })
+        );
         const latestVisibleMessage =
           messageHistory?.pages
             ?.flatMap((historyPage: any) => historyPage.data || [])
@@ -490,7 +502,10 @@ const updateThreadSummaryCaches = (
   updateMessageAcrossCacheGroup(
     queryClient,
     'messages',
-    (message) => message.id === summary.thread_root_id,
+    (message) =>
+      message.id === summary.thread_root_id &&
+      message.container_type === summary.container_type &&
+      message.container_id === summary.container_id,
     (message) => ({
       ...message,
       thread_reply_count: summary.thread_reply_count,
@@ -499,21 +514,33 @@ const updateThreadSummaryCaches = (
     })
   );
 
-  queryClient.setQueryData(['threadSummary', summary.thread_root_id], {
-    success: true,
-    data: summary,
-  });
+  queryClient.setQueryData(
+    [
+      'threadSummary',
+      summary.container_type,
+      summary.container_id,
+      summary.thread_root_id,
+    ],
+    {
+      success: true,
+      data: summary,
+    }
+  );
 };
 
 const incrementThreadSummaryCache = (
   queryClient: ReturnType<typeof useQueryClient>,
+  container: MessageContainerRef,
   threadRootId: string,
   replyCreatedAt: string
 ) => {
   updateMessageAcrossCacheGroup(
     queryClient,
     'messages',
-    (message) => message.id === threadRootId,
+    (message) =>
+      message.id === threadRootId &&
+      message.container_type === container.container_type &&
+      message.container_id === container.container_id,
     (message) => ({
       ...message,
       is_thread_root: true,
@@ -528,12 +555,17 @@ const incrementThreadSummaryCache = (
 const updateThreadUnreadCount = (
   queryClient: ReturnType<typeof useQueryClient>,
   threadRootId: string,
-  updater: (current: number) => number
+  updater: (current: number) => number,
+  container?: MessageContainerRef
 ) => {
   updateMessageAcrossCacheGroup(
     queryClient,
     'messages',
-    (message) => message.id === threadRootId,
+    (message) =>
+      message.id === threadRootId &&
+      (!container ||
+        (message.container_type === container.container_type &&
+          message.container_id === container.container_id)),
     (message) => ({
       ...message,
       thread_unread_count: Math.max(0, updater(message.thread_unread_count ?? 0)),
@@ -565,6 +597,9 @@ export const applyMessageStatusUpdateToCaches = (
 
   const messageIdSet = new Set(messageIds);
   const updatedAt = payload.updated_at || new Date().toISOString();
+  const matchesContainer = (message: MessageDoc) =>
+    message.container_type === payload.container_type &&
+    message.container_id === payload.container_id;
 
   const updateStatus = (message: MessageDoc): MessageDoc => {
     const current = message.receipt_summary;
@@ -591,19 +626,27 @@ export const applyMessageStatusUpdateToCaches = (
   updateMessageAcrossCacheGroup(
     queryClient,
     'messages',
-    (message) => messageIdSet.has(message.id),
+    (message) => messageIdSet.has(message.id) && matchesContainer(message),
     updateStatus
   );
 
   updateMessageAcrossCacheGroup(
     queryClient,
     'threadMessages',
-    (message) => messageIdSet.has(message.id),
+    (message) => messageIdSet.has(message.id) && matchesContainer(message),
     updateStatus
   );
 
   if (payload.status === 'read' && payload.scope === 'thread' && payload.thread_root_id) {
-    updateThreadUnreadCount(queryClient, payload.thread_root_id, () => 0);
+    updateThreadUnreadCount(
+      queryClient,
+      payload.thread_root_id,
+      () => 0,
+      {
+        container_type: payload.container_type,
+        container_id: payload.container_id,
+      }
+    );
   }
 
   return true;
@@ -616,7 +659,10 @@ const updateReactionCaches = (
   updateMessageAcrossCacheGroup(
     queryClient,
     'messages',
-    (message) => message.id === payload.message_id,
+    (message) =>
+      message.id === payload.message_id &&
+      message.container_type === payload.container_type &&
+      message.container_id === payload.container_id,
     (message) => ({
       ...message,
       reactions: payload.reactions,
@@ -627,7 +673,10 @@ const updateReactionCaches = (
   updateMessageAcrossCacheGroup(
     queryClient,
     'threadMessages',
-    (message) => message.id === payload.message_id,
+    (message) =>
+      message.id === payload.message_id &&
+      message.container_type === payload.container_type &&
+      message.container_id === payload.container_id,
     (message) => ({
       ...message,
       reactions: payload.reactions,
@@ -661,18 +710,29 @@ const updateMessageDocumentCaches = (
   updateMessageAcrossCacheGroup(
     queryClient,
     'messages',
-    (current) => current.id === message.id,
+    (current) =>
+      current.id === message.id &&
+      current.container_type === message.container_type &&
+      current.container_id === message.container_id,
     () => message
   );
 
   updateMessageAcrossCacheGroup(
     queryClient,
     'threadMessages',
-    (current) => current.id === message.id,
+    (current) =>
+      current.id === message.id &&
+      current.container_type === message.container_type &&
+      current.container_id === message.container_id,
     () => message
   );
 
   updateConversationPreview(queryClient, message);
+  if (message.container_type === 'channel') {
+    queryClient.invalidateQueries({ queryKey: ['feeds'] });
+    queryClient.invalidateQueries({ queryKey: ['channel-feed', message.container_id] });
+    queryClient.invalidateQueries({ queryKey: ['post-comments', message.container_id] });
+  }
 };
 
 export const applyMessageDeletedEventToCaches = (
@@ -680,17 +740,23 @@ export const applyMessageDeletedEventToCaches = (
   payload: MessageDeletedEvent,
   currentUserId?: string | null
 ) => {
-  const cachedMessage = findCachedMessage(queryClient, payload.message_id, payload.conversation_id);
+  const cachedMessage = findCachedMessage(queryClient, payload.message_id, {
+    container_type: payload.container_type,
+    container_id: payload.container_id,
+  });
   const matcher = (message: MessageDoc) =>
     message.id === payload.message_id &&
-    (!payload.conversation_id || message.conversation_id === payload.conversation_id);
+    message.container_type === payload.container_type &&
+    message.container_id === payload.container_id;
   const isActorCurrentUser = !!currentUserId && payload.actor_user_id === currentUserId;
   const isCurrentUsersMessage = !!currentUserId && cachedMessage?.sender_id === currentUserId;
 
   if (payload.hidden_for_me || isActorCurrentUser) {
     removeMessageAcrossCacheGroup(queryClient, 'messages', matcher);
     removeMessageAcrossCacheGroup(queryClient, 'threadMessages', matcher);
-    rebuildConversationPreview(queryClient, payload.conversation_id);
+    if (payload.container_type === 'conversation') {
+      rebuildConversationPreview(queryClient, payload.container_id);
+    }
     return true;
   }
 
@@ -722,7 +788,15 @@ export const applyMessageDeletedEventToCaches = (
   if (cachedMessage) {
     updateConversationPreview(queryClient, applyDeleteMutation(cachedMessage));
   } else {
-    rebuildConversationPreview(queryClient, payload.conversation_id);
+    if (payload.container_type === 'conversation') {
+      rebuildConversationPreview(queryClient, payload.container_id);
+    }
+  }
+
+  if (payload.container_type === 'channel') {
+    queryClient.invalidateQueries({ queryKey: ['feeds'] });
+    queryClient.invalidateQueries({ queryKey: ['channel-feed', payload.container_id] });
+    queryClient.invalidateQueries({ queryKey: ['post-comments', payload.container_id] });
   }
 
   return true;
@@ -741,7 +815,7 @@ const isKnownThreadConversationId = (
   }
 
   const openThreadQueries = queryClient.getQueriesData<any>({ queryKey: ['threadMessages'] });
-  if (openThreadQueries.some(([key]) => Array.isArray(key) && key[1] === conversationId)) {
+  if (openThreadQueries.some(([key]) => Array.isArray(key) && key[2] === conversationId)) {
     return true;
   }
 
@@ -757,7 +831,7 @@ const routeIncomingThreadConversationMessage = (
   queryClient: ReturnType<typeof useQueryClient>,
   message: MessageDoc
 ) => {
-  queryClient.setQueryData(['threadMessages', message.conversation_id], (old: any) =>
+  queryClient.setQueryData(threadMessageQueryKey(message, message.container_id), (old: any) =>
     prependMessageToMessageCache(old, message)
   );
   updateConversationActivity(queryClient, message.conversation_id, message.created_at);
@@ -775,15 +849,25 @@ const routeIncomingThreadMessage = (
     return;
   }
 
-  queryClient.setQueryData(['threadMessages', message.thread_root_id], (old: any) =>
+  queryClient.setQueryData(threadMessageQueryKey(message, message.thread_root_id), (old: any) =>
     prependMessageToMessageCache(old, message)
   );
 
-  incrementThreadSummaryCache(queryClient, message.thread_root_id, message.created_at);
+  incrementThreadSummaryCache(
+    queryClient,
+    message,
+    message.thread_root_id,
+    message.created_at
+  );
   if (openThreadRootId === message.thread_root_id) {
-    updateThreadUnreadCount(queryClient, message.thread_root_id, () => 0);
+    updateThreadUnreadCount(queryClient, message.thread_root_id, () => 0, message);
   } else if (message.sender_id !== currentUserId) {
-    updateThreadUnreadCount(queryClient, message.thread_root_id, (current) => current + 1);
+    updateThreadUnreadCount(
+      queryClient,
+      message.thread_root_id,
+      (current) => current + 1,
+      message
+    );
   }
   updateConversationActivity(
     queryClient,
@@ -800,13 +884,20 @@ const routeIncomingMainChatMessage = (
   selectedUser?: string | null
 ) => {
   queryClient.setQueryData(
-    ['messages', message.conversation_id],
+    messageQueryKey(message),
     (old: any) => prependMessageToMessageCache(old, message)
   );
 
+  if (message.container_type === 'channel') {
+    queryClient.invalidateQueries({ queryKey: ['feeds'] });
+    queryClient.invalidateQueries({ queryKey: ['channel-feed', message.container_id] });
+    queryClient.invalidateQueries({ queryKey: ['post-comments', message.container_id] });
+    return;
+  }
+
   updateConversationLastMessage(
     queryClient,
-    message.conversation_id,
+    message.container_id,
     message,
     currentUserId,
     selectedUser
@@ -821,6 +912,8 @@ const extractThreadReplyEvent = (
       message: payload.message,
       summary: {
         thread_root_id: payload.thread_root_id,
+        container_type: payload.message.container_type,
+        container_id: payload.message.container_id,
         conversation_id: payload.conversation_id,
         is_thread_root: payload.is_thread_root,
         thread_reply_count: payload.thread_reply_count,
@@ -834,6 +927,8 @@ const extractThreadReplyEvent = (
     summary: payload.thread_root_id
       ? {
           thread_root_id: payload.thread_root_id,
+          container_type: payload.container_type,
+          container_id: payload.container_id,
           conversation_id: payload.conversation_id,
           is_thread_root: payload.is_thread_root,
           thread_reply_count: payload.thread_reply_count,
@@ -886,17 +981,29 @@ export const useRealtimeMessages = (
 
   useEffect(() => {
     if (!openThreadRootId) return;
-    updateThreadUnreadCount(queryClient, openThreadRootId, () => 0);
-  }, [openThreadRootId, queryClient]);
+    updateThreadUnreadCount(
+      queryClient,
+      openThreadRootId,
+      () => 0,
+      selectedUser
+        ? { container_type: 'conversation', container_id: selectedUser }
+        : undefined
+    );
+  }, [openThreadRootId, queryClient, selectedUser]);
 
   useEffect(() => {
     if (!socket) return;
 
     const handleReceiveMessage = (message: MessageDoc) => {
+      if (message.container_type === 'channel') {
+        routeIncomingMainChatMessage(queryClient, message, currentUserId, selectedUser);
+        return;
+      }
+
       if (isThreadMessage(message)) {
         // Check cache before routing — reload-safe dedup for MESSAGE_DELIVERED.
         // prependMessageToMessageCache handles duplicate cache insertions independently.
-        const alreadyCached = !!findCachedMessage(queryClient, message.id);
+        const alreadyCached = !!findCachedMessage(queryClient, message.id, message);
         routeIncomingThreadMessage(
           queryClient,
           message,
@@ -1017,7 +1124,22 @@ export const useRealtimeMessages = (
       const { message, summary } = extractThreadReplyEvent(payload);
       // Use cache presence for reload-safe dedup — avoids double delivery
       // acknowledgment when both RECEIVE_MESSAGE and THREAD_REPLY_CREATED fire.
-      const alreadyCached = !!findCachedMessage(queryClient, message.id);
+      const alreadyCached = !!findCachedMessage(queryClient, message.id, message);
+
+      if (message.container_type === 'channel') {
+        if (!alreadyCached) {
+          routeIncomingMainChatMessage(
+            queryClient,
+            message,
+            currentUserId,
+            selectedUser
+          );
+        }
+        if (summary) {
+          updateThreadSummaryCaches(queryClient, summary);
+        }
+        return;
+      }
 
       if (!alreadyCached && isThreadMessage(message)) {
         routeIncomingThreadMessage(
@@ -1063,8 +1185,15 @@ export const useRealtimeMessages = (
     const handleConversationHistoryCleared = (payload: { conversation_id: string }) => {
       const conversationId = payload?.conversation_id;
       if (!conversationId) return;
-      queryClient.invalidateQueries({ queryKey: ['messages', conversationId] });
-      queryClient.invalidateQueries({ queryKey: ['threadMessages', conversationId] });
+      queryClient.invalidateQueries({
+        queryKey: messageQueryKey({
+          container_type: 'conversation',
+          container_id: conversationId,
+        }),
+      });
+      queryClient.invalidateQueries({
+        queryKey: ['threadMessages', 'conversation', conversationId],
+      });
       queryClient.invalidateQueries({ queryKey: ['conversations'] });
       queryClient.invalidateQueries({ queryKey: ['members', conversationId] });
     };

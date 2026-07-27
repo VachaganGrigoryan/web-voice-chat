@@ -216,7 +216,8 @@ export function useAudioRecorderController({
       await onSendMedia({
         type: 'media',
         media_kind: 'voice',
-        conversation_id: receiverId,
+        container_type: 'conversation',
+        container_id: receiverId,
         file,
         duration_ms: durationSec * 1000,
         reply_mode: replyTarget?.mode,

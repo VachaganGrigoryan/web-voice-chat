@@ -154,7 +154,11 @@ export function useComposerTextInput({
 
     setIsSendingText(true);
     try {
-      await onSendText({ conversation_id: receiverId, text: trimmedText });
+      await onSendText({
+        container_type: 'conversation',
+        container_id: receiverId,
+        text: trimmedText,
+      });
       clearTextAfterSend();
       return true;
     } finally {

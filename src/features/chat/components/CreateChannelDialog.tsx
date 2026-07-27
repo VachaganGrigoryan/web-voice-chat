@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import {
@@ -13,15 +14,14 @@ import { Input } from '@/components/ui/Input';
 import { Label } from '@/components/ui/Label';
 import { cn } from '@/lib/utils';
 import { extractApiError } from '@/api/errors';
-import { useConversationActions } from '../hooks/useConversationActions';
+import { channelsApi } from '@/api/endpoints';
+import type {
+  ChannelCommentPolicy,
+  ChannelPostingPolicy,
+  ChannelVisibility,
+} from '@/api/types';
 
-type Visibility = 'private' | 'public';
-type PostingPolicy = 'everyone' | 'admins';
-type ReadPolicy = 'members' | 'contacts' | 'public';
-
-const SLUG_PATTERN = /^[a-z0-9](?:[a-z0-9-]{1,78}[a-z0-9])$/;
-
-
+const SLUG_PATTERN = /^[a-z0-9](?:[a-z0-9-]{0,78}[a-z0-9])?$/;
 
 function ChoicePills<T extends string>({
   value,
@@ -56,35 +56,40 @@ function ChoicePills<T extends string>({
 interface CreateChannelDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onCreated: (conversationId: string) => void;
-  spaceId?: string | null;
-  defaultVisibility?: Visibility;
-  defaultReadPolicy?: ReadPolicy;
+  onCreated: (channelId: string) => void;
+  defaultVisibility?: ChannelVisibility;
 }
 
 export function CreateChannelDialog({
   open,
   onOpenChange,
   onCreated,
-  spaceId,
-  defaultVisibility = 'private',
-  defaultReadPolicy = 'members',
+  defaultVisibility = 'public',
 }: CreateChannelDialogProps) {
-  const { createChannel } = useConversationActions();
+  const queryClient = useQueryClient();
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [visibility, setVisibility] = useState<Visibility>(defaultVisibility);
-  const [postingPolicy, setPostingPolicy] = useState<PostingPolicy>('admins');
-  const [readPolicy, setReadPolicy] = useState<ReadPolicy>(defaultReadPolicy);
+  const [visibility, setVisibility] = useState<ChannelVisibility>(defaultVisibility);
+  const [postingPolicy, setPostingPolicy] = useState<ChannelPostingPolicy>('owner');
+  const [commentPolicy, setCommentPolicy] =
+    useState<ChannelCommentPolicy>('everyone');
   const [slug, setSlug] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const createChannel = useMutation({
+    mutationFn: channelsApi.create,
+    onSuccess: (channel) => {
+      queryClient.invalidateQueries({ queryKey: ['user-channels'] });
+      queryClient.invalidateQueries({ queryKey: ['feeds'] });
+      onCreated(channel.id);
+    },
+  });
 
   const reset = () => {
     setTitle('');
     setDescription('');
     setVisibility(defaultVisibility);
-    setPostingPolicy('admins');
-    setReadPolicy(defaultReadPolicy);
+    setPostingPolicy('owner');
+    setCommentPolicy('everyone');
     setSlug('');
     setError(null);
   };
@@ -94,23 +99,27 @@ export function CreateChannelDialog({
     onOpenChange(false);
   };
 
-  const slugInvalid = visibility === 'public' && !SLUG_PATTERN.test(slug);
-  const canSubmit = title.trim().length > 0 && !slugInvalid && !createChannel.isPending;
+  const slugInvalid = !SLUG_PATTERN.test(slug);
+  const canSubmit =
+    title.trim().length > 0 &&
+    slug.trim().length > 0 &&
+    !slugInvalid &&
+    !createChannel.isPending;
 
   const submit = async () => {
     if (!canSubmit) return;
     setError(null);
     try {
-      const conversation = await createChannel.mutateAsync({
-        title: title.trim(),
+      await createChannel.mutateAsync({
+        name: title.trim(),
+        slug: slug.trim(),
+        kind: 'text',
         description: description.trim() || undefined,
         visibility,
         posting_policy: postingPolicy,
-        read_policy: readPolicy,
-        slug: visibility === 'public' ? slug.trim() : undefined,
-        space_id: spaceId || undefined,
+        comment_policy: commentPolicy,
+        join_policy: visibility === 'public' ? 'open' : 'invite_only',
       });
-      onCreated(conversation.conversation_id);
       close();
     } catch (err) {
       setError(extractApiError(err, 'Could not create channel'));
@@ -153,7 +162,7 @@ export function CreateChannelDialog({
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label>Visibility</Label>
-              <ChoicePills<Visibility>
+              <ChoicePills<ChannelVisibility>
                 value={visibility}
                 onChange={setVisibility}
                 options={[
@@ -164,11 +173,11 @@ export function CreateChannelDialog({
             </div>
             <div className="space-y-1.5">
               <Label>Who can post</Label>
-              <ChoicePills<PostingPolicy>
+              <ChoicePills<ChannelPostingPolicy>
                 value={postingPolicy}
                 onChange={setPostingPolicy}
                 options={[
-                  { value: 'admins', label: 'Admins' },
+                  { value: 'owner', label: 'Owner' },
                   { value: 'everyone', label: 'Everyone' },
                 ]}
               />
@@ -176,35 +185,33 @@ export function CreateChannelDialog({
           </div>
 
           <div className="space-y-1.5">
-            <Label>Who can view</Label>
-            <ChoicePills<ReadPolicy>
-              value={readPolicy}
-              onChange={setReadPolicy}
+            <Label>Who can comment</Label>
+            <ChoicePills<ChannelCommentPolicy>
+              value={commentPolicy}
+              onChange={setCommentPolicy}
               options={[
-                { value: 'members', label: 'Members' },
-                { value: 'contacts', label: 'Contacts' },
-                { value: 'public', label: 'Everyone' },
+                { value: 'disabled', label: 'Nobody' },
+                { value: 'followers', label: 'Followers' },
+                { value: 'everyone', label: 'Everyone' },
               ]}
             />
           </div>
 
-          {visibility === 'public' ? (
-            <div className="space-y-1.5">
-              <Label htmlFor="channel-slug">Public link (slug)</Label>
-              <Input
-                id="channel-slug"
-                value={slug}
-                onChange={(event) => setSlug(event.target.value.toLowerCase())}
-                placeholder="announcements"
-                maxLength={80}
-              />
-              {slug && slugInvalid ? (
-                <p className="text-xs text-destructive">
-                  Use 3–80 lowercase letters, numbers, or hyphens.
-                </p>
-              ) : null}
-            </div>
-          ) : null}
+          <div className="space-y-1.5">
+            <Label htmlFor="channel-slug">Channel slug</Label>
+            <Input
+              id="channel-slug"
+              value={slug}
+              onChange={(event) => setSlug(event.target.value.toLowerCase())}
+              placeholder="announcements"
+              maxLength={80}
+            />
+            {slug && slugInvalid ? (
+              <p className="text-xs text-destructive">
+                Use 1–80 lowercase letters, numbers, or hyphens.
+              </p>
+            ) : null}
+          </div>
 
           {error ? <p className="text-sm text-destructive">{error}</p> : null}
         </div>

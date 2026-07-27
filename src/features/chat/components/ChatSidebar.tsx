@@ -35,6 +35,7 @@ import {
   Pin,
   Plus,
   Radio,
+  Rss,
   Search,
   Settings,
   Trash2,
@@ -88,6 +89,7 @@ interface ChatSidebarProps {
   onOpenPings: () => void;
   onOpenContacts: () => void;
   onOpenSpaces: () => void;
+  onOpenFeeds: () => void;
   onLogout: () => void;
   onNewGroup: () => void;
   onNewChannel: () => void;
@@ -121,14 +123,6 @@ function formatConversationTimestamp(value: string | null) {
 function getConversationLabel(conversation: Conversation) {
   if (conversation.type === 'group') {
     return conversation.title || 'Group chat';
-  }
-
-  if (conversation.type === 'channel') {
-    return conversation.title || 'Channel';
-  }
-
-  if (conversation.type === 'thread') {
-    return conversation.title || 'Thread';
   }
 
   const peer = conversation.peer_user;
@@ -502,7 +496,6 @@ function getThreadParentLabel(thread: ThreadConversationView) {
   const parent = thread.parent;
   if (!parent) return 'Conversation';
   if (parent.type === 'group') return parent.title || 'Group chat';
-  if (parent.type === 'channel') return parent.title || 'Channel';
   return getConversationLabel(parent);
 }
 
@@ -596,6 +589,7 @@ export function ChatSidebar({
   onOpenPings,
   onOpenContacts,
   onOpenSpaces,
+  onOpenFeeds,
   onLogout,
   onNewGroup,
   onNewChannel,
@@ -711,13 +705,8 @@ export function ChatSidebar({
     });
   };
 
-  const archivedConversations = (archivedQuery.data?.data ?? []).filter(
-    (conversation) => conversation.type !== 'thread'
-  );
-  const chatContacts = useMemo(
-    () => contacts.filter((conversation) => conversation.type !== 'thread'),
-    [contacts]
-  );
+  const archivedConversations = archivedQuery.data?.data ?? [];
+  const chatContacts = contacts;
 
   const visibleConversations = useMemo(() => {
     if (showArchived) {
@@ -734,9 +723,7 @@ export function ChatSidebar({
   const groupedConversations = useMemo(() => {
     const directMessages = visibleConversations.filter((c) => c.type === 'dm');
     const groups = visibleConversations.filter((c) => c.type === 'group');
-    const channels = visibleConversations.filter((c) => c.type === 'channel');
     return [
-      { key: 'channels', label: 'Channels', items: channels },
       { key: 'groups', label: 'Groups', items: groups },
       { key: 'dms', label: 'Direct Messages', items: directMessages },
     ] as const;
@@ -917,6 +904,17 @@ export function ChatSidebar({
                   >
                     <Compass className="h-4 w-4 shrink-0" />
                     Spaces
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMobileUserMenuOpen(false);
+                      onOpenFeeds();
+                    }}
+                    className="flex w-full items-center gap-2 rounded-lg p-2 text-left text-sm font-medium text-foreground/80 transition-colors hover:bg-muted/60 hover:text-foreground"
+                  >
+                    <Rss className="h-4 w-4 shrink-0" />
+                    Home feed
                   </button>
                   <div className="my-1 border-t opacity-40" />
                   <button

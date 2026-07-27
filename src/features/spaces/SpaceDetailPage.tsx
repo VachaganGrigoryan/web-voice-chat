@@ -24,7 +24,6 @@ import {
   Link,
   ShieldAlert,
   Settings,
-  Plus,
   Trash2,
   Check,
   X,
@@ -34,17 +33,12 @@ import {
   Search,
   UserPlus,
 } from 'lucide-react';
-import { useQueryClient } from '@tanstack/react-query';
-import { conversationsApi } from '@/api/endpoints';
-import { toast } from 'sonner';
-import { extractApiError } from '@/api/errors';
 import { APP_ROUTES } from '@/app/routes';
 
 export default function SpaceDetailPage() {
   const myUserId = useAuthStore((state) => state.userId);
   const { spaceId, tab = 'channels' } = useParams<{ spaceId: string; tab?: string }>();
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
   const { goBack } = useAppNavigation();
 
   const {
@@ -52,6 +46,7 @@ export default function SpaceDetailPage() {
     isLoadingSpace,
     members,
     isLoadingMembers,
+    roles,
     channels,
     isLoadingChannels,
     invites,
@@ -69,18 +64,14 @@ export default function SpaceDetailPage() {
     approveRequest,
     rejectRequest,
     joinChannel,
+    assignMemberRoles,
+    isAssigningMemberRoles,
   } = useSpaces(spaceId || '');
 
   // Search filter for members
   const [memberSearch, setMemberSearch] = useState('');
 
   // Dialog States
-  const [isCreateChannelOpen, setIsCreateChannelOpen] = useState(false);
-  const [channelTitle, setChannelTitle] = useState('');
-  const [channelDescription, setChannelDescription] = useState('');
-  const [channelSpaceVisibility, setChannelSpaceVisibility] = useState<'space_public' | 'invite_only'>('space_public');
-  const [isCreatingChannel, setIsCreatingChannel] = useState(false);
-
   const [isInviteUserOpen, setIsInviteUserOpen] = useState(false);
   const [inviteeUserId, setInviteeUserId] = useState('');
 
@@ -102,30 +93,6 @@ export default function SpaceDetailPage() {
 
   const isOwner = !!(space && myUserId && space.owner_user_id === myUserId);
   const isManager = isOwner || space?.viewer_role === ROLE_ADMIN;
-
-  const handleCreateChannel = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!channelTitle) return;
-    setIsCreatingChannel(true);
-    try {
-      await conversationsApi.createChannel({
-        title: channelTitle,
-        description: channelDescription || undefined,
-        space_id: spaceId,
-        space_visibility: channelSpaceVisibility,
-        visibility: 'public', // channels inside spaces are public/private relative to the space
-      });
-      queryClient.invalidateQueries({ queryKey: ['spaces', spaceId, 'channels'] });
-      toast.success(`Channel #${channelTitle} created`);
-      setIsCreateChannelOpen(false);
-      setChannelTitle('');
-      setChannelDescription('');
-    } catch (err) {
-      toast.error(extractApiError(err, 'Failed to create channel'));
-    } finally {
-      setIsCreatingChannel(false);
-    }
-  };
 
   const handleInviteUser = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -239,16 +206,6 @@ export default function SpaceDetailPage() {
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <h3 className="text-base font-semibold tracking-tight">Channels in this space</h3>
-              {isManager && (
-                <Button
-                  size="sm"
-                  className="flex items-center gap-1.5 rounded-xl"
-                  onClick={() => setIsCreateChannelOpen(true)}
-                >
-                  <Plus className="h-4 w-4" />
-                  <span>Create Channel</span>
-                </Button>
-              )}
             </div>
 
             {isLoadingChannels ? (
@@ -282,7 +239,7 @@ export default function SpaceDetailPage() {
                             variant="ghost"
                             size="sm"
                             className="rounded-xl text-xs font-semibold text-muted-foreground hover:bg-muted"
-                            onClick={() => navigate(APP_ROUTES.chatConversation(chan.id))}
+                            onClick={() => navigate(APP_ROUTES.channel(chan.id))}
                           >
                             Open
                           </Button>
@@ -342,15 +299,39 @@ export default function SpaceDetailPage() {
                         )}
                       </div>
                     </div>
-                    <span className={`inline-flex px-2 py-0.5 rounded-full text-3xs font-bold uppercase tracking-wider ${
-                      space?.owner_user_id === m.user_id
-                        ? 'bg-red-500/10 text-red-500 border border-red-500/25'
-                        : m.role === ROLE_ADMIN
-                        ? 'bg-amber-500/10 text-amber-500 border border-amber-500/25'
-                        : 'bg-muted text-muted-foreground border border-border'
-                    }`}>
-                      {m.role}
-                    </span>
+                    {isManager && space?.owner_user_id !== m.user_id ? (
+                      <select
+                        aria-label={`Role for ${m.user?.display_name || m.user?.username || 'member'}`}
+                        className="h-8 rounded-lg border border-border bg-background px-2 text-xs"
+                        disabled={isAssigningMemberRoles}
+                        value={roles.find((role) => role.name === m.role)?.id || ''}
+                        onChange={(event) => {
+                          void assignMemberRoles({
+                            relationshipId: m.id,
+                            roleIds: [event.target.value],
+                          });
+                        }}
+                      >
+                        <option value="" disabled>
+                          {m.role || 'Select role'}
+                        </option>
+                        {roles.map((role) => (
+                          <option key={role.id} value={role.id}>
+                            {role.name}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <span className={`inline-flex px-2 py-0.5 rounded-full text-3xs font-bold uppercase tracking-wider ${
+                        space?.owner_user_id === m.user_id
+                          ? 'bg-red-500/10 text-red-500 border border-red-500/25'
+                          : m.role === ROLE_ADMIN
+                          ? 'bg-amber-500/10 text-amber-500 border border-amber-500/25'
+                          : 'bg-muted text-muted-foreground border border-border'
+                      }`}>
+                        {m.role}
+                      </span>
+                    )}
                   </div>
                 ))}
               </div>
@@ -524,62 +505,6 @@ export default function SpaceDetailPage() {
           </PanelSection>
         )}
       </div>
-
-      {/* Create Channel Dialog */}
-      <Dialog open={isCreateChannelOpen} onOpenChange={setIsCreateChannelOpen}>
-        <DialogContent className="max-w-md rounded-2xl">
-          <DialogHeader>
-            <DialogTitle>Create a Channel</DialogTitle>
-            <DialogDescription>
-              Create a text/voice channel within this space.
-            </DialogDescription>
-          </DialogHeader>
-          <form onSubmit={handleCreateChannel} className="space-y-4 py-2">
-            <div className="space-y-2">
-              <Label htmlFor="channel-title">Channel Name</Label>
-              <Input
-                id="channel-title"
-                value={channelTitle}
-                onChange={(e) => setChannelTitle(e.target.value.toLowerCase().replace(/[^a-z0-9-]+/g, '-'))}
-                placeholder="e.g. general"
-                required
-                maxLength={30}
-                className="font-mono"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="channel-desc">Description (Optional)</Label>
-              <Input
-                id="channel-desc"
-                value={channelDescription}
-                onChange={(e) => setChannelDescription(e.target.value)}
-                placeholder="What this channel is about"
-                maxLength={100}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="channel-visibility">Space Visibility</Label>
-              <select
-                id="channel-visibility"
-                value={channelSpaceVisibility}
-                onChange={(e) => setChannelSpaceVisibility(e.target.value as any)}
-                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              >
-                <option value="space_public">Public-in-Space (all space members join automatically)</option>
-                <option value="invite_only">Invite Only (manually add members)</option>
-              </select>
-            </div>
-            <DialogFooter className="pt-4">
-              <Button type="button" variant="ghost" onClick={() => setIsCreateChannelOpen(false)} disabled={isCreatingChannel}>
-                Cancel
-              </Button>
-              <Button type="submit" disabled={isCreatingChannel}>
-                {isCreatingChannel ? 'Creating...' : 'Create Channel'}
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
 
       {/* Invite User Dialog */}
       <Dialog open={isInviteUserOpen} onOpenChange={setIsInviteUserOpen}>

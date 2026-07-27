@@ -38,7 +38,7 @@ type HeaderActionId =
   | 'archive'
   | 'send_ping';
 
-type HeaderActionContext = Extract<ConversationType, 'dm' | 'group' | 'channel' | 'thread'>;
+type HeaderActionContext = ConversationType;
 
 interface HeaderAction {
   id: HeaderActionId;
@@ -74,18 +74,14 @@ const HEADER_ACTION_IDS: readonly HeaderActionId[] = [
   'send_ping',
 ];
 const HEADER_ACTION_ID_SET: ReadonlySet<string> = new Set(HEADER_ACTION_IDS);
-const HEADER_ACTION_CONTEXTS: readonly HeaderActionContext[] = ['dm', 'group', 'channel', 'thread'];
+const HEADER_ACTION_CONTEXTS: readonly HeaderActionContext[] = ['dm', 'group'];
 const DEFAULT_QUICK_ACTIONS: Record<HeaderActionContext, HeaderActionId[]> = {
   dm: ['audio_call', 'video_call'],
   group: ['invite'],
-  channel: ['invite'],
-  thread: ['search'],
 };
 const MAX_QUICK_ACTIONS: Record<HeaderActionContext, number> = {
   dm: 2,
   group: 2,
-  channel: 2,
-  thread: 1,
 };
 const HEADER_MENU_WIDTH = 268;
 const HEADER_MENU_ESTIMATED_HEIGHT = 420;
@@ -149,11 +145,7 @@ function writeQuickActionPreferences(preferences: QuickActionPreferences) {
 }
 
 function resolveActionContext(conversationType?: ConversationType): HeaderActionContext {
-  return conversationType === 'group' ||
-    conversationType === 'channel' ||
-    conversationType === 'thread'
-    ? conversationType
-    : 'dm';
+  return conversationType === 'group' ? 'group' : 'dm';
 }
 
 function getHeaderMenuStyle(anchorRect: HeaderMenuRect) {

@@ -27,8 +27,6 @@ interface ForwardMessageDialogProps {
 
 function conversationLabel(conversation: Conversation): string {
   if (conversation.type === 'group') return conversation.title || 'Group chat';
-  if (conversation.type === 'channel') return conversation.title || 'Channel';
-  if (conversation.type === 'thread') return conversation.title || 'Thread';
   const peer = conversation.peer_user;
   if (!peer) return 'Conversation';
   return peer.display_name || peer.username || peer.id;

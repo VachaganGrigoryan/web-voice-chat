@@ -244,7 +244,8 @@ export default function MediaComposer({
 
         const attachCaptionToThisItem = !captionAttached && currentItem.id === captionTargetId;
         const basePayload = {
-          conversation_id: receiverId,
+          container_type: 'conversation' as const,
+          container_id: receiverId,
           file: currentItem.file,
           text: attachCaptionToThisItem ? trimmedCaption : undefined,
           reply_mode: capturedReplyTarget?.mode,
