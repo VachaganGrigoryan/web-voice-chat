@@ -89,21 +89,22 @@ test.describe('Spaces UI E2E Tests', () => {
       window.localStorage.setItem('auth_access_token', token);
       window.localStorage.setItem('auth_refresh_token', 'fake_refresh_token');
     }, fakeToken);
+    await page.reload();
   });
 
   test('should display space switcher with correct items and toggle dropdown', async ({ page }) => {
     // Navigate again to reload with active session
-    await page.goto('/');
+    await page.goto('/#/chat');
 
     // Assert that the SpaceSwitcher button is visible with "Global Chats" (with 15s timeout for compilation)
-    const switcherBtn = page.getByRole('button', { name: 'Global Chats' });
+    const switcherBtn = page.getByRole('button', { name: 'Switch space' });
     await expect(switcherBtn).toBeVisible({ timeout: 15000 });
 
     // Click the space switcher to open dropdown
     await switcherBtn.click();
 
     // Assert dropdown options are visible
-    await expect(page.getByRole('button', { name: 'Global Chats' }).nth(1)).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Global Chats' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Acme Space' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Create a Space' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Join Space / Enter Invite' })).toBeVisible();
@@ -111,10 +112,10 @@ test.describe('Spaces UI E2E Tests', () => {
 
   test('should open Create Space dialog', async ({ page }) => {
     // Navigate again to reload with active session
-    await page.goto('/');
+    await page.goto('/#/chat');
 
     // Wait for the button to be visible on initial load
-    const switcherBtn = page.getByRole('button', { name: 'Global Chats' });
+    const switcherBtn = page.getByRole('button', { name: 'Switch space' });
     await expect(switcherBtn).toBeVisible({ timeout: 15000 });
     await switcherBtn.click();
 

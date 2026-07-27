@@ -1,5 +1,11 @@
 import { defineConfig, devices } from '@playwright/test';
 
+const webPort = process.env.PLAYWRIGHT_WEB_PORT || '3000';
+if (!/^\d+$/.test(webPort)) {
+  throw new Error('PLAYWRIGHT_WEB_PORT must be a numeric port');
+}
+const webUrl = `http://localhost:${webPort}`;
+
 /**
  * Read environment variables from file.
  * https://github.com/motdotla/dotenv
@@ -26,7 +32,7 @@ export default defineConfig({
   /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */
   use: {
     /* Base URL to use in actions like `await page.goto('/')`. */
-    baseURL: 'http://localhost:3000',
+    baseURL: webUrl,
 
     /* Collect trace when retrying the failed test. See https://playwright.dev/docs/trace-viewer */
     trace: 'on-first-retry',
@@ -72,8 +78,8 @@ export default defineConfig({
 
   /* Run your local dev server before starting the tests */
   webServer: {
-    command: 'npm run dev',
-    url: 'http://localhost:3000',
+    command: `npm run dev -- --port ${webPort}`,
+    url: webUrl,
     reuseExistingServer: !process.env.CI,
   },
 });
