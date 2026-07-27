@@ -7,6 +7,7 @@ import { getApiErrorStatus } from '@/api/errors';
 import { User, UserSummary } from '@/api/types';
 import { APP_ROUTES } from '@/app/routes';
 import { Button } from '@/components/ui/Button';
+import { FollowButton } from '@/components/FollowButton';
 import { useConnections } from '@/hooks/useConnections';
 
 import { ProfilePageShell, type ProfileDetailItem } from './components/ProfilePageShell';
@@ -115,6 +116,7 @@ export default function ProfilePage() {
   const headerActions =
     relationship && !relationship.blocks_me ? (
       <>
+        <FollowButton targetType="user" targetId={userId} />
         {conversationId ? (
           <Button
             type="button"

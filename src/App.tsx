@@ -13,6 +13,8 @@ import ProfilePage from '@/features/profile/ProfilePage';
 import MyProfilePage from '@/features/profile/MyProfilePage';
 import SpacesPage from '@/features/spaces/SpacesPage';
 import SpaceDetailPage from '@/features/spaces/SpaceDetailPage';
+import ChannelPage from '@/features/channels/ChannelPage';
+import FeedPage from '@/features/feed/FeedPage';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import PublicRoute from '@/components/PublicRoute';
 import { ThemeProvider } from '@/components/ThemeProvider';
@@ -62,6 +64,10 @@ export default function App() {
               <Route path={APP_ROUTES.pings} element={<Navigate to={APP_ROUTES.pingsTab('incoming')} replace />} />
               <Route path="/pings/:tab" element={<PingsPage />} />
               <Route path={APP_ROUTES.contacts} element={<ContactsPage />} />
+              <Route path={APP_ROUTES.feeds} element={<FeedPage kind="home" />} />
+              <Route path="/feeds/users/:username" element={<FeedPage kind="user" />} />
+              <Route path="/feeds/channels/:channelId" element={<FeedPage kind="channel" />} />
+              <Route path="/channels/:channelId" element={<ChannelPage />} />
               <Route path={APP_ROUTES.settings} element={<Navigate to={APP_ROUTES.settingsTab('profile')} replace />} />
               <Route path="/settings/:tab" element={<SettingsPage />} />
               <Route path={APP_ROUTES.spaces} element={<SpacesPage />} />

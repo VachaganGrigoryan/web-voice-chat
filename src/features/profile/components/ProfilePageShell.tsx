@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import { Loader2, Pin, Plus } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 
 import { extractApiError } from '@/api/errors';
@@ -8,10 +9,16 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/Avatar';
 import { Button } from '@/components/ui/Button';
 import { CreateChannelDialog } from '@/features/chat/components/CreateChannelDialog';
 import { useProfile } from '@/hooks/useProfile';
+import {
+  useFollowerRelationships,
+  useFollowingRelationships,
+} from '@/hooks/useFollowRelationships';
 import { useUserChannels } from '@/hooks/useUserChannels';
 import { cn } from '@/lib/utils';
+import { APP_ROUTES } from '@/app/routes';
 
 import { ProfileChannelTimeline } from './ProfileChannelTimeline';
+import { FollowListDialog } from './FollowListDialog';
 
 export interface ProfileDetailItem {
   label: string;
@@ -47,9 +54,18 @@ export function ProfilePageShell({
 }: ProfilePageShellProps) {
   const { data: channels = [], isLoading: channelsLoading } = useUserChannels(userId);
   const { setMainChannel, isSettingMainChannel } = useProfile();
+  const followersQuery = useFollowerRelationships(userId);
+  const followingQuery = useFollowingRelationships(userId);
 
   const [selectedTab, setSelectedTab] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
+  const [followListMode, setFollowListMode] = useState<'followers' | 'following' | null>(
+    null
+  );
+  const followers = followersQuery.data ?? [];
+  const following = followingQuery.data ?? [];
+  const followerCount = followers.filter((item) => item.status === 'active').length;
+  const followingCount = following.filter((item) => item.status === 'active').length;
 
   // Default to the first (main-first) channel; fall back to About.
   const activeTab = selectedTab ?? channels[0]?.id ?? ABOUT_TAB;
@@ -106,6 +122,31 @@ export function ProfilePageShell({
             {headerActions}
           </div>
         </header>
+
+        <div className="mt-4 flex justify-center gap-5 text-sm sm:justify-start sm:pl-40">
+          <button
+            type="button"
+            className="text-muted-foreground hover:text-foreground"
+            onClick={() => setFollowListMode('followers')}
+          >
+            <span className="font-semibold text-foreground">{followerCount}</span> followers
+          </button>
+          <button
+            type="button"
+            className="text-muted-foreground hover:text-foreground"
+            onClick={() => setFollowListMode('following')}
+          >
+            <span className="font-semibold text-foreground">{followingCount}</span> following
+          </button>
+          {username ? (
+            <Link
+              to={APP_ROUTES.userFeed(username.replace(/^@/, ''))}
+              className="font-medium text-primary hover:underline"
+            >
+              View feed
+            </Link>
+          ) : null}
+        </div>
 
         {/* Channel tabs */}
         <nav className="mt-6 flex gap-2 overflow-x-auto border-b border-border pb-px">
@@ -168,7 +209,7 @@ export function ProfilePageShell({
                   </Button>
                 </div>
               ) : null}
-              <ProfileChannelTimeline channelId={activeChannel.id} canPost={isOwner} />
+              <ProfileChannelTimeline channelId={activeChannel.id} />
             </div>
           ) : isOwner ? (
             <EmptyChannelsState onCreate={() => setCreateOpen(true)} />
@@ -186,9 +227,20 @@ export function ProfilePageShell({
           onOpenChange={setCreateOpen}
           onCreated={(id) => void handleCreated(id)}
           defaultVisibility="public"
-          defaultReadPolicy="contacts"
         />
       ) : null}
+      <FollowListDialog
+        open={followListMode === 'followers'}
+        onOpenChange={(open) => setFollowListMode(open ? 'followers' : null)}
+        mode="followers"
+        relationships={followers}
+      />
+      <FollowListDialog
+        open={followListMode === 'following'}
+        onOpenChange={(open) => setFollowListMode(open ? 'following' : null)}
+        mode="following"
+        relationships={following}
+      />
     </div>
   );
 }
