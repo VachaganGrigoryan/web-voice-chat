@@ -256,12 +256,50 @@ test('smokes unified DM, follow, membership, channel, and feed flows', async ({
   );
   await expect(viewerPage.getByText(realtimePost)).toBeVisible({ timeout: 15_000 });
 
+  // /feeds/* is retired: each of these now resolves through a redirect rather
+  // than rendering its own page (home feed, the channel's canonical page, and
+  // a directory-search-based profile resolution, respectively).
   await viewerPage.goto('/#/feeds');
   await expect(viewerPage.getByText(realtimePost)).toBeVisible();
   await viewerPage.goto(`/#/feeds/channels/${channel.id}`);
   await expect(viewerPage.getByText(realtimePost)).toBeVisible();
   await viewerPage.goto(`/#/feeds/users/${owner.user.username}`);
   await expect(viewerPage.getByText(profileFeedPost)).toBeVisible();
+
+  await viewerPage.goto('/#/feed/saved');
+  await expect(viewerPage.getByText('Nothing saved yet.')).toBeVisible();
+
+  // Discover's four tabs query the directory API rather than the viewer's own
+  // memberships, so they surface the channel and the default space even
+  // though the viewer only just followed/joined them.
+  await viewerPage.goto('/#/discover/channels');
+  await viewerPage.locator('#discover-search').fill(channel.name);
+  await expect(viewerPage.getByText(channel.name)).toBeVisible();
+  await expect(viewerPage.getByRole('button', { name: 'Following' })).toBeVisible();
+
+  await viewerPage.goto('/#/discover/people');
+  await viewerPage.locator('#discover-search').fill(owner.user.username);
+  await expect(viewerPage.getByText(`@${owner.user.username}`)).toBeVisible();
+
+  await viewerPage.goto('/#/discover/spaces');
+  await expect(viewerPage.getByText('Default space', { exact: false })).toBeVisible();
+  await expect(viewerPage.getByRole('button', { name: 'Join' })).not.toBeVisible();
+
+  await viewerPage.goto('/#/discover/groups');
+  await expect(viewerPage.getByText('No groups to show yet.')).toBeVisible();
+
+  // People tabs: the social graph only, resolved to displayable rows.
+  await viewerPage.goto('/#/people/contacts');
+  await expect(viewerPage.getByText(`@${owner.user.username}`)).toBeVisible();
+
+  await viewerPage.goto('/#/people/following');
+  await expect(viewerPage.getByText(channel.name)).toBeVisible();
+
+  await viewerPage.goto('/#/people/followers');
+  await expect(viewerPage.getByText('No followers yet.')).toBeVisible();
+
+  await viewerPage.goto('/#/people/blocked');
+  await expect(viewerPage.getByText('You have not blocked anyone.')).toBeVisible();
 
   await readData<TestUser>(
     await api.patch('/users/me', {

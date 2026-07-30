@@ -57,7 +57,7 @@ test.describe('Spaces UI E2E Tests', () => {
               ]
             })
           });
-        } else if (url.includes('/conversations')) {
+        } else if (url.includes('/conversations') || url.includes('/messages')) {
           await route.fulfill({
             status: 200,
             contentType: 'application/json',
