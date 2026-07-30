@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { APP_ROUTES } from '@/app/routes';
+import { APP_ROUTES, PeopleTab, isPeopleTab } from '@/app/routes';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/Avatar';
 import { Button } from '@/components/ui/Button';
 import {
@@ -13,11 +13,14 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/Dialog';
-import { PanelPageLayout, PanelSection } from '@/components/panel/PanelPageLayout';
+import { PanelSection } from '@/components/panel/PanelPageLayout';
+import { PageBody } from '@/components/page/PageBody';
+import { PageHeader } from '@/components/page/PageHeader';
+import { PageTabs } from '@/components/page/PageTabs';
+import { PageTab } from '@/components/page/pageTypes';
 import { useConnections } from '@/hooks/useConnections';
 import { useContacts } from '@/hooks/useContacts';
 import { useIsMobile } from '@/hooks/useIsMobile';
-import { useAppNavigation } from '@/navigation/appNavigation';
 import { useAuthStore } from '@/store/authStore';
 import { ROLE_ADMIN } from '@/api/types';
 import { conversationsApi, membershipsApi, spacesApi } from '@/api/endpoints';
@@ -31,12 +34,18 @@ import {
   MessageCircle,
   MoreVertical,
   Phone,
+  Search,
   Trash2,
   User,
+  UserPlus,
+  UserRoundPlus,
   Users,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ContactActionsMenu, type ContactMenuItem } from './ContactActionsMenu';
+import { PeopleBlockedTab } from './people/PeopleBlockedTab';
+import { PeopleFollowersTab } from './people/PeopleFollowersTab';
+import { PeopleFollowingTab } from './people/PeopleFollowingTab';
 
 function contactName(contact: { display_name: string | null; username: string }) {
   return contact.display_name || contact.username;
@@ -238,9 +247,10 @@ function InviteToSpaceDialog({
 export default function ContactsPage() {
   const navigate = useNavigate();
   const isMobile = useIsMobile();
-  const { goBack, goTo } = useAppNavigation();
+  const { tab } = useParams<{ tab?: string }>();
+  const activeTab: PeopleTab = isPeopleTab(tab) ? tab : 'contacts';
   const { contacts, isLoadingContacts, removeContact, isRemoving } = useContacts();
-  const { blockUser, isBlocking } = useConnections();
+  const { incoming, blockUser, isBlocking } = useConnections();
 
   const [inviteConvContact, setInviteConvContact] = useState<ContactPeer | null>(null);
   const [inviteSpaceContact, setInviteSpaceContact] = useState<ContactPeer | null>(null);
@@ -253,7 +263,7 @@ export default function ContactsPage() {
         ? Promise.resolve(item.conversation_id)
         : conversationsApi.createOrGetDm(item.peer.id).then((conversation) => conversation.id),
     onSuccess: (conversationId) => {
-      navigate(APP_ROUTES.chatConversation(conversationId));
+      navigate(APP_ROUTES.dm(conversationId));
     },
     onError: (error) => {
       toast.error(extractApiError(error, 'Failed to open conversation'));
@@ -290,14 +300,62 @@ export default function ContactsPage() {
     setMenu({ peerId, anchorRect: event.currentTarget.getBoundingClientRect() });
   };
 
+  const tabs: readonly PageTab[] = [
+    { id: 'contacts', label: 'Contacts', icon: Users, count: contacts.length },
+    { id: 'following', label: 'Following', icon: UserRoundPlus },
+    { id: 'followers', label: 'Followers', icon: UserPlus },
+    { id: 'blocked', label: 'Blocked', icon: Ban },
+  ];
+
   return (
-    <PanelPageLayout
-      title="Contacts"
-      description="People you're connected with. Call, message, invite, or manage each contact."
-      onBack={() => goBack({ fallback: APP_ROUTES.chat })}
-      onClose={() => goTo(APP_ROUTES.chat)}
-      contentClassName="scrollbar-hidden space-y-4"
-    >
+    <div className="flex h-full min-h-0 w-full flex-col bg-background">
+      <PageHeader
+        title="People"
+        description="Contacts, follows, invites and blocks in one place"
+        tabs={
+          <PageTabs
+            tabs={tabs}
+            activeTabId={activeTab}
+            onSelect={(tabId) => navigate(APP_ROUTES.peopleTab(tabId as PeopleTab))}
+            aria-label="People sections"
+          />
+        }
+        primaryAction={{
+          id: 'find-people',
+          label: 'Find people',
+          icon: Search,
+          onSelect: () => navigate(APP_ROUTES.discoverTab('people')),
+        }}
+        secondaryActions={[
+          {
+            id: 'requests',
+            label: 'Connection requests',
+            icon: UserPlus,
+            onSelect: () => navigate(APP_ROUTES.activityTab('requests')),
+          },
+        ]}
+      />
+
+      <PageBody className="scrollbar-hidden space-y-4">
+        {incoming.length > 0 ? (
+          <button
+            type="button"
+            onClick={() => navigate(APP_ROUTES.activityTab('requests'))}
+            className="flex w-full items-center justify-between gap-3 rounded-2xl border border-brand/30 bg-brand-muted/40 px-4 py-3 text-left transition-colors hover:bg-brand-muted/60"
+          >
+            <span className="flex items-center gap-2 text-sm font-medium text-foreground">
+              <UserPlus className="h-4 w-4 text-brand" />
+              {incoming.length} pending connection request{incoming.length === 1 ? '' : 's'}
+            </span>
+            <span className="text-xs font-semibold uppercase tracking-wide text-brand">Review</span>
+          </button>
+        ) : null}
+
+        {activeTab === 'following' ? <PeopleFollowingTab /> : null}
+        {activeTab === 'followers' ? <PeopleFollowersTab /> : null}
+        {activeTab === 'blocked' ? <PeopleBlockedTab /> : null}
+
+        {activeTab === 'contacts' ? (
       <PanelSection
         title="Ping List"
         description={contacts.length ? `${contacts.length} contact${contacts.length === 1 ? '' : 's'}` : undefined}
@@ -424,6 +482,8 @@ export default function ContactsPage() {
           </div>
         )}
       </PanelSection>
+        ) : null}
+      </PageBody>
 
       <ContactActionsMenu
         open={activeContact !== null}
@@ -491,6 +551,6 @@ export default function ContactsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </PanelPageLayout>
+    </div>
   );
 }

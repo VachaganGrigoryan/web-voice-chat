@@ -7,7 +7,7 @@ import {
 import { PanelSection } from '@/components/panel/PanelPageLayout';
 import { Button } from '@/components/ui/Button';
 import { cn } from '@/lib/utils';
-import { DENSITY_OPTIONS, FONT_SIZE_OPTIONS } from '@/features/settings/config';
+import { COLOR_THEME_OPTIONS, DENSITY_OPTIONS, FONT_SIZE_OPTIONS } from '@/features/settings/config';
 import { Monitor, Moon, Sun } from 'lucide-react';
 
 interface AppearanceSettingsTabProps {
@@ -50,24 +50,19 @@ export default function AppearanceSettingsTab({
         </div>
       </PanelSection>
 
-      <PanelSection title="Color Theme" description="Choose the accent palette used across the interface.">
+      <PanelSection title="Color Theme" description="Choose the neutral palette used across the interface.">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <Button
-            variant={theme === 'default' ? 'default' : 'outline'}
-            className="h-12 justify-start"
-            onClick={() => setTheme('default')}
-          >
-            <div className="mr-3 h-4 w-4 rounded-full bg-zinc-900 dark:bg-zinc-100" />
-            Default
-          </Button>
-          <Button
-            variant={theme === 'slate' ? 'default' : 'outline'}
-            className="h-12 justify-start"
-            onClick={() => setTheme('slate')}
-          >
-            <div className="mr-3 h-4 w-4 rounded-full bg-slate-900 dark:bg-slate-100" />
-            Slate
-          </Button>
+          {COLOR_THEME_OPTIONS.map((option) => (
+            <Button
+              key={option.value}
+              variant={theme === option.value ? 'default' : 'outline'}
+              className="h-12 cursor-pointer justify-start"
+              onClick={() => setTheme(option.value)}
+            >
+              <div className={cn('mr-3 h-4 w-4 rounded-full', option.swatch)} />
+              {option.label}
+            </Button>
+          ))}
         </div>
       </PanelSection>
 
