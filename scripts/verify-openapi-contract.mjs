@@ -32,7 +32,10 @@ const operationCount = Object.values(spec.paths).reduce(
   0
 );
 
-assert.equal(operationCount, 188, 'Unexpected number of OpenAPI operations');
+// 211 -> 209: -2 from collapsing the duplicate feed routes (GET
+// /feeds/channels/{id}/posts into its /feeds/channels/{id} twin, and GET
+// /users/{username}/posts into its /feeds/users/{username} twin).
+assert.equal(operationCount, 209, 'Unexpected number of OpenAPI operations');
 assert.equal(
   Object.keys(spec.paths).some((route) => route.startsWith('/pings')),
   false,
@@ -69,7 +72,7 @@ assert.equal(
   '#/components/schemas/SuccessResponse_SelectedUserProfileResponse_'
 );
 assert.equal(
-  getJsonResponseRef('get', '/conversations/{conversation_id}/messages/{message_id}/thread', '200'),
+  getJsonResponseRef('get', '/messages/{message_id}/thread', '200'),
   '#/components/schemas/SuccessResponse_list_MessageDoc__'
 );
 assert.equal(
@@ -77,13 +80,71 @@ assert.equal(
   '#/components/schemas/SuccessResponse_MessageDoc_'
 );
 assert.equal(
-  getJsonResponseRef('delete', '/conversations/{conversation_id}/messages/{message_id}', '200'),
+  getJsonResponseRef('delete', '/messages/{message_id}', '200'),
   '#/components/schemas/SuccessResponse_DeleteMessageResponse_'
 );
 assert.equal(
-  getJsonResponseRef('post', '/conversations/{conversation_id}/messages/{message_id}/reactions', '200'),
+  getJsonResponseRef('post', '/messages/{message_id}/reactions', '200'),
   '#/components/schemas/SuccessResponse_MessageDoc_'
 );
+// Viewer capabilities: the batch endpoint is the contract, the per-resource
+// ones exist for cold deep links and must return the same shape.
+assert.equal(
+  getJsonResponseRef('post', '/viewer/capabilities', '200'),
+  '#/components/schemas/SuccessResponse_CapabilitiesResponse_'
+);
+assert.equal(
+  getJsonResponseRef('get', '/channels/{resource_id}/capabilities', '200'),
+  '#/components/schemas/SuccessResponse_ResourceCapabilitiesView_'
+);
+assert.equal(
+  getJsonResponseRef('get', '/spaces/{resource_id}/capabilities', '200'),
+  '#/components/schemas/SuccessResponse_ResourceCapabilitiesView_'
+);
+assert.equal(
+  getJsonResponseRef('get', '/conversations/{resource_id}/capabilities', '200'),
+  '#/components/schemas/SuccessResponse_ResourceCapabilitiesView_'
+);
+
+// The directory paginates like every other list surface, so its responses are
+// PaginatedResponse rather than SuccessResponse. The omni preview is the one
+// deliberate exception.
+assert.equal(
+  getJsonResponseRef('get', '/directory/channels', '200'),
+  '#/components/schemas/PaginatedResponse_ChannelSummary_'
+);
+assert.equal(
+  getJsonResponseRef('get', '/directory/spaces', '200'),
+  '#/components/schemas/PaginatedResponse_SpaceSummary_'
+);
+assert.equal(
+  getJsonResponseRef('get', '/directory/groups', '200'),
+  '#/components/schemas/PaginatedResponse_GroupSummary_'
+);
+assert.equal(
+  getJsonResponseRef('get', '/directory', '200'),
+  '#/components/schemas/SuccessResponse_OmniResults_'
+);
+
+// `ChannelSummary` is the canonical list shape; the retired projection renamed
+// four fields, so guard against its return.
+const channelSummary = getSchema('ChannelSummary');
+for (const field of ['name', 'follower_count', 'last_activity_at', 'visibility']) {
+  assert.ok(field in channelSummary.properties, `ChannelSummary must carry ${field}`);
+}
+for (const field of ['title', 'member_count', 'last_message_at', 'read_policy']) {
+  assert.equal(
+    field in channelSummary.properties,
+    false,
+    `ChannelSummary must not resurrect ${field}`
+  );
+}
+assert.equal(
+  Object.keys(spec.components.schemas).some((name) => name === 'UserChannelView'),
+  false,
+  'UserChannelView must stay retired'
+);
+
 assert.equal(
   getJsonResponseRef('post', '/connections/{user_id}/ping', '201'),
   '#/components/schemas/SuccessResponse_RelationshipView_'

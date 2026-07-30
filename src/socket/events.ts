@@ -24,6 +24,8 @@ export const EVENTS = {
   CALL_HANGUP: 'call.hangup',
   CALL_REJECT: 'call.reject',
   CALL_RESUME: 'call.resume',
+  JOIN_CHANNEL: 'join_channel',
+  LEAVE_CHANNEL: 'leave_channel',
 
   // Server -> Client
   RECEIVE_MESSAGE: 'receive_message',
@@ -45,6 +47,7 @@ export const EVENTS = {
   RELATIONSHIP_REQUESTED: 'relationship.requested',
   RELATIONSHIP_ACTIVATED: 'relationship.activated',
   RELATIONSHIP_REVOKED: 'relationship.revoked',
+  CAPABILITIES_INVALIDATED: 'capabilities.invalidated',
   BLOCK_CREATED: 'block.created',
   BLOCK_REMOVED: 'block.removed',
   SPACE_INVITE: 'space:invite',
