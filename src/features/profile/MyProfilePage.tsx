@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { LogOut, MessageCircle, Pencil, Settings as SettingsIcon } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -10,6 +11,7 @@ import { useAppNavigation } from '@/navigation/appNavigation';
 import { useAuthStore } from '@/store/authStore';
 
 import { ProfilePageShell, type ProfileDetailItem } from './components/ProfilePageShell';
+import { EditProfileDialog } from './edit/EditProfileDialog';
 
 function formatLastSeen(value: string | null | undefined) {
   if (!value) return null;
@@ -21,6 +23,7 @@ function formatLastSeen(value: string | null | undefined) {
 
 export default function MyProfilePage() {
   const { goTo } = useAppNavigation();
+  const [isEditOpen, setIsEditOpen] = useState(false);
   const { profile, isLoading } = useProfile();
   const { userId, userEmail, refreshToken, logout } = useAuthStore();
 
@@ -52,7 +55,8 @@ export default function MyProfilePage() {
   };
 
   return (
-    <ProfilePageShell
+    <>
+      <ProfilePageShell
       isOwner
       userId={userId ?? ''}
       displayName={displayName}
@@ -64,7 +68,7 @@ export default function MyProfilePage() {
       isLoading={isLoading && !profile}
       headerActions={
         <>
-          <Button type="button" size="sm" onClick={() => goTo(APP_ROUTES.settingsTab('profile'))}>
+          <Button type="button" size="sm" onClick={() => setIsEditOpen(true)}>
             <Pencil className="mr-2 h-4 w-4" />
             Edit profile
           </Button>
@@ -76,7 +80,7 @@ export default function MyProfilePage() {
             type="button"
             variant="outline"
             size="sm"
-            onClick={() => goTo(APP_ROUTES.settingsTab('profile'))}
+            onClick={() => goTo(APP_ROUTES.settingsTab())}
           >
             <SettingsIcon className="mr-2 h-4 w-4" />
             Settings
@@ -87,6 +91,8 @@ export default function MyProfilePage() {
           </Button>
         </>
       }
-    />
+      />
+      <EditProfileDialog open={isEditOpen} onOpenChange={setIsEditOpen} />
+    </>
   );
 }

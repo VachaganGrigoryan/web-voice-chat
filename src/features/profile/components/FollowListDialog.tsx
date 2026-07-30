@@ -1,8 +1,6 @@
-import { useQueries } from '@tanstack/react-query';
 import { Hash, Loader2, UserRound } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
-import { channelsApi, usersApi } from '@/api/endpoints';
 import type { Relationship } from '@/api/types';
 import { APP_ROUTES } from '@/app/routes';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/Avatar';
@@ -13,62 +11,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/Dialog';
-
-type FollowListMode = 'followers' | 'following';
+import { type FollowListMode, useFollowEntities } from '../people/useFollowEntities';
 
 interface FollowListDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   mode: FollowListMode;
   relationships: Relationship[];
-}
-
-interface FollowListTarget {
-  kind: 'user' | 'channel';
-  id: string;
-}
-
-interface FollowListEntity {
-  kind: 'user' | 'channel';
-  id: string;
-  label: string;
-  secondary: string | null;
-  avatarUrl: string | null;
-}
-
-function resolveTarget(
-  mode: FollowListMode,
-  relationship: Relationship
-): FollowListTarget | null {
-  if (mode === 'followers') {
-    return { kind: 'user', id: relationship.user_id };
-  }
-  if (relationship.target_type === 'user' || relationship.target_type === 'channel') {
-    return { kind: relationship.target_type, id: relationship.target_id };
-  }
-  return null;
-}
-
-async function loadEntity(target: FollowListTarget): Promise<FollowListEntity> {
-  if (target.kind === 'channel') {
-    const channel = await channelsApi.get(target.id);
-    return {
-      kind: 'channel',
-      id: channel.id,
-      label: channel.name,
-      secondary: `#${channel.slug}`,
-      avatarUrl: channel.avatar?.url ?? null,
-    };
-  }
-
-  const user = await usersApi.getUser(target.id);
-  return {
-    kind: 'user',
-    id: user.id,
-    label: user.display_name || user.username || user.id,
-    secondary: user.username ? `@${user.username}` : null,
-    avatarUrl: user.avatar?.url ?? null,
-  };
 }
 
 export function FollowListDialog({
@@ -78,19 +27,7 @@ export function FollowListDialog({
   relationships,
 }: FollowListDialogProps) {
   const navigate = useNavigate();
-  const targets = relationships
-    .filter((relationship) => relationship.status === 'active')
-    .map((relationship) => resolveTarget(mode, relationship))
-    .filter((target): target is FollowListTarget => target !== null);
-  const queries = useQueries({
-    queries: targets.map((target) => ({
-      queryKey: ['follow-entity', target.kind, target.id],
-      queryFn: () => loadEntity(target),
-      enabled: open,
-    })),
-  });
-  const isLoading = queries.some((query) => query.isLoading);
-  const entities = queries.flatMap((query) => (query.data ? [query.data] : []));
+  const { targets, entities, isLoading } = useFollowEntities(mode, relationships, open);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

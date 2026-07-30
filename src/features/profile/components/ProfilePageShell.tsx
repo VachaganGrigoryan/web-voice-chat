@@ -1,10 +1,9 @@
 import { useState, type ReactNode } from 'react';
 import { Loader2, Pin, Plus } from 'lucide-react';
-import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 
 import { extractApiError } from '@/api/errors';
-import type { UserChannelView } from '@/api/types';
+import type { ChannelSummary } from '@/api/types';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/Avatar';
 import { Button } from '@/components/ui/Button';
 import { CreateChannelDialog } from '@/features/chat/components/CreateChannelDialog';
@@ -83,17 +82,17 @@ export function ProfilePageShell({
     setSelectedTab(channelId);
   };
 
-  const handleSetMain = async (channel: UserChannelView) => {
+  const handleSetMain = async (channel: ChannelSummary) => {
     try {
       await setMainChannel(channel.id);
-      toast.success(`“${channel.title ?? 'Channel'}” is now your main channel`);
+      toast.success(`“${channel.name ?? 'Channel'}” is now your main channel`);
     } catch (error) {
       toast.error(extractApiError(error, 'Could not set main channel'));
     }
   };
 
   return (
-    <div className="min-h-[100dvh] bg-background">
+    <div className="h-full min-h-0 w-full overflow-y-auto bg-background">
       {/* Cover band */}
       <div className="h-40 w-full bg-gradient-to-r from-primary/25 via-muted to-secondary/25 sm:h-56" />
 
@@ -138,14 +137,6 @@ export function ProfilePageShell({
           >
             <span className="font-semibold text-foreground">{followingCount}</span> following
           </button>
-          {username ? (
-            <Link
-              to={APP_ROUTES.userFeed(username.replace(/^@/, ''))}
-              className="font-medium text-primary hover:underline"
-            >
-              View feed
-            </Link>
-          ) : null}
         </div>
 
         {/* Channel tabs */}
@@ -163,7 +154,7 @@ export function ProfilePageShell({
               )}
             >
               {channel.is_main ? <Pin className="h-3.5 w-3.5" aria-hidden /> : null}
-              {channel.title || 'Untitled'}
+              {channel.name || 'Untitled'}
             </button>
           ))}
           <button

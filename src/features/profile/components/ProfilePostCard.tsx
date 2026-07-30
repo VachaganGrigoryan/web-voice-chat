@@ -150,10 +150,16 @@ interface ProfilePostCardProps {
   post: FeedPostView;
   channelId: string;
   canComment: boolean;
+  defaultShowComments?: boolean;
 }
 
-export function ProfilePostCard({ post, channelId, canComment }: ProfilePostCardProps) {
-  const [showComments, setShowComments] = useState(false);
+export function ProfilePostCard({
+  post,
+  channelId,
+  canComment,
+  defaultShowComments = false,
+}: ProfilePostCardProps) {
+  const [showComments, setShowComments] = useState(defaultShowComments);
 
   const totalReactions = post.reactions.reduce((sum, group) => sum + group.count, 0);
 

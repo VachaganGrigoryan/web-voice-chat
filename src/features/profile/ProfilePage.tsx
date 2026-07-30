@@ -35,7 +35,7 @@ function formatLastSeen(value: string | null | undefined) {
 
 function ProfileMessage({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex min-h-[100dvh] items-center justify-center bg-background p-6">
+    <div className="flex min-h-full min-h-0 w-full items-center justify-center bg-background p-6">
       <div className="rounded-2xl border border-border bg-muted/40 px-6 py-8 text-center text-sm text-muted-foreground">
         {children}
       </div>
@@ -67,7 +67,7 @@ export default function ProfilePage() {
 
   if (isLoading && !profile) {
     return (
-      <div className="flex min-h-[100dvh] items-center justify-center bg-background">
+      <div className="flex min-h-full min-h-0 w-full items-center justify-center bg-background">
         <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
       </div>
     );

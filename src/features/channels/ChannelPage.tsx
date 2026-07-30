@@ -1,38 +1,30 @@
-import { useEffect, useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Loader2, Save, UserPlus } from 'lucide-react';
-import { Navigate, useParams } from 'react-router-dom';
+import { Info, Loader2, MessageSquare, Rss, Settings, UserPlus, Users } from 'lucide-react';
+import { useMutation, useQuery } from '@tanstack/react-query';
+import { Navigate, useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
 
 import { channelsApi, membershipsApi } from '@/api/endpoints';
 import { extractApiError } from '@/api/errors';
-import type {
-  ChannelCommentPolicy,
-  ChannelPostingPolicy,
-  ChannelVisibility,
-} from '@/api/types';
-import { APP_ROUTES } from '@/app/routes';
+import { APP_ROUTES, ChannelTab, isChannelTab } from '@/app/routes';
 import { FollowButton } from '@/components/FollowButton';
 import { PanelPageLayout, PanelSection } from '@/components/panel/PanelPageLayout';
+import { PageTabs } from '@/components/page/PageTabs';
+import type { PageTab } from '@/components/page/pageTypes';
 import { Button } from '@/components/ui/Button';
-import { Input } from '@/components/ui/Input';
-import { Label } from '@/components/ui/Label';
+import { useChannelManagement } from '@/hooks/useChannelManagement';
+import { ChannelAboutTab } from './tabs/ChannelAboutTab';
+import { ChannelMembersTab } from './tabs/ChannelMembersTab';
 import { useAppNavigation } from '@/navigation/appNavigation';
-import { useAuthStore } from '@/store/authStore';
 import { ProfileChannelTimeline } from '@/features/profile/components/ProfileChannelTimeline';
 
 export default function ChannelPage() {
-  const { channelId } = useParams<{ channelId?: string }>();
-  const currentUserId = useAuthStore((state) => state.userId);
-  const queryClient = useQueryClient();
+  const { spaceId, channelId, tab } = useParams<{
+    spaceId?: string;
+    channelId?: string;
+    tab?: string;
+  }>();
+  const navigate = useNavigate();
   const { goBack } = useAppNavigation();
-  const [name, setName] = useState('');
-  const [description, setDescription] = useState('');
-  const [visibility, setVisibility] = useState<ChannelVisibility>('public');
-  const [postingPolicy, setPostingPolicy] =
-    useState<ChannelPostingPolicy>('everyone');
-  const [commentPolicy, setCommentPolicy] =
-    useState<ChannelCommentPolicy>('everyone');
 
   const channelQuery = useQuery({
     queryKey: ['channels', channelId],
@@ -40,38 +32,26 @@ export default function ChannelPage() {
     enabled: Boolean(channelId),
   });
   const channel = channelQuery.data;
-  const isOwner = Boolean(
-    channel &&
-      currentUserId &&
-      channel.owner.type === 'user' &&
-      channel.owner.id === currentUserId
-  );
+  const management = useChannelManagement(channelId ?? null);
+  const isOwner = management.isOwner;
+  // Management is a role question, not an ownership question: a space-owned
+  // channel has no user owner, so the old owner-only check hid every control.
+  const canManage = management.canManage;
+  const activeTab: ChannelTab = isChannelTab(tab) ? tab : 'feed';
+  const ownerSpaceId = spaceId ?? channel?.space_id ?? null;
+  const channelPath = (next: ChannelTab) =>
+    ownerSpaceId
+      ? APP_ROUTES.spaceChannel(ownerSpaceId, channelId as string, next)
+      : next === 'feed'
+        ? APP_ROUTES.channel(channelId as string)
+        : `${APP_ROUTES.channel(channelId as string)}/${next}`;
 
-  useEffect(() => {
-    if (!channel) return;
-    setName(channel.name);
-    setDescription(channel.description ?? '');
-    setVisibility(channel.visibility);
-    setPostingPolicy(channel.posting_policy);
-    setCommentPolicy(channel.comment_policy);
-  }, [channel]);
-
-  const updateChannel = useMutation({
-    mutationFn: () =>
-      channelsApi.update(channelId as string, {
-        name: name.trim(),
-        description: description.trim() || null,
-        visibility,
-        posting_policy: postingPolicy,
-        comment_policy: commentPolicy,
-      }),
-    onSuccess: (updated) => {
-      queryClient.setQueryData(['channels', updated.id], updated);
-      queryClient.invalidateQueries({ queryKey: ['user-channels'] });
-      toast.success('Channel updated');
-    },
-    onError: (error) => toast.error(extractApiError(error, 'Could not update channel')),
-  });
+  const channelTabs: readonly PageTab[] = [
+    { id: 'feed', label: 'Feed', icon: Rss },
+    { id: 'chat', label: 'Chat', icon: MessageSquare },
+    { id: 'about', label: 'About', icon: Info },
+    { id: 'members', label: 'Members', icon: Users, count: management.members.length },
+  ];
 
   const joinChannel = useMutation({
     mutationFn: () => membershipsApi.join('channel', channelId as string),
@@ -89,7 +69,7 @@ export default function ChannelPage() {
 
   if (channelQuery.isLoading) {
     return (
-      <div className="flex min-h-[100dvh] items-center justify-center bg-background">
+      <div className="flex min-h-full min-h-0 w-full items-center justify-center bg-background">
         <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
       </div>
     );
@@ -97,9 +77,22 @@ export default function ChannelPage() {
 
   if (!channel) {
     return (
-      <div className="flex min-h-[100dvh] items-center justify-center bg-background p-6 text-sm text-muted-foreground">
+      <div className="flex min-h-full min-h-0 w-full items-center justify-center bg-background p-6 text-sm text-muted-foreground">
         Channel not found.
       </div>
+    );
+  }
+
+  if (activeTab === 'chat') {
+    return (
+      <Navigate
+        to={
+          ownerSpaceId
+            ? APP_ROUTES.spaceChannel(ownerSpaceId, channel.id, 'chat')
+            : APP_ROUTES.chatChannel(channel.id)
+        }
+        replace
+      />
     );
   }
 
@@ -107,7 +100,15 @@ export default function ChannelPage() {
     <PanelPageLayout
       title={channel.name}
       description={`#${channel.slug} · ${channel.kind}`}
-      onBack={() => goBack({ fallback: APP_ROUTES.feeds })}
+      onBack={() => goBack({ fallback: ownerSpaceId ? APP_ROUTES.spaceDetailTab(ownerSpaceId, 'channels') : APP_ROUTES.feed })}
+      nav={
+        <PageTabs
+          tabs={channelTabs}
+          activeTabId={activeTab}
+          onSelect={(tabId) => navigate(channelPath(tabId as ChannelTab))}
+          aria-label="Channel sections"
+        />
+      }
       headerActions={
         <div className="flex items-center gap-2">
           {!isOwner ? <FollowButton targetType="channel" targetId={channel.id} /> : null}
@@ -126,110 +127,40 @@ export default function ChannelPage() {
               Join
             </Button>
           ) : null}
+          {canManage ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() =>
+                navigate(
+                  ownerSpaceId
+                    ? APP_ROUTES.spaceChannelManage(ownerSpaceId, channel.id)
+                    : APP_ROUTES.channelManage(channel.id)
+                )
+              }
+            >
+              <Settings className="mr-2 h-4 w-4" />
+              Manage
+            </Button>
+          ) : null}
         </div>
       }
     >
       <div className="space-y-6">
-        <PanelSection
-          title="Channel feed"
-          description={channel.description || 'Posts and comments from this channel.'}
-        >
-          <ProfileChannelTimeline channelId={channel.id} />
-        </PanelSection>
-
-        {isOwner ? (
+        {activeTab === 'feed' ? (
           <PanelSection
-            title="Manage channel"
-            description="Update the channel details and posting policies."
+            title="Channel feed"
+            description={channel.description || 'Posts and comments from this channel.'}
           >
-            <div className="space-y-4">
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="space-y-1.5">
-                  <Label htmlFor="manage-channel-name">Name</Label>
-                  <Input
-                    id="manage-channel-name"
-                    value={name}
-                    onChange={(event) => setName(event.target.value)}
-                    maxLength={80}
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="manage-channel-visibility">Visibility</Label>
-                  <select
-                    id="manage-channel-visibility"
-                    value={visibility}
-                    onChange={(event) =>
-                      setVisibility(event.target.value as ChannelVisibility)
-                    }
-                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-                  >
-                    <option value="public">Public</option>
-                    <option value="members">Members</option>
-                    <option value="private">Private</option>
-                  </select>
-                </div>
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="manage-channel-description">Description</Label>
-                <textarea
-                  id="manage-channel-description"
-                  value={description}
-                  onChange={(event) => setDescription(event.target.value)}
-                  rows={3}
-                  maxLength={500}
-                  className="w-full resize-none rounded-md border border-input bg-background px-3 py-2 text-sm"
-                />
-              </div>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="space-y-1.5">
-                  <Label htmlFor="manage-posting-policy">Who can post</Label>
-                  <select
-                    id="manage-posting-policy"
-                    value={postingPolicy}
-                    onChange={(event) =>
-                      setPostingPolicy(event.target.value as ChannelPostingPolicy)
-                    }
-                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-                  >
-                    <option value="owner">Owner</option>
-                    <option value="moderators">Moderators</option>
-                    <option value="members">Members</option>
-                    <option value="everyone">Everyone</option>
-                  </select>
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="manage-comment-policy">Who can comment</Label>
-                  <select
-                    id="manage-comment-policy"
-                    value={commentPolicy}
-                    onChange={(event) =>
-                      setCommentPolicy(event.target.value as ChannelCommentPolicy)
-                    }
-                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-                  >
-                    <option value="disabled">Nobody</option>
-                    <option value="followers">Followers</option>
-                    <option value="members">Members</option>
-                    <option value="everyone">Everyone</option>
-                  </select>
-                </div>
-              </div>
-              <div className="flex justify-end">
-                <Button
-                  type="button"
-                  disabled={!name.trim() || updateChannel.isPending}
-                  onClick={() => updateChannel.mutate()}
-                >
-                  {updateChannel.isPending ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  ) : (
-                    <Save className="mr-2 h-4 w-4" />
-                  )}
-                  Save changes
-                </Button>
-              </div>
-            </div>
+            <ProfileChannelTimeline channelId={channel.id} />
           </PanelSection>
+        ) : null}
+
+        {activeTab === 'about' ? <ChannelAboutTab channel={channel} /> : null}
+
+        {activeTab === 'members' ? (
+          <ChannelMembersTab channelId={channel.id} management={management} />
         ) : null}
       </div>
     </PanelPageLayout>
