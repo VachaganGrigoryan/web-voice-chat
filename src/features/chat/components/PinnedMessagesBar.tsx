@@ -53,7 +53,7 @@ export function PinnedMessagesBar({
 
   const unpinMutation = useMutation({
     mutationFn: (messageId: string) =>
-      messagesApi.unpinMessage(conversationId, messageId),
+      messagesApi.unpinMessage(messageId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: pinnedKey(conversationId) });
       queryClient.invalidateQueries({ queryKey: ['conversations'] });

@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
 import type { CallPeerUserSummary } from '@/api/types';
+import { useIsMobile } from '@/hooks/useIsMobile';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/Avatar';
 import { cn } from '@/lib/utils';
 
@@ -27,31 +27,8 @@ export function formatCountdown(milliseconds: number | null) {
   return `${minutes}:${seconds.toString().padStart(2, '0')}`;
 }
 
-export function useIsMobileViewport() {
-  const [isMobileViewport, setIsMobileViewport] = useState(
-    () => typeof window !== 'undefined' && window.innerWidth < 768
-  );
-
-  useEffect(() => {
-    if (typeof window === 'undefined') {
-      return;
-    }
-
-    const mediaQuery = window.matchMedia('(max-width: 767px)');
-    const updateMatch = () => setIsMobileViewport(mediaQuery.matches);
-
-    updateMatch();
-    mediaQuery.addEventListener?.('change', updateMatch);
-    window.addEventListener('resize', updateMatch);
-
-    return () => {
-      mediaQuery.removeEventListener?.('change', updateMatch);
-      window.removeEventListener('resize', updateMatch);
-    };
-  }, []);
-
-  return isMobileViewport;
-}
+/** @deprecated Use `useIsMobile` from '@/hooks/useIsMobile' directly. */
+export const useIsMobileViewport = useIsMobile;
 
 export function CallPeerAvatar({
   peerLabel,

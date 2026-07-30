@@ -1,11 +1,16 @@
-import type { ConnectionListItem, CreatePollRequest } from '@/api/types';
-import type { SendMediaInput, SendRichContentInput, SendTextInput } from '@/hooks/useChat';
+import type {
+  ConnectionListItem,
+  CreatePollRequest,
+  MessageContainerRef,
+} from '@/api/types';
+import type { SendMediaInput, SendRichContentInput, SendTextInput } from '@/features/chat/types/sendInputs';
 import { ComposerReplyTarget } from '../types/message';
 
 export type ComposerPanel = 'emoji' | 'attachments' | null;
 
 export interface ChatComposerProps {
-  receiverId: string;
+  /** The container being written into — a conversation or a channel. */
+  container: MessageContainerRef;
   onSendText: (data: SendTextInput) => Promise<unknown>;
   onSendMedia: (data: SendMediaInput) => Promise<unknown>;
   onSendRichContent: (data: SendRichContentInput) => Promise<unknown>;

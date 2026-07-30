@@ -56,7 +56,7 @@ export function ForwardMessageDialog({
     if (!sourceConversationId || !messageId || pendingId) return;
     setPendingId(targetConversationId);
     try {
-      await messagesApi.forwardMessage(sourceConversationId, messageId, targetConversationId);
+      await messagesApi.forwardMessage(messageId, targetConversationId);
       toast.success('Message forwarded');
       onForwarded?.(targetConversationId);
       onOpenChange(false);

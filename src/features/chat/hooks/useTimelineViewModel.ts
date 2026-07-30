@@ -10,7 +10,7 @@ interface MessagesPageData<T> {
   }>;
 }
 
-interface UseChatConversationViewParams {
+interface UseTimelineViewModelParams {
   messages: MessagesPageData<MessageDoc> | undefined;
   threadMessagesPages: MessagesPageData<MessageDoc> | undefined;
   userId?: string | null;
@@ -24,13 +24,20 @@ const byCreatedAtAscending = (left: ChatMessage, right: ChatMessage) =>
 const getAudioMediaKind = (message: AudioMessage): 'voice' | 'audio' =>
   message.media?.kind === 'audio' ? 'audio' : 'voice';
 
-export function useChatConversationView({
+/**
+ * Turns `MessageDoc` pages into `ChatMessage` render items. Container-agnostic
+ * — it transforms whatever `useContainerMessages` returns, whether that's a
+ * conversation's or a channel's history — so it survived the container
+ * adapter unchanged aside from the name, which now says what it does instead
+ * of naming the conversation-only model it predates.
+ */
+export function useTimelineViewModel({
   messages,
   threadMessagesPages,
   userId,
   selectedUser,
   selectedThreadRootId,
-}: UseChatConversationViewParams) {
+}: UseTimelineViewModelParams) {
   const allMessages = useMemo(
     () => messages?.pages?.flatMap((page) => page.data || []).filter(Boolean) || [],
     [messages]

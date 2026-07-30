@@ -9,26 +9,34 @@ import {
   Bookmark,
   Clock,
   FolderInput,
+  Hash,
+  Info,
   Loader2,
+  Megaphone,
   MoreVertical,
   Phone,
   Pin,
   PinOff,
   Search,
+  Settings,
   UserPlus,
+  Users,
   Video,
   type LucideIcon,
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { cn } from '@/lib/utils';
 import { Logo } from '@/shared/branding/Logo';
+import { APP_ROUTES } from '@/app/routes';
+import type { ContainerDescriptor } from '@/container';
+import { ChannelLensToggle } from '@/features/channels/ChannelLensToggle';
+import type { ChannelLens } from '@/features/channels/useChannelLens';
+import { NotificationLevel, PresenceState } from '@/api/types';
 import { ProfileTriggerButton } from './ProfileTriggerButton';
-import { ConversationType, NotificationLevel, PresenceState } from '@/api/types';
 
 type HeaderActionId =
   | 'audio_call'
   | 'video_call'
-  | 'invite'
   | 'search'
   | 'saved'
   | 'scheduled'
@@ -38,7 +46,7 @@ type HeaderActionId =
   | 'archive'
   | 'send_ping';
 
-type HeaderActionContext = ConversationType;
+type HeaderActionContext = 'dm' | 'group';
 
 interface HeaderAction {
   id: HeaderActionId;
@@ -63,7 +71,6 @@ const QUICK_ACTION_STORAGE_KEY = 'vogi.chat.header.quickActions.v1';
 const HEADER_ACTION_IDS: readonly HeaderActionId[] = [
   'audio_call',
   'video_call',
-  'invite',
   'search',
   'saved',
   'scheduled',
@@ -77,7 +84,7 @@ const HEADER_ACTION_ID_SET: ReadonlySet<string> = new Set(HEADER_ACTION_IDS);
 const HEADER_ACTION_CONTEXTS: readonly HeaderActionContext[] = ['dm', 'group'];
 const DEFAULT_QUICK_ACTIONS: Record<HeaderActionContext, HeaderActionId[]> = {
   dm: ['audio_call', 'video_call'],
-  group: ['invite'],
+  group: [],
 };
 const MAX_QUICK_ACTIONS: Record<HeaderActionContext, number> = {
   dm: 2,
@@ -100,7 +107,6 @@ function normalizeQuickActionIds(value: unknown): HeaderActionId[] {
   if (!Array.isArray(value)) {
     return [];
   }
-
   return value.filter(isHeaderActionId);
 }
 
@@ -142,10 +148,6 @@ function writeQuickActionPreferences(preferences: QuickActionPreferences) {
   } catch {
     // Ignore storage failures so chat actions remain usable.
   }
-}
-
-function resolveActionContext(conversationType?: ConversationType): HeaderActionContext {
-  return conversationType === 'group' ? 'group' : 'dm';
 }
 
 function getHeaderMenuStyle(anchorRect: HeaderMenuRect) {
@@ -210,7 +212,6 @@ function resolveQuickActions(
 
 function HeaderActionIcon({ action }: { action: HeaderAction }) {
   const Icon = action.icon;
-
   return <Icon className={cn('h-4 w-4', action.iconClassName)} />;
 }
 
@@ -237,9 +238,7 @@ function HeaderActionsMenu({
     }
 
     const frame = window.requestAnimationFrame(() => {
-      panelRef.current
-        ?.querySelector<HTMLButtonElement>('button:not(:disabled)')
-        ?.focus();
+      panelRef.current?.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus();
     });
 
     const handlePointerDown = (event: PointerEvent) => {
@@ -247,7 +246,6 @@ function HeaderActionsMenu({
       if (target && panelRef.current?.contains(target)) {
         return;
       }
-
       onOpenChange(false);
     };
 
@@ -272,10 +270,7 @@ function HeaderActionsMenu({
     };
   }, [anchorRect, onOpenChange]);
 
-  const menuStyle = useMemo(
-    () => (anchorRect ? getHeaderMenuStyle(anchorRect) : {}),
-    [anchorRect]
-  );
+  const menuStyle = useMemo(() => (anchorRect ? getHeaderMenuStyle(anchorRect) : {}), [anchorRect]);
 
   if (!anchorRect || typeof document === 'undefined') {
     return null;
@@ -345,17 +340,22 @@ function HeaderActionsMenu({
   );
 }
 
-interface ChatHeaderProps {
-  selectedUser: string;
-  displaySelectedUser?: string | null;
-  selectedConversationUserAvatarUrl?: string;
-  isTyping: boolean;
-  isOnline: boolean;
+interface ContainerHeaderProps {
+  descriptor: ContainerDescriptor;
+  onClose: () => void;
+  onOpenInfo: () => void;
+  onOpenSearch?: () => void;
+  onNavigate: (path: string) => void;
+
+  // Channel-only.
+  lens?: ChannelLens;
+  onLensChange?: (lens: ChannelLens) => void;
+
+  // Conversation-only — all optional, read only when `descriptor.source.kind === 'conversation'`.
+  isTyping?: boolean;
+  isOnline?: boolean;
   presenceState?: PresenceState;
   isGhost?: boolean;
-  conversationType?: ConversationType;
-  showInvite?: boolean;
-  onOpenInvite?: () => void;
   notificationLevel?: NotificationLevel;
   mutedUntil?: string | null;
   isUpdatingNotifications?: boolean;
@@ -366,34 +366,37 @@ interface ChatHeaderProps {
   onToggleInboxPin?: () => void;
   onToggleInboxArchive?: () => void;
   onMoveToFolder?: () => void;
-  isPingAccepted: boolean;
-  pingStatus: string;
-  isSendingPing: boolean;
-  canPing: boolean;
-  canCall: boolean;
-  isCallBusy: boolean;
-  onCloseConversation: () => void;
-  onOpenProfile: () => void;
+  isPingAccepted?: boolean;
+  pingStatus?: string;
+  isSendingPing?: boolean;
+  canPing?: boolean;
+  canCall?: boolean;
+  isCallBusy?: boolean;
   onOpenGroupInfo?: () => void;
-  onOpenSearch?: () => void;
   onOpenScheduled?: () => void;
   onOpenSaved?: () => void;
-  onSendPing: () => void;
-  onStartAudioCall: () => void;
-  onStartVideoCall: () => void;
+  onSendPing?: () => void;
+  onStartAudioCall?: () => void;
+  onStartVideoCall?: () => void;
 }
 
-export function ChatHeader({
-  selectedUser,
-  displaySelectedUser,
-  selectedConversationUserAvatarUrl,
-  isTyping,
-  isOnline,
-  presenceState = isOnline ? 'online' : 'offline',
+/**
+ * The one header for the chat pane, fed by `descriptor.identity` and
+ * `descriptor.capabilities`. `ChatHeader` and `ChannelChatHeader` existed as
+ * two files only because there was no adapter to read a shared shape from.
+ */
+export function ContainerHeader({
+  descriptor,
+  onClose,
+  onOpenInfo,
+  onOpenSearch,
+  onNavigate,
+  lens,
+  onLensChange,
+  isTyping = false,
+  isOnline = false,
+  presenceState,
   isGhost = false,
-  conversationType = 'dm',
-  showInvite = false,
-  onOpenInvite,
   notificationLevel = 'all',
   mutedUntil = null,
   isUpdatingNotifications = false,
@@ -404,33 +407,33 @@ export function ChatHeader({
   onToggleInboxPin,
   onToggleInboxArchive,
   onMoveToFolder,
-  isPingAccepted,
-  pingStatus,
-  isSendingPing,
-  canPing,
-  canCall,
-  isCallBusy,
-  onCloseConversation,
-  onOpenProfile,
+  isPingAccepted = false,
+  pingStatus = 'none',
+  isSendingPing = false,
+  canPing = false,
+  canCall = false,
+  isCallBusy = false,
   onOpenGroupInfo,
-  onOpenSearch,
   onOpenScheduled,
   onOpenSaved,
   onSendPing,
   onStartAudioCall,
   onStartVideoCall,
-}: ChatHeaderProps) {
+}: ContainerHeaderProps) {
   const [menuAnchorRect, setMenuAnchorRect] = useState<HeaderMenuRect | null>(null);
+  const [isChannelMenuOpen, setIsChannelMenuOpen] = useState(false);
   const [quickActionPreferences, setQuickActionPreferences] = useState<QuickActionPreferences>(
     readQuickActionPreferences
   );
-  const actionContext = resolveActionContext(conversationType);
-  const isGroup = conversationType === 'group';
-  const isDirectMessage = conversationType === 'dm';
+
+  const isChannel = descriptor.source.kind === 'channel';
+  const isGroup = descriptor.identity.badge === 'group';
+  const isDirectMessage = descriptor.identity.badge === 'dm';
+  const resolvedPresenceState: PresenceState = presenceState ?? (isOnline ? 'online' : 'offline');
   const presenceLabel =
-    presenceState === 'dnd'
+    resolvedPresenceState === 'dnd'
       ? 'Do not disturb'
-      : presenceState === 'away'
+      : resolvedPresenceState === 'away'
         ? 'Away'
         : isOnline
           ? 'Online'
@@ -449,7 +452,9 @@ export function ChatHeader({
       : pingStatus === 'incoming_pending'
         ? 'Ping request received'
         : 'Send ping';
+
   const actions = useMemo<HeaderAction[]>(() => {
+    if (isChannel) return [];
     const nextActions: HeaderAction[] = [];
 
     if (isDirectMessage && isPingAccepted) {
@@ -460,7 +465,7 @@ export function ChatHeader({
           title: 'Start audio call',
           icon: Phone,
           disabled: !canCall || isCallBusy,
-          onSelect: onStartAudioCall,
+          onSelect: () => onStartAudioCall?.(),
         },
         {
           id: 'video_call',
@@ -468,7 +473,7 @@ export function ChatHeader({
           title: 'Start video call',
           icon: Video,
           disabled: !canCall || isCallBusy,
-          onSelect: onStartVideoCall,
+          onSelect: () => onStartVideoCall?.(),
         }
       );
     }
@@ -478,33 +483,23 @@ export function ChatHeader({
         id: 'send_ping',
         label: pingTitle,
         title: pingTitle,
-        icon:
-          isSendingPing
-            ? Loader2
-            : pingStatus === 'incoming_pending'
-              ? Bell
-              : pingStatus === 'outgoing_pending'
-                ? Clock
-                : UserPlus,
+        icon: isSendingPing
+          ? Loader2
+          : pingStatus === 'incoming_pending'
+            ? Bell
+            : pingStatus === 'outgoing_pending'
+              ? Clock
+              : UserPlus,
         iconClassName: isSendingPing ? 'animate-spin' : undefined,
         disabled:
           isSendingPing ||
           !canPing ||
           pingStatus === 'outgoing_pending' ||
           pingStatus === 'incoming_pending',
-        onSelect: onSendPing,
+        onSelect: () => onSendPing?.(),
       });
     }
 
-    if (showInvite && onOpenInvite) {
-      nextActions.push({
-        id: 'invite',
-        label: 'Invite people',
-        title: 'Invite people',
-        icon: UserPlus,
-        onSelect: onOpenInvite,
-      });
-    }
 
     if (onOpenSearch) {
       nextActions.push({
@@ -588,6 +583,7 @@ export function ChatHeader({
     inboxArchived,
     inboxPinned,
     isCallBusy,
+    isChannel,
     isDirectMessage,
     isMuted,
     isPingAccepted,
@@ -597,7 +593,6 @@ export function ChatHeader({
     notificationTitle,
     onCycleNotificationLevel,
     onMoveToFolder,
-    onOpenInvite,
     onOpenSaved,
     onOpenScheduled,
     onOpenSearch,
@@ -608,8 +603,9 @@ export function ChatHeader({
     onToggleInboxPin,
     pingStatus,
     pingTitle,
-    showInvite,
   ]);
+
+  const actionContext: HeaderActionContext = isGroup ? 'group' : 'dm';
   const quickActions = useMemo(
     () => resolveQuickActions(actionContext, quickActionPreferences, actions),
     [actionContext, actions, quickActionPreferences]
@@ -617,13 +613,14 @@ export function ChatHeader({
   const quickActionIds = quickActions.map((action) => action.id);
 
   useEffect(() => {
-    writeQuickActionPreferences(quickActionPreferences);
-  }, [quickActionPreferences]);
+    if (!isChannel) {
+      writeQuickActionPreferences(quickActionPreferences);
+    }
+  }, [isChannel, quickActionPreferences]);
 
   const toggleQuickAction = (actionId: HeaderActionId) => {
     setQuickActionPreferences((currentPreferences) => {
-      const currentActionIds =
-        currentPreferences[actionContext] ?? DEFAULT_QUICK_ACTIONS[actionContext];
+      const currentActionIds = currentPreferences[actionContext] ?? DEFAULT_QUICK_ACTIONS[actionContext];
       const nextActionIds = currentActionIds.includes(actionId)
         ? currentActionIds.filter((currentActionId) => currentActionId !== actionId)
         : [actionId, ...currentActionIds.filter((currentActionId) => currentActionId !== actionId)];
@@ -642,28 +639,141 @@ export function ChatHeader({
     }
 
     const rect = event.currentTarget.getBoundingClientRect();
-    setMenuAnchorRect({
-      top: rect.top,
-      right: rect.right,
-      bottom: rect.bottom,
-      left: rect.left,
-    });
+    setMenuAnchorRect({ top: rect.top, right: rect.right, bottom: rect.bottom, left: rect.left });
   };
+
+  if (isChannel) {
+    const KindIcon = descriptor.identity.badge === 'profile-channel' ? Hash : Hash;
+    const isAnnouncement = descriptor.source.kind === 'channel' && descriptor.source.channel.kind === 'announcement';
+    const ChannelKindIcon = isAnnouncement ? Megaphone : KindIcon;
+
+    return (
+      <header
+        aria-label="Channel header"
+        className="h-16 border-b flex items-center px-4 justify-between bg-background/95 backdrop-blur z-10 shrink-0 shadow-sm"
+      >
+        <div className="flex min-w-0 flex-1 items-center gap-3">
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            aria-label="Back to inbox"
+            className="-ml-2 h-9 w-9 shrink-0 cursor-pointer rounded-full md:hidden"
+            onClick={onClose}
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
+
+          <button
+            type="button"
+            onClick={onOpenInfo}
+            className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 rounded-xl px-1 py-1 text-left transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-border/60 bg-brand-muted text-brand">
+              <ChannelKindIcon className="h-4 w-4" />
+            </span>
+            <span className="min-w-0">
+              <span className="block truncate text-sm font-semibold text-foreground">
+                {descriptor.identity.title}
+              </span>
+              <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                <Users className="h-3 w-3" />
+                {descriptor.identity.subtitle}
+              </span>
+            </span>
+          </button>
+        </div>
+
+        <div className="flex shrink-0 items-center gap-1">
+          {lens && onLensChange ? (
+            <ChannelLensToggle lens={lens} onChange={onLensChange} className="mr-1 hidden sm:inline-flex" />
+          ) : null}
+
+          {onOpenSearch ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              aria-label="Search this channel"
+              className="h-9 w-9 cursor-pointer rounded-full"
+              onClick={onOpenSearch}
+            >
+              <Search className="h-4 w-4" />
+            </Button>
+          ) : null}
+
+          <div className="relative">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              aria-label="Channel actions"
+              aria-expanded={isChannelMenuOpen}
+              aria-haspopup="menu"
+              className="h-9 w-9 cursor-pointer rounded-full"
+              onClick={() => setIsChannelMenuOpen((current) => !current)}
+            >
+              <MoreVertical className="h-4 w-4" />
+            </Button>
+            {isChannelMenuOpen ? (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setIsChannelMenuOpen(false)} />
+                <div
+                  role="menu"
+                  className="absolute right-0 top-full z-50 mt-1 w-56 rounded-xl border bg-popover p-1.5 shadow-e3 animate-in fade-in slide-in-from-top-1 duration-100"
+                >
+                  {lens && onLensChange ? (
+                    <ChannelLensToggle
+                      lens={lens}
+                      onChange={(next) => {
+                        setIsChannelMenuOpen(false);
+                        onLensChange(next);
+                      }}
+                      className="mb-1 flex w-full sm:hidden"
+                    />
+                  ) : null}
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setIsChannelMenuOpen(false);
+                      onOpenInfo();
+                    }}
+                    className="flex w-full cursor-pointer items-center gap-2 rounded-lg p-2 text-left text-sm font-medium text-foreground/80 transition-colors hover:bg-muted/60 hover:text-foreground"
+                  >
+                    <Info className="h-4 w-4 shrink-0" />
+                    Channel info
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setIsChannelMenuOpen(false);
+                      onNavigate(APP_ROUTES.channel(descriptor.ref.container_id));
+                    }}
+                    className="flex w-full cursor-pointer items-center gap-2 rounded-lg p-2 text-left text-sm font-medium text-foreground/80 transition-colors hover:bg-muted/60 hover:text-foreground"
+                  >
+                    <Settings className="h-4 w-4 shrink-0" />
+                    Channel settings
+                  </button>
+                </div>
+              </>
+            ) : null}
+          </div>
+        </div>
+      </header>
+    );
+  }
 
   return (
     <div className="h-16 border-b flex items-center px-4 justify-between bg-background/95 backdrop-blur z-10 shrink-0 shadow-sm">
       <div className="flex items-center gap-3">
-        <Button
-          variant="ghost"
-          size="icon"
-          className="md:hidden -ml-2 h-11 w-11 rounded-full"
-          onClick={onCloseConversation}
-        >
+        <Button variant="ghost" size="icon" className="md:hidden -ml-2 h-11 w-11 rounded-full" onClick={onClose}>
           <ArrowLeft className="h-5 w-5" />
         </Button>
         <Logo variant="symbol" size="sm" className="md:hidden" aria-label="Vogi" />
         <ProfileTriggerButton
-          title={displaySelectedUser}
+          title={descriptor.identity.title}
           subtitle={
             isTyping ? (
               <span className="text-primary font-medium animate-pulse">Typing...</span>
@@ -673,12 +783,12 @@ export function ChatHeader({
               presenceLabel
             )
           }
-          avatarUrl={selectedConversationUserAvatarUrl}
-          fallback={(displaySelectedUser || '?')[0].toUpperCase()}
-          onClick={isGroup ? onOpenGroupInfo : onOpenProfile}
-          disabled={isGroup ? false : !selectedUser || isGhost}
+          avatarUrl={descriptor.identity.avatar?.url}
+          fallback={(descriptor.identity.title || '?')[0].toUpperCase()}
+          onClick={isGroup ? onOpenGroupInfo : onOpenInfo}
+          disabled={isGroup ? false : isGhost}
           online={!isGroup && !isGhost && isOnline}
-          presenceState={!isGroup && !isGhost ? presenceState : 'offline'}
+          presenceState={!isGroup && !isGhost ? resolvedPresenceState : 'offline'}
           avatarClassName="h-9 w-9 border"
           className="max-w-full"
         />

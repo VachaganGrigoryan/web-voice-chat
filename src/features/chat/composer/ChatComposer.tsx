@@ -39,7 +39,7 @@ const getUrlHost = (url: string) => {
 };
 
 export default function ChatComposer({
-  receiverId,
+  container,
   onSendText,
   onSendMedia,
   onSendRichContent,
@@ -64,14 +64,14 @@ export default function ChatComposer({
   const composerShellRef = useRef<HTMLDivElement | null>(null);
 
   const textInput = useComposerTextInput({
-    receiverId,
+    container,
     onSendText,
     onClearReplyTarget,
     enableDraft,
   });
 
   const attachmentComposer = useAttachmentComposerController({
-    receiverId,
+    container,
     onSendMedia,
     replyTarget,
     onClearReplyTarget,
@@ -167,8 +167,7 @@ export default function ChatComposer({
     if (previewUrl && previewUrl !== dismissedLinkPreviewUrl) {
       textInput.stopTyping();
       await onSendRichContent({
-        container_type: 'conversation',
-        container_id: receiverId,
+        ...container,
         type: 'link_preview',
         text: trimmedText,
         link_preview: {
@@ -191,7 +190,10 @@ export default function ChatComposer({
 
   const handleTextChange = (value: string) => {
     const command = value.trim();
-    const bot = findBuiltInBotByCommand(command);
+    // Built-in bots (currently the poll composer) post through conversation-scoped
+    // endpoints, so their slash commands are inert inside a channel.
+    const bot =
+      container.container_type === 'conversation' ? findBuiltInBotByCommand(command) : null;
     if (bot && value.length === command.length) {
       closePanels();
       setActiveBotId(bot.id);
@@ -207,7 +209,10 @@ export default function ChatComposer({
   };
 
   const handleSendPoll = async (values: PollComposerValues) => {
-    await onCreatePoll({ conversation_id: receiverId, ...values });
+    // The polls API is keyed on conversation_id; the bot is hidden for channels
+    // (see `bots` below) so this cannot be reached from one.
+    if (container.container_type !== 'conversation') return;
+    await onCreatePoll({ conversation_id: container.container_id, ...values });
     setActiveBotId(null);
     onClearReplyTarget?.();
   };
@@ -215,8 +220,7 @@ export default function ChatComposer({
   const handleSendLocation = async (location: Parameters<typeof onSendRichContent>[0]['location']) => {
     if (!location) return;
     await onSendRichContent({
-      container_type: 'conversation',
-      container_id: receiverId,
+      ...container,
       type: 'location',
       location,
     });
@@ -226,8 +230,7 @@ export default function ChatComposer({
   const handleSendContact = async (contact: Parameters<typeof onSendRichContent>[0]['contact']) => {
     if (!contact) return;
     await onSendRichContent({
-      container_type: 'conversation',
-      container_id: receiverId,
+      ...container,
       type: 'contact',
       contact,
     });
@@ -469,7 +472,7 @@ export default function ChatComposer({
           <ComposerRecorder
             audio
             video
-            receiverId={receiverId}
+            container={container}
             onSendMedia={onSendMedia}
             replyTarget={replyTarget}
             onClearReplyTarget={onClearReplyTarget}

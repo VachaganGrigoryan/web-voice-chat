@@ -40,8 +40,7 @@ export function MessageSearchDialog({
 }: MessageSearchDialogProps) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<MessageDoc[]>([]);
-  const [page, setPage] = useState(1);
-  const [hasMore, setHasMore] = useState(false);
+  const [cursor, setCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [searched, setSearched] = useState(false);
@@ -52,25 +51,23 @@ export function MessageSearchDialog({
     if (!open) {
       setQuery('');
       setResults([]);
-      setPage(1);
-      setHasMore(false);
+      setCursor(null);
       setError(null);
       setSearched(false);
     }
   }, [open]);
 
-  const runSearch = async (nextPage: number) => {
+  const runSearch = async (fromCursor: string | null) => {
     if (!trimmed) return;
     setLoading(true);
     setError(null);
     try {
       const data = await messagesApi.searchMessages(trimmed, {
         limit: PAGE_SIZE,
-        page: nextPage,
+        cursor: fromCursor ?? undefined,
       });
-      setResults((prev) => (nextPage === 1 ? data.items : [...prev, ...data.items]));
-      setHasMore(data.has_more);
-      setPage(nextPage);
+      setResults((prev) => (fromCursor === null ? data.data : [...prev, ...data.data]));
+      setCursor(data.meta.next_cursor ?? null);
       setSearched(true);
     } catch (err) {
       setError(extractApiError(err, 'Search failed'));
@@ -93,7 +90,7 @@ export function MessageSearchDialog({
           className="flex items-center gap-2"
           onSubmit={(event) => {
             event.preventDefault();
-            void runSearch(1);
+            void runSearch(null);
           }}
         >
           <div className="relative flex-1">
@@ -107,7 +104,7 @@ export function MessageSearchDialog({
             />
           </div>
           <Button type="submit" disabled={!trimmed || loading}>
-            {loading && page === 1 ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Search'}
+            {loading && results.length === 0 ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Search'}
           </Button>
         </form>
 
@@ -140,14 +137,14 @@ export function MessageSearchDialog({
             ))}
           </ul>
 
-          {hasMore ? (
+          {cursor ? (
             <div className="pt-2">
               <Button
                 type="button"
                 variant="outline"
                 className="w-full"
                 disabled={loading}
-                onClick={() => void runSearch(page + 1)}
+                onClick={() => void runSearch(cursor)}
               >
                 {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Load more'}
               </Button>

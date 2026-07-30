@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import type { SendMediaInput } from '@/hooks/useChat';
+import type { MessageContainerRef } from '@/api/types';
+import type { SendMediaInput } from '@/features/chat/types/sendInputs';
 import {
   AttachmentMode,
   AttachmentUploadKind,
@@ -23,7 +24,7 @@ export interface PendingMediaItem {
 }
 
 interface UseAttachmentComposerControllerParams {
-  receiverId: string;
+  container: MessageContainerRef;
   onSendMedia: (data: SendMediaInput) => Promise<unknown>;
   replyTarget?: ComposerReplyTarget | null;
   onClearReplyTarget?: () => void;
@@ -37,7 +38,7 @@ const createItemId = () =>
 const createBatchId = () => `media-batch-${createItemId()}`;
 
 export function useAttachmentComposerController({
-  receiverId,
+  container,
   onSendMedia,
   replyTarget,
   onClearReplyTarget,
@@ -239,8 +240,7 @@ export function useAttachmentComposerController({
         const attachCaptionToThisItem =
           !captionAttached && currentItem.id === captionTargetId;
         const basePayload = {
-          container_type: 'conversation' as const,
-          container_id: receiverId,
+          ...container,
           file: currentItem.file,
           text: attachCaptionToThisItem ? trimmedCaption : undefined,
           reply_mode: capturedReplyTarget?.mode,

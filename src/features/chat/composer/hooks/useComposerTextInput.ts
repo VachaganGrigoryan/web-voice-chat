@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import type { SendTextInput } from '@/hooks/useChat';
+import type { MessageContainerRef } from '@/api/types';
+import type { SendTextInput } from '@/features/chat/types/sendInputs';
 import { conversationsApi } from '@/api/endpoints';
 import { getSocket } from '@/socket/socket';
 import { EVENTS } from '@/socket/events';
@@ -7,7 +8,7 @@ import { EVENTS } from '@/socket/events';
 const DRAFT_SAVE_DEBOUNCE_MS = 800;
 
 interface UseComposerTextInputParams {
-  receiverId: string;
+  container: MessageContainerRef;
   onSendText: (data: SendTextInput) => Promise<unknown>;
   onClearReplyTarget?: () => void;
   /** Persist/restore an unsent draft per conversation (main composer only). */
@@ -15,11 +16,14 @@ interface UseComposerTextInputParams {
 }
 
 export function useComposerTextInput({
-  receiverId,
+  container,
   onSendText,
   onClearReplyTarget,
   enableDraft = false,
 }: UseComposerTextInputParams) {
+  const containerId = container.container_id;
+  const isConversation = container.container_type === 'conversation';
+
   const [text, setText] = useState('');
   const [isFocused, setIsFocused] = useState(false);
   const [isSendingText, setIsSendingText] = useState(false);
@@ -31,11 +35,13 @@ export function useComposerTextInput({
 
   // Restore any saved draft when the conversation changes.
   useEffect(() => {
-    if (!enableDraft || !receiverId) return;
+    // Drafts are stored on the conversation participant row; channels have no
+    // equivalent endpoint yet.
+    if (!enableDraft || !isConversation || !containerId) return;
     let cancelled = false;
     hasUserEditedRef.current = false;
     conversationsApi
-      .getDraft(receiverId)
+      .getDraft(containerId)
       .then((participant) => {
         if (cancelled) return;
         const draft = participant.draft_text;
@@ -49,21 +55,21 @@ export function useComposerTextInput({
     return () => {
       cancelled = true;
     };
-  }, [enableDraft, receiverId]);
+  }, [enableDraft, isConversation, containerId]);
 
   // Debounced persistence of the current draft.
   useEffect(() => {
-    if (!enableDraft || !receiverId || !hasUserEditedRef.current) return;
+    if (!enableDraft || !isConversation || !containerId || !hasUserEditedRef.current) return;
     const timeout = setTimeout(() => {
       const trimmed = text.trim();
       if (trimmed) {
-        void conversationsApi.setDraft(receiverId, trimmed).catch(() => {});
+        void conversationsApi.setDraft(containerId, trimmed).catch(() => {});
       } else {
-        void conversationsApi.clearDraft(receiverId).catch(() => {});
+        void conversationsApi.clearDraft(containerId).catch(() => {});
       }
     }, DRAFT_SAVE_DEBOUNCE_MS);
     return () => clearTimeout(timeout);
-  }, [enableDraft, receiverId, text]);
+  }, [enableDraft, isConversation, containerId, text]);
 
   const resizeTextarea = () => {
     const textarea = textareaRef.current;
@@ -74,12 +80,16 @@ export function useComposerTextInput({
 
   const emitTypingStart = () => {
     const socket = getSocket();
-    socket?.emit(EVENTS.CLIENT_TYPING_START, { conversation_id: receiverId });
+    // The typing events carry a conversation_id and the server resolves
+    // participants from it, so they do not apply to channels.
+    if (!isConversation) return;
+    socket?.emit(EVENTS.CLIENT_TYPING_START, { conversation_id: containerId });
   };
 
   const emitTypingStop = () => {
     const socket = getSocket();
-    socket?.emit(EVENTS.CLIENT_TYPING_STOP, { conversation_id: receiverId });
+    if (!isConversation) return;
+    socket?.emit(EVENTS.CLIENT_TYPING_STOP, { conversation_id: containerId });
   };
 
   const resetTypingTimeout = () => {
@@ -155,8 +165,7 @@ export function useComposerTextInput({
     setIsSendingText(true);
     try {
       await onSendText({
-        container_type: 'conversation',
-        container_id: receiverId,
+        ...container,
         text: trimmedText,
       });
       clearTextAfterSend();

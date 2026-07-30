@@ -13,31 +13,26 @@ function getPeerDisplayName(peerUser?: Conversation['peer_user'] | null) {
   return peerUser.display_name || peerUser.username || peerUser.id;
 }
 
-interface UseChatLayoutDerivedDataParams {
+interface UseSelectedConversationParams {
   conversations: Conversation[];
   incoming: ConnectionListItem[];
   outgoing: ConnectionListItem[];
   selectedUser: string | null;
 }
 
-export function useChatLayoutDerivedData({
+/**
+ * Derives everything about the currently-open conversation (ping status,
+ * display name, ghost state) from the inbox list plus the connection queues.
+ * Channels don't use this — a channel has no ping/connection gate, so it opens
+ * as soon as it's selected.
+ */
+export function useSelectedConversation({
   conversations,
   incoming,
   outgoing,
   selectedUser,
-}: UseChatLayoutDerivedDataParams) {
-  const pendingIncomingCount = useMemo(
-    () => incoming.length,
-    [incoming]
-  );
-
-  const contacts = useMemo(() => {
-    return conversations.filter(Boolean).sort((left, right) => {
-      const leftTime = new Date(left.last_message_at || 0).getTime();
-      const rightTime = new Date(right.last_message_at || 0).getTime();
-      return rightTime - leftTime;
-    });
-  }, [conversations]);
+}: UseSelectedConversationParams) {
+  const contacts = useMemo(() => conversations.filter(Boolean), [conversations]);
 
   const selectedConversation = contacts.find((conversation) => conversation.conversation_id === selectedUser);
   const selectedConversationUser = selectedConversation?.peer_user || null;
@@ -89,7 +84,6 @@ export function useChatLayoutDerivedData({
   const isSelectedConversationGhost = !!selectedConversationUser?.is_ghost;
 
   return {
-    pendingIncomingCount,
     contacts,
     selectedUserSummary,
     incomingPing,

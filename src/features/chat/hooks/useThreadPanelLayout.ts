@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useIsMobile } from '@/hooks/useIsMobile';
 import {
   getThreadPanelWidths,
-  MOBILE_BREAKPOINT,
   THREAD_PANEL_MODES,
   type ThreadPanelMode,
 } from '../utils/chatLayoutUtils';
@@ -20,24 +20,12 @@ export function useThreadPanelLayout({
   const [threadPanelMode, setThreadPanelMode] = useState<ThreadPanelMode>('center');
   const [isResizingThread, setIsResizingThread] = useState(false);
   const [splitLayoutWidth, setSplitLayoutWidth] = useState(0);
-  const [isMobileViewport, setIsMobileViewport] = useState(
-    () => typeof window !== 'undefined' && window.innerWidth < MOBILE_BREAKPOINT
-  );
+  const isMobileViewport = useIsMobile();
   const splitLayoutRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     setIsResizingThread(false);
   }, [selectedUser]);
-
-  useEffect(() => {
-    const handleResize = () => {
-      setIsMobileViewport(window.innerWidth < MOBILE_BREAKPOINT);
-    };
-
-    handleResize();
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
 
   useEffect(() => {
     if (!selectedThreadRootId) {

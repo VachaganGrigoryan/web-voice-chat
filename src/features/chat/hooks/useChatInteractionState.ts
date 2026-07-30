@@ -1,82 +1,23 @@
-import { useEffect, useState, type MouseEvent as ReactMouseEvent } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
-import { conversationsApi } from '@/api/endpoints';
-import type {
-  SendMediaInput,
-  SendRichContentInput,
-  SendTextInput,
-  ToggleReactionInput,
-} from '@/hooks/useChat';
+import { useEffect, useState } from 'react';
+import { useContainerCompose, useMessageActions, type ContainerDescriptor } from '@/container';
 import { triggerHaptic } from '@/utils/haptics';
-import { ConversationMenuState } from '../components/ConversationActionsMenu';
-import { MessageMenuAnchor } from '../components/MessageShell';
+import { useChatDialogs, type MediaViewerImageItem } from '../ChatDialogsProvider';
 import { getCallSummaryText } from '../utils/callPresentation';
-import {
-  ChatMessage,
-  ComposerReplyTarget,
-  MediaClickPayload,
-} from '../types/message';
+import { ChatMessage, ComposerReplyTarget, MediaClickPayload } from '../types/message';
+import type { SendMediaInput, SendRichContentInput, SendTextInput } from '../types/sendInputs';
 
-type ActiveMessageSurface = 'main' | 'thread';
-
-type MediaViewerImageItem = {
-  id: string;
-  url: string;
-  downloadName?: string;
-};
-
-export type MediaViewerState =
-  | {
-      open: false;
-      type: 'image' | 'video';
-      url: '';
-      items: MediaViewerImageItem[];
-      initialItemId: null;
-      downloadName?: string;
-    }
-  | {
-      open: true;
-      type: 'image';
-      url: '';
-      items: MediaViewerImageItem[];
-      initialItemId: string;
-      downloadName?: string;
-    }
-  | {
-      open: true;
-      type: 'video';
-      url: string;
-      items: [];
-      initialItemId: null;
-      downloadName?: string;
-    };
-
-interface UseChatInteractionStateParams {
+interface UseMessageInteractionsParams {
+  descriptor: ContainerDescriptor | null;
+  currentUserId: string | null;
   selectedUser: string | null;
   selectedThreadRootId: string | null;
-  selectedThreadConversationId: string | null;
-  isSelectedThreadLocked?: boolean;
   displaySelectedUser?: string | null;
   isMobileViewport: boolean;
   mainImageGallery: MediaViewerImageItem[];
   threadImageGallery: MediaViewerImageItem[];
   navigateToConversation: (conversationId: string, threadRootId?: string | null) => void;
   openThreadPanelInFullMode: () => void;
-  sendText: (data: SendTextInput) => Promise<unknown>;
-  sendRichContent: (data: SendRichContentInput) => Promise<unknown>;
-  sendVoice: (data: SendMediaInput) => Promise<unknown>;
-  editMessage: (data: { conversationId?: string; messageId: string; text: string }) => Promise<unknown>;
-  deleteMessage: (data: { conversationId?: string; messageId: string }) => Promise<unknown>;
-  toggleReaction: (data: ToggleReactionInput) => Promise<unknown>;
 }
-
-export const closedMediaViewerState: MediaViewerState = {
-  open: false,
-  type: 'image',
-  url: '',
-  items: [],
-  initialItemId: null,
-};
 
 const getMessagePreviewText = (message: ChatMessage) => {
   if (message.isDeleted) return 'Message deleted';
@@ -105,71 +46,60 @@ const getMessagePreviewText = (message: ChatMessage) => {
   return 'Message';
 };
 
+/**
+ * The message-interaction half of the old god-hook: reply targets, send/edit/
+ * delete/react handlers, thread opening, and media-click routing. The overlay
+ * state it used to own (media viewer, active message menu) now lives in
+ * `ChatDialogsProvider`; this hook dispatches into it rather than tracking its
+ * own copy. Sending, editing and reacting are resolved from the descriptor
+ * directly instead of twelve hand-threaded props.
+ */
 export function useChatInteractionState({
+  descriptor,
+  currentUserId,
   selectedUser,
   selectedThreadRootId,
-  selectedThreadConversationId,
-  isSelectedThreadLocked = false,
   displaySelectedUser,
   isMobileViewport,
   mainImageGallery,
   threadImageGallery,
   navigateToConversation,
   openThreadPanelInFullMode,
-  sendText,
-  sendRichContent,
-  sendVoice,
-  editMessage,
-  deleteMessage,
-  toggleReaction,
-}: UseChatInteractionStateParams) {
-  const [mediaViewer, setMediaViewer] = useState<MediaViewerState>(closedMediaViewerState);
-  const [activeMessage, setActiveMessage] = useState<ChatMessage | null>(null);
-  const [activeMessageAnchor, setActiveMessageAnchor] = useState<MessageMenuAnchor | null>(null);
-  const [activeMessageSurface, setActiveMessageSurface] = useState<ActiveMessageSurface>('main');
+}: UseMessageInteractionsParams) {
+  const dialogs = useChatDialogs();
+  const { activeMessage, activeMessageAnchor, activeMessageSurface } = dialogs.state;
   const [replyTarget, setReplyTarget] = useState<ComposerReplyTarget | null>(null);
   const [threadReplyTarget, setThreadReplyTarget] = useState<ComposerReplyTarget | null>(null);
-  const [conversationMenu, setConversationMenu] = useState<ConversationMenuState | null>(null);
-  const queryClient = useQueryClient();
+
+  const { sendText, sendMedia: sendVoice, sendRichContent, createPoll, isSending } = useContainerCompose(descriptor);
+  const {
+    editMessage: editMessageAction,
+    deleteMessage: deleteMessageAction,
+    toggleReaction: toggleReactionAction,
+    isEditing: isEditingMessage,
+    isDeleting: isDeletingMessage,
+    isTogglingReaction,
+  } = useMessageActions(descriptor, currentUserId);
 
   useEffect(() => {
-    setActiveMessage(null);
-    setActiveMessageAnchor(null);
-    setActiveMessageSurface('main');
+    dialogs.closeMessageMenu();
     setReplyTarget(null);
     setThreadReplyTarget(null);
-    setConversationMenu(null);
   }, [selectedUser]);
 
   useEffect(() => {
     setThreadReplyTarget(null);
   }, [selectedThreadRootId]);
 
-  const createReplyTarget = (
-    message: ChatMessage,
-    mode: ComposerReplyTarget['mode']
-  ): ComposerReplyTarget => ({
+  const createReplyTarget = (message: ChatMessage, mode: ComposerReplyTarget['mode']): ComposerReplyTarget => ({
     messageId: message.id,
     mode,
     previewText: getMessagePreviewText(message),
     senderLabel: message.isOwn ? 'You' : displaySelectedUser || 'Contact',
   });
 
-  const closeMessageMenu = () => {
-    setActiveMessage(null);
-    setActiveMessageAnchor(null);
-    setActiveMessageSurface('main');
-  };
-
-  const openMessageMenu = (
-    message: ChatMessage,
-    anchor: MessageMenuAnchor,
-    surface: ActiveMessageSurface
-  ) => {
-    setActiveMessage(message);
-    setActiveMessageAnchor(anchor);
-    setActiveMessageSurface(surface);
-  };
+  const openMessageMenu = dialogs.openMessageMenu;
+  const closeMessageMenu = dialogs.closeMessageMenu;
 
   const handleSelectReplyMode = () => {
     if (!activeMessage) return;
@@ -184,7 +114,7 @@ export function useChatInteractionState({
     closeMessageMenu();
   };
 
-  const handleSwipeReply = (message: ChatMessage, surface: ActiveMessageSurface) => {
+  const handleSwipeReply = (message: ChatMessage, surface: 'main' | 'thread') => {
     if (surface === 'thread') {
       setThreadReplyTarget(createReplyTarget(message, 'thread'));
       return;
@@ -204,16 +134,6 @@ export function useChatInteractionState({
     }
     navigateToConversation(selectedUser, rootMessageId);
     closeMessageMenu();
-
-    // Materialize the thread as an addressable sub-conversation (independent
-    // read state + inbox presence). Additive to the inline thread panel above.
-    void conversationsApi
-      .openThreadConversation(selectedUser, rootMessageId)
-      .then(() => {
-        queryClient.invalidateQueries({ queryKey: ['threads'] });
-        queryClient.invalidateQueries({ queryKey: ['threadConversationByRoot'] });
-      })
-      .catch(() => undefined);
   };
 
   const handleSendText = async (data: SendTextInput) => {
@@ -237,26 +157,22 @@ export function useChatInteractionState({
   };
 
   const handleSendThreadText = async (data: SendTextInput) => {
-    if (!selectedThreadConversationId || isSelectedThreadLocked) return;
+    if (!selectedThreadRootId) return;
     await sendText({
-      ...data,
-      container_type: 'conversation',
-      container_id: selectedThreadConversationId,
-      reply_mode: null,
-      reply_to_message_id: threadReplyTarget?.messageId,
+      text: data.text,
+      reply_mode: 'thread',
+      reply_to_message_id: threadReplyTarget?.messageId ?? selectedThreadRootId,
     });
     triggerHaptic('send');
     setThreadReplyTarget(null);
   };
 
   const handleSendThreadRichContent = async (data: SendRichContentInput) => {
-    if (!selectedThreadConversationId || isSelectedThreadLocked) return;
+    if (!selectedThreadRootId) return;
     await sendRichContent({
       ...data,
-      container_type: 'conversation',
-      container_id: selectedThreadConversationId,
-      reply_mode: null,
-      reply_to_message_id: data.reply_to_message_id ?? threadReplyTarget?.messageId,
+      reply_mode: 'thread',
+      reply_to_message_id: data.reply_to_message_id ?? threadReplyTarget?.messageId ?? selectedThreadRootId,
     });
     triggerHaptic('send');
     setThreadReplyTarget(null);
@@ -271,49 +187,36 @@ export function useChatInteractionState({
   };
 
   const handleSendThreadMedia = async (data: SendMediaInput) => {
-    if (!selectedThreadConversationId || isSelectedThreadLocked) return;
+    if (!selectedThreadRootId) return;
+    const { container_type: _containerType, container_id: _containerId, ...mediaInput } = data;
     await sendVoice({
-      ...data,
-      container_type: 'conversation',
-      container_id: selectedThreadConversationId,
-      reply_mode: null,
-      reply_to_message_id: data.reply_to_message_id ?? threadReplyTarget?.messageId,
+      ...mediaInput,
+      reply_mode: 'thread',
+      reply_to_message_id: data.reply_to_message_id ?? threadReplyTarget?.messageId ?? selectedThreadRootId,
     });
   };
 
   const handleEditMessage = async (text: string) => {
     if (!activeMessage) return;
-    await editMessage({ conversationId: activeMessage.chatId, messageId: activeMessage.id, text });
+    await editMessageAction({ messageId: activeMessage.id, text });
     closeMessageMenu();
   };
 
   const handleDeleteMessage = async () => {
     if (!activeMessage) return;
-    await deleteMessage({ conversationId: activeMessage.chatId, messageId: activeMessage.id });
+    await deleteMessageAction({ messageId: activeMessage.id });
     closeMessageMenu();
   };
 
   const handleToggleReaction = async (messageId: string, emoji: string) => {
-    const targetMessage =
-      activeMessage?.id === messageId ? activeMessage : null;
+    const targetMessage = activeMessage?.id === messageId ? activeMessage : null;
     if (!targetMessage) return;
-    await toggleReaction({
-      container_type: targetMessage.raw.container_type,
-      container_id: targetMessage.raw.container_id,
-      messageId,
-      emoji,
-    });
+    await toggleReactionAction({ messageId, emoji });
     triggerHaptic('reaction');
   };
 
   const openImageViewer = (items: MediaViewerImageItem[], initialItemId: string) => {
-    setMediaViewer({
-      open: true,
-      type: 'image',
-      url: '',
-      items,
-      initialItemId,
-    });
+    dialogs.setMediaViewer({ open: true, type: 'image', url: '', items, initialItemId });
   };
 
   const handleMainMediaClick = (payload: MediaClickPayload) => {
@@ -322,7 +225,7 @@ export function useChatInteractionState({
       return;
     }
 
-    setMediaViewer({
+    dialogs.setMediaViewer({
       open: true,
       type: 'video',
       url: payload.url,
@@ -338,7 +241,7 @@ export function useChatInteractionState({
       return;
     }
 
-    setMediaViewer({
+    dialogs.setMediaViewer({
       open: true,
       type: 'video',
       url: payload.url,
@@ -348,71 +251,11 @@ export function useChatInteractionState({
     });
   };
 
-  const openConversationMenu = (
-    event: ReactMouseEvent<HTMLElement>,
-    peerUserId: string,
-    unreadCount: number
-  ) => {
-    const rect = event.currentTarget.getBoundingClientRect();
-    setConversationMenu({
-      peerUserId,
-      unreadCount,
-      rect: {
-        top: rect.top,
-        right: rect.right,
-        bottom: rect.bottom,
-        left: rect.left,
-      },
-    });
-  };
-
-  const openConversationMenuAtPoint = (
-    event: ReactMouseEvent<HTMLElement>,
-    peerUserId: string,
-    unreadCount: number
-  ) => {
-    setConversationMenu({
-      peerUserId,
-      unreadCount,
-      rect: {
-        top: event.clientY,
-        right: event.clientX,
-        bottom: event.clientY,
-        left: event.clientX,
-      },
-    });
-  };
-
-  // Coordinate-based opener used by the mobile touch long-press gesture, where
-  // no synthetic mouse event is available.
-  const openConversationMenuAtCoordinates = (
-    point: { x: number; y: number },
-    peerUserId: string,
-    unreadCount: number
-  ) => {
-    setConversationMenu({
-      peerUserId,
-      unreadCount,
-      rect: {
-        top: point.y,
-        right: point.x,
-        bottom: point.y,
-        left: point.x,
-      },
-    });
-  };
-
   return {
-    mediaViewer,
-    setMediaViewer,
-    activeMessage,
-    activeMessageAnchor,
-    conversationMenu,
     replyTarget,
     threadReplyTarget,
     setReplyTarget,
     setThreadReplyTarget,
-    setConversationMenu,
     closeMessageMenu,
     openMessageMenu,
     handleSelectReplyMode,
@@ -429,8 +272,10 @@ export function useChatInteractionState({
     handleToggleReaction,
     handleMainMediaClick,
     handleThreadMediaClick,
-    openConversationMenu,
-    openConversationMenuAtPoint,
-    openConversationMenuAtCoordinates,
+    isSending,
+    isEditingMessage,
+    isDeletingMessage,
+    isTogglingReaction,
+    createPoll,
   };
 }
