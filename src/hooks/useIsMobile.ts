@@ -1,16 +1,28 @@
 import { useEffect, useState } from 'react';
 import { MOBILE_BREAKPOINT } from '@/features/chat/utils/chatLayoutUtils';
 
-/** Tracks whether the viewport is below the mobile breakpoint (768px). */
+const QUERY = `(max-width: ${MOBILE_BREAKPOINT - 1}px)`;
+
+/**
+ * The single viewport hook. Uses matchMedia rather than a resize listener so it
+ * fires only on an actual breakpoint crossing instead of on every resize frame.
+ */
 export function useIsMobile(): boolean {
   const [isMobile, setIsMobile] = useState(
-    () => typeof window !== 'undefined' && window.innerWidth < MOBILE_BREAKPOINT
+    () => typeof window !== 'undefined' && window.matchMedia(QUERY).matches
   );
 
   useEffect(() => {
-    const onResize = () => setIsMobile(window.innerWidth < MOBILE_BREAKPOINT);
-    window.addEventListener('resize', onResize);
-    return () => window.removeEventListener('resize', onResize);
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const mediaQuery = window.matchMedia(QUERY);
+    const updateMatch = () => setIsMobile(mediaQuery.matches);
+
+    updateMatch();
+    mediaQuery.addEventListener('change', updateMatch);
+    return () => mediaQuery.removeEventListener('change', updateMatch);
   }, []);
 
   return isMobile;

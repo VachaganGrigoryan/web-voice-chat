@@ -23,7 +23,16 @@ export interface AppNavigateOptions {
   replace?: boolean;
 }
 
-const isChatPeerRoute = (path: string) => /^\/chat\/[^/]+$/.test(getPathname(path));
+const isChatPeerRoute = (path: string) => {
+  const pathname = getPathname(path);
+  return (
+    /^\/chat\/[^/]+$/.test(pathname) ||
+    /^\/dms\/[^/]+$/.test(pathname) ||
+    /^\/groups\/[^/]+\/chat$/.test(pathname) ||
+    /^\/spaces\/[^/]+\/groups\/[^/]+\/chat$/.test(pathname) ||
+    /^\/spaces\/[^/]+\/channels\/[^/]+\/chat$/.test(pathname)
+  );
+};
 
 const normalizeRoute = (path: string) => {
   const trimmed = path.trim();
@@ -142,15 +151,51 @@ const resolveDefaultBackFallback = (path: string) => {
     return APP_ROUTES.chatConversation(threadMatch[1]);
   }
 
+  const dmThreadMatch = pathname.match(/^\/dms\/([^/]+)\/thread\/[^/]+$/);
+  if (dmThreadMatch) {
+    return APP_ROUTES.dm(dmThreadMatch[1]);
+  }
+
+  const groupThreadMatch = pathname.match(/^\/groups\/([^/]+)\/chat\/thread\/[^/]+$/);
+  if (groupThreadMatch) {
+    return APP_ROUTES.group(groupThreadMatch[1]);
+  }
+
+  const spaceGroupThreadMatch = pathname.match(
+    /^\/spaces\/([^/]+)\/groups\/([^/]+)\/chat\/thread\/[^/]+$/
+  );
+  if (spaceGroupThreadMatch) {
+    return APP_ROUTES.spaceGroupChat(spaceGroupThreadMatch[1], spaceGroupThreadMatch[2]);
+  }
+
+  const spaceChannelThreadMatch = pathname.match(
+    /^\/spaces\/([^/]+)\/channels\/([^/]+)\/chat\/thread\/[^/]+$/
+  );
+  if (spaceChannelThreadMatch) {
+    return APP_ROUTES.spaceChannel(spaceChannelThreadMatch[1], spaceChannelThreadMatch[2], 'chat');
+  }
+
   if (/^\/chat\/[^/]+$/.test(pathname)) {
     return APP_ROUTES.chat;
   }
 
-  if (/^\/settings\/[^/]+$/.test(pathname) && pathname !== APP_ROUTES.settingsTab('profile')) {
-    return APP_ROUTES.settingsTab('profile');
+  if (/^\/dms\/[^/]+$/.test(pathname) || /^\/groups\/[^/]+\/chat$/.test(pathname)) {
+    return APP_ROUTES.chat;
   }
 
-  if (pathname === APP_ROUTES.settings || pathname === APP_ROUTES.settingsTab('profile')) {
+  const spaceGroupMatch = pathname.match(/^\/spaces\/([^/]+)\/groups\/[^/]+\/chat$/);
+  if (spaceGroupMatch) {
+    return APP_ROUTES.spaceDetailTab(spaceGroupMatch[1], 'groups');
+  }
+
+  const spaceChannelChatMatch = pathname.match(/^\/spaces\/([^/]+)\/channels\/([^/]+)\/chat$/);
+  if (spaceChannelChatMatch) {
+    return APP_ROUTES.spaceChannel(spaceChannelChatMatch[1], spaceChannelChatMatch[2], 'feed');
+  }
+
+  // Settings is reached from the rail's account menu, so its fallback is the app
+  // itself rather than another settings tab.
+  if (pathname === APP_ROUTES.settings || /^\/settings\/[^/]+$/.test(pathname)) {
     return APP_ROUTES.chat;
   }
 
