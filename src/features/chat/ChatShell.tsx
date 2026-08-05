@@ -229,6 +229,8 @@ function ChatShellContent() {
       />
 
       <InboxPanel
+        isClearingConversation={isClearingConversation}
+        isDeletingConversation={isDeletingConversation}
         className={cn(isBareChatRoute ? 'flex' : 'hidden md:flex')}
         currentUserId={userId}
         typingUsers={typingUsers}

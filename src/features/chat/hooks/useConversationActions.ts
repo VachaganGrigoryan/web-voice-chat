@@ -1,5 +1,8 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { conversationsApi } from '@/api/endpoints';
+import { toast } from 'sonner';
+import { conversationsApi, notificationsApi } from '@/api/endpoints';
+import { extractApiError } from '@/api/errors';
+import type { NotificationLevel } from '@/api/types';
 
 /**
  * Mutations for the generalized conversation model (channels, invites, join
@@ -70,10 +73,47 @@ export const useConversationActions = () => {
       conversationsApi.rejectJoinRequest(conversationId, requestId),
   });
 
+  /**
+   * The conversation twin of `useChannelInbox.setNotifications`. It lives here
+   * rather than in the settings adapter because the inbox row menu needs to
+   * change a notification level per row, and a channel could already do that
+   * while a conversation could not.
+   */
+  const setNotifications = useMutation({
+    mutationFn: ({
+      conversationId,
+      level,
+      mutedUntil,
+    }: {
+      conversationId: string;
+      level?: NotificationLevel;
+      mutedUntil?: string | null;
+    }) =>
+      notificationsApi.updateConversationSettings(conversationId, {
+        notification_level: level,
+        muted_until: mutedUntil,
+      }),
+    onSuccess: invalidateInbox,
+    onError: (error) => toast.error(extractApiError(error, 'Could not update notifications')),
+  });
+
+  /**
+   * Takes the id as an argument, unlike `useGroupManagement.leaveGroup` which
+   * closes over one conversation — a list cannot call that without one hook
+   * instance per row.
+   */
+  const leaveGroup = useMutation({
+    mutationFn: (conversationId: string) => conversationsApi.leaveGroup(conversationId),
+    onSuccess: invalidateInbox,
+    onError: (error) => toast.error(extractApiError(error, 'Could not leave this group')),
+  });
+
   return {
     redeemInvite,
     setInboxState,
     setInboxStateBulk,
+    setNotifications,
+    leaveGroup,
     renameFolder,
     deleteFolder,
     approveJoinRequest,

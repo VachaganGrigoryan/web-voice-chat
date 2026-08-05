@@ -21,6 +21,8 @@ import { PollBotComposer, type PollComposerValues } from '../builtInBots/PollBot
 import { BUILT_IN_BOTS, findBuiltInBotByCommand } from '../builtInBots/registry';
 import type { BuiltInBotId } from '../builtInBots/types';
 import { ChatComposerProps, ComposerPanel } from './types';
+import { ComposerPostBox } from './components/ComposerPostBox';
+import { DEFAULT_POST_STYLE, canStylePost, type PostStyleId } from './postStyles';
 
 const URL_PATTERN = /\bhttps?:\/\/[^\s<>"']+/i;
 const TRAILING_URL_PUNCTUATION = /[),.;!?]+$/;
@@ -50,7 +52,12 @@ export default function ChatComposer({
   isUploading = false,
   contextLabel = 'chat',
   enableDraft = false,
+  preset = 'inline-bar',
+  onSent,
+  submitLabel = 'Post',
 }: ChatComposerProps) {
+  const isPostBox = preset === 'post-box';
+  const [postStyleId, setPostStyleId] = useState<PostStyleId>(DEFAULT_POST_STYLE);
   const [activePanel, setActivePanel] = useState<ComposerPanel>(null);
   const [activeBotId, setActiveBotId] = useState<BuiltInBotId | null>(null);
   const [isLocationDialogOpen, setIsLocationDialogOpen] = useState(false);
@@ -186,6 +193,24 @@ export default function ChatComposer({
       closePanels();
       setDismissedLinkPreviewUrl(null);
     }
+  };
+
+  const handleSendPost = async () => {
+    // A background only applies to a short text-only post, so the same rule the
+    // picker uses decides whether a style is sent at all.
+    const style =
+      canStylePost(textInput.text, attachmentComposer.items.length) &&
+      postStyleId !== DEFAULT_POST_STYLE
+        ? { background: postStyleId, align: 'center' as const }
+        : null;
+
+    const sent = await textInput.handleSendText(style);
+    if (!sent) return;
+
+    closePanels();
+    setDismissedLinkPreviewUrl(null);
+    setPostStyleId(DEFAULT_POST_STYLE);
+    onSent?.();
   };
 
   const handleTextChange = (value: string) => {
@@ -454,10 +479,16 @@ export default function ChatComposer({
 
       <div
         className={cn(
-          'w-full bg-background/90 pt-3 backdrop-blur-md',
-          isMobileDockedPanelOpen
-            ? 'pb-0'
-            : 'pb-[calc(0.75rem+env(safe-area-inset-bottom))]'
+          'w-full',
+          // The docked bar floats over the timeline and reserves safe-area
+          // space; inside the post modal neither applies.
+          isPostBox
+            ? 'bg-transparent'
+            : 'bg-background/90 pt-3 backdrop-blur-md',
+          !isPostBox &&
+            (isMobileDockedPanelOpen
+              ? 'pb-0'
+              : 'pb-[calc(0.75rem+env(safe-area-inset-bottom))]')
         )}
       >
         <ComposerReplyBar
@@ -469,6 +500,21 @@ export default function ChatComposer({
           {renderDesktopPanel()}
           {renderBuiltInBotSheet()}
           {renderPendingLinkPreview()}
+          {isPostBox ? (
+            <ComposerPostBox
+              text={textInput.text}
+              textareaRef={textInput.textareaRef}
+              isBusy={isBusy}
+              attachmentCount={attachmentComposer.items.length}
+              styleId={postStyleId}
+              submitLabel={submitLabel}
+              onTextChange={handleTextChange}
+              onStyleChange={setPostStyleId}
+              onTogglePanel={handleTogglePanel}
+              onPickMedia={() => attachmentComposer.openPickerForMode('media')}
+              onSubmit={() => void handleSendPost()}
+            />
+          ) : (
           <ComposerRecorder
             audio
             video
@@ -508,6 +554,7 @@ export default function ChatComposer({
               />
             )}
           />
+          )}
           {renderMobileEmojiPanel()}
           {renderMobileAttachmentPanel()}
         </div>

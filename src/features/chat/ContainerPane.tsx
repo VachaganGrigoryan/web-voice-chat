@@ -44,6 +44,7 @@ interface ContainerPaneProps {
   onClose: () => void;
   onOpenInfo: () => void;
   onOpenSearch?: () => void;
+  onOpenSettings?: () => void;
   onNavigate: (path: string) => void;
   channelLens?: ChannelLens;
   onChannelLensChange?: (lens: ChannelLens) => void;
@@ -67,7 +68,6 @@ interface ContainerPaneProps {
   canPing?: boolean;
   canCall?: boolean;
   isCallBusy?: boolean;
-  onOpenGroupInfo?: () => void;
   onOpenScheduled?: () => void;
   onOpenSaved?: () => void;
   onSendPing?: () => void;
@@ -127,6 +127,7 @@ export function ContainerPane({
   onClose,
   onOpenInfo,
   onOpenSearch,
+  onOpenSettings,
   onNavigate,
   channelLens,
   onChannelLensChange,
@@ -150,7 +151,6 @@ export function ContainerPane({
   canPing,
   canCall,
   isCallBusy,
-  onOpenGroupInfo,
   onOpenScheduled,
   onOpenSaved,
   onSendPing,
@@ -189,7 +189,10 @@ export function ContainerPane({
   const loadMoreObserverRef = useRef<IntersectionObserver | null>(null);
   const isFetchingNextPageRef = useRef(isFetchingNextPage);
 
-  const isChannelFeedLens = descriptor.source.kind === 'channel' && channelLens === 'feed';
+  // The descriptor decides how this renders. The pane no longer inspects the
+  // lens or the container type: `presentation` is resolved from the route by
+  // `resolveContainer`, which is the contract `container/types.ts` declares.
+  const rendersPostCards = descriptor.presentation.rootItem === 'post-card';
   const isContainerOpen = descriptor.source.kind === 'channel' || isPingAccepted;
 
   const {
@@ -255,6 +258,7 @@ export function ContainerPane({
         onClose={onClose}
         onOpenInfo={onOpenInfo}
         onOpenSearch={onOpenSearch}
+        onOpenSettings={onOpenSettings}
         onNavigate={onNavigate}
         lens={channelLens}
         onLensChange={onChannelLensChange}
@@ -278,7 +282,6 @@ export function ContainerPane({
         canPing={canPing}
         canCall={canCall}
         isCallBusy={isCallBusy}
-        onOpenGroupInfo={onOpenGroupInfo}
         onOpenScheduled={onOpenScheduled}
         onOpenSaved={onOpenSaved}
         onSendPing={onSendPing}
@@ -302,9 +305,12 @@ export function ContainerPane({
         />
       ) : null}
 
-      {isChannelFeedLens ? (
+      {rendersPostCards ? (
         <div className="min-h-0 flex-1 overflow-y-auto">
           <div className="mx-auto w-full max-w-3xl px-4 py-4 sm:px-6">
+            {/* Post cards over the shared content core. Capabilities resolve
+                through the same per-resource cache this pane's header uses, so
+                the two lenses cannot disagree about what the viewer may do. */}
             <ProfileChannelTimeline channelId={descriptor.ref.container_id} />
           </div>
         </div>

@@ -99,7 +99,8 @@ export function useMessageReadReceipts({
 
     emitMessageRead(visibleIds, {
       container_type: 'conversation',
-      container_id: unreadVisibleMessages[0].raw.container_id,
+      container_id:
+        unreadVisibleMessages[0].raw?.container_id ?? selectedContainer?.container_id,
       conversation_id: unreadVisibleMessages[0]?.chatId,
       message_ids: visibleIds,
       status: 'read',

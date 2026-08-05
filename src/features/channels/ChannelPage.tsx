@@ -5,9 +5,9 @@ import { toast } from 'sonner';
 
 import { channelsApi, membershipsApi } from '@/api/endpoints';
 import { extractApiError } from '@/api/errors';
-import { APP_ROUTES, ChannelTab, isChannelTab } from '@/app/routes';
+import { APP_ROUTES, ChannelTab, channelLensRoute, isChannelTab } from '@/app/routes';
 import { FollowButton } from '@/components/FollowButton';
-import { PanelPageLayout, PanelSection } from '@/components/panel/PanelPageLayout';
+import { PanelPageLayout } from '@/components/panel/PanelPageLayout';
 import { PageTabs } from '@/components/page/PageTabs';
 import type { PageTab } from '@/components/page/pageTypes';
 import { Button } from '@/components/ui/Button';
@@ -15,7 +15,6 @@ import { useChannelManagement } from '@/hooks/useChannelManagement';
 import { ChannelAboutTab } from './tabs/ChannelAboutTab';
 import { ChannelMembersTab } from './tabs/ChannelMembersTab';
 import { useAppNavigation } from '@/navigation/appNavigation';
-import { ProfileChannelTimeline } from '@/features/profile/components/ProfileChannelTimeline';
 
 export default function ChannelPage() {
   const { spaceId, channelId, tab } = useParams<{
@@ -43,7 +42,7 @@ export default function ChannelPage() {
     ownerSpaceId
       ? APP_ROUTES.spaceChannel(ownerSpaceId, channelId as string, next)
       : next === 'feed'
-        ? APP_ROUTES.channel(channelId as string)
+        ? channelLensRoute(null, channelId as string, 'feed')
         : `${APP_ROUTES.channel(channelId as string)}/${next}`;
 
   const channelTabs: readonly PageTab[] = [
@@ -81,6 +80,12 @@ export default function ChannelPage() {
         Channel not found.
       </div>
     );
+  }
+
+  // Both lenses are owned by the chat shell now, so reading a channel either
+  // way keeps the inbox visible. This page keeps about and members only.
+  if (activeTab === 'feed') {
+    return <Navigate to={channelLensRoute(ownerSpaceId, channel.id, 'feed')} replace />;
   }
 
   if (activeTab === 'chat') {
@@ -148,15 +153,6 @@ export default function ChannelPage() {
       }
     >
       <div className="space-y-6">
-        {activeTab === 'feed' ? (
-          <PanelSection
-            title="Channel feed"
-            description={channel.description || 'Posts and comments from this channel.'}
-          >
-            <ProfileChannelTimeline channelId={channel.id} />
-          </PanelSection>
-        ) : null}
-
         {activeTab === 'about' ? <ChannelAboutTab channel={channel} /> : null}
 
         {activeTab === 'members' ? (

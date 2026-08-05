@@ -29,7 +29,15 @@ export type MessageStatus = 'sent' | 'delivered' | 'read' | 'sending' | 'failed'
 
 export interface BaseMessage {
   id: string;
-  raw: MessageDoc;
+  /**
+   * The source document, when the message came from one.
+   *
+   * Optional because a feed post is projected, not fetched as a `MessageDoc` —
+   * making this required is what kept the actions menu chat-only. Nothing in
+   * the renderer tree reads it; only the actions dialog's Details panel does,
+   * and that degrades when it is absent.
+   */
+  raw?: MessageDoc;
   chatId: string;
   senderId: string;
   createdAt: string;
@@ -57,6 +65,13 @@ export interface BaseMessage {
 export interface TextMessage extends BaseMessage {
   kind: 'text';
   text: string;
+  /**
+   * Lifted off `raw` by the parser so the renderer needs no access to the
+   * source document — that was the last `raw` read in the renderer tree, and
+   * removing it is what lets a feed post use the same content component.
+   */
+  mentionCount: number;
+  mentionScope?: 'here' | 'all' | null;
 }
 
 export interface ImageMessage extends BaseMessage {

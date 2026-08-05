@@ -12,6 +12,7 @@ import { conversationsApi, messagesApi, notificationsApi, savedMessagesApi } fro
 import { extractApiError } from '@/api/errors';
 import { useActiveSpace } from '@/app/shell/useActiveSpace';
 import { useChannelLens } from '@/features/channels/useChannelLens';
+import { ContainerSettingsSheet } from '@/features/settings-container/ContainerSettingsSheet';
 import { useAuthStore } from '@/store/authStore';
 import { toast } from 'sonner';
 import { triggerHaptic } from '@/utils/haptics';
@@ -46,7 +47,7 @@ import { MessageSearchDialog } from './components/MessageSearchDialog';
 import { SavedMessagesDialog } from './components/SavedMessagesDialog';
 import { ScheduledMessagesDialog } from './components/ScheduledMessagesDialog';
 import { ForwardMessageDialog } from './components/ForwardMessageDialog';
-import { GroupInfoPanel } from './components/GroupInfoPanel';
+import { ContainerInfoModal } from './components/info/ContainerInfoModal';
 import { MoveToFolderDialog } from './components/MoveToFolderDialog';
 import { ThreadPanel } from './components/ThreadPanel';
 import ChatComposer from './composer';
@@ -64,6 +65,8 @@ export default function ChatPage() {
           : null,
     [channelId, conversationId]
   );
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isInfoOpen, setIsInfoOpen] = useState(false);
   const selectedUser = container?.container_id ?? null;
   const isChannelContainer = container?.container_type === 'channel';
   const selectedThreadRootId = rootMessageId;
@@ -93,7 +96,16 @@ export default function ChatPage() {
   const { onlineUsers, presenceByUserId } = usePresence();
   const { isTyping, typingUsers } = useTypingIndicator(selectedUser || undefined);
 
-  const { descriptor, isMissing: isSelectedConversationMissing } = useContainer(container, userId);
+  // The route is the only source of the lens, so the descriptor's presentation
+  // and the URL can never disagree.
+  const { lens: channelLens, setLens: setChannelLens } = useChannelLens(
+    isChannelContainer ? selectedUser : null,
+    selectedSpaceId
+  );
+
+  const { descriptor, isMissing: isSelectedConversationMissing } = useContainer(container, userId, {
+    lens: isChannelContainer && channelLens === 'feed' ? 'feed' : 'timeline',
+  });
   useMarkContainerRead(descriptor);
   const {
     data: messages,
@@ -102,9 +114,6 @@ export default function ChatPage() {
     isFetchingNextPage,
   } = useContainerMessages(descriptor);
 
-  const { lens: channelLens, setLens: setChannelLens } = useChannelLens(
-    isChannelContainer ? selectedUser : null
-  );
   const activeChannel = descriptor?.source.kind === 'channel' ? descriptor.source.channel : null;
 
   const { data: conversationsData } = useConversations(selectedSpaceId);
@@ -574,22 +583,12 @@ export default function ChatPage() {
         }}
       />
 
-      {selectedConversation?.type === 'group' ? (
-        <GroupInfoPanel
-          open={dialogs.state.groupInfoOpen}
-          onOpenChange={dialogs.setGroupInfoOpen}
-          conversation={selectedConversation}
-          currentUserId={userId}
-        />
-      ) : null}
-
       <ContainerPane
         descriptor={descriptor}
         onClose={closeActiveConversation}
-        onOpenInfo={() =>
-          isChannelContainer ? navigate(APP_ROUTES.channel(selectedUser)) : dialogs.setGroupInfoOpen(true)
-        }
+        onOpenInfo={() => setIsInfoOpen(true)}
         onOpenSearch={() => dialogs.setSearchOpen(true)}
+        onOpenSettings={() => setIsSettingsOpen(true)}
         onNavigate={navigate}
         channelLens={isChannelContainer ? channelLens : undefined}
         onChannelLensChange={isChannelContainer ? setChannelLens : undefined}
@@ -631,7 +630,6 @@ export default function ChatPage() {
         canPing={!!selectedPeerUserId && (!selectedUserSummary || selectedUserSummary.can_ping !== false)}
         canCall={!!selectedPeerUserId && isPingAccepted && selectedPeerUserId !== userId}
         isCallBusy={isCallBusy}
-        onOpenGroupInfo={() => dialogs.setGroupInfoOpen(true)}
         onOpenScheduled={isPingAccepted && selectedConversation ? () => dialogs.setScheduledOpen(true) : undefined}
         onOpenSaved={() => dialogs.setSavedOpen(true)}
         onSendPing={() => {
@@ -802,6 +800,20 @@ export default function ChatPage() {
             }
           />
         }
+      />
+
+      <ContainerInfoModal
+        descriptor={descriptor}
+        open={isInfoOpen}
+        onOpenChange={setIsInfoOpen}
+        currentUserId={userId}
+        onOpenSettings={() => setIsSettingsOpen(true)}
+      />
+
+      <ContainerSettingsSheet
+        descriptor={descriptor}
+        open={isSettingsOpen}
+        onOpenChange={setIsSettingsOpen}
       />
     </>
   );

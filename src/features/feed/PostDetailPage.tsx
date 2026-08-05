@@ -10,7 +10,7 @@ import { APP_ROUTES } from '@/app/routes';
 import { PageBody } from '@/components/page/PageBody';
 import { PageHeader } from '@/components/page/PageHeader';
 import { ProfilePostCard } from '@/features/profile/components/ProfilePostCard';
-import { useFollowTarget } from '@/hooks/useFollowRelationships';
+import { useFeedPostCapabilities } from './useFeedPostCapabilities';
 import { useAppNavigation } from '@/navigation/appNavigation';
 import { useAuthStore } from '@/store/authStore';
 
@@ -32,7 +32,7 @@ export default function PostDetailPage() {
     enabled: Boolean(channelId),
   });
 
-  const follow = useFollowTarget('channel', channelId ?? '');
+  const { for: capabilitiesFor } = useFeedPostCapabilities(channelId ? [channelId] : []);
 
   const doc = messageQuery.data;
 
@@ -80,16 +80,9 @@ export default function PostDetailPage() {
     return <Navigate to={APP_ROUTES.channelPost(channelId, doc.thread_root_id)} replace />;
   }
 
+  // Resolved, not derived from `comment_policy` at the call site.
+  const { canComment, canReact } = capabilitiesFor(channelId);
   const channel = channelQuery.data;
-  const isOwner = Boolean(
-    currentUserId && channel?.owner.type === 'user' && channel.owner.id === currentUserId
-  );
-  const canComment =
-    Boolean(channel) &&
-    channel?.comment_policy !== 'disabled' &&
-    (isOwner ||
-      channel?.comment_policy === 'everyone' ||
-      (channel?.comment_policy === 'followers' && follow.isFollowing));
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col bg-background">
@@ -112,6 +105,8 @@ export default function PostDetailPage() {
             post={post}
             channelId={channelId}
             canComment={canComment}
+            canReact={canReact}
+            currentUserId={currentUserId}
             defaultShowComments
           />
         )}

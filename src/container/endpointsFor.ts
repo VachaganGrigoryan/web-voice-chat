@@ -26,6 +26,7 @@ export const endpointsFor = (source: ContainerSource): ContainerEndpoints => {
         text: body.text,
         reply_mode: body.reply_mode,
         reply_to_message_id: body.reply_to_message_id ?? undefined,
+        style: body.style ?? undefined,
       }),
     /**
      * `messagesApi.uploadMedia` already accepts a container ref and owns form

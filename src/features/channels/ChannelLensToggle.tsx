@@ -19,8 +19,10 @@ interface ChannelLensToggleProps {
 }
 
 /**
- * Switches how a channel renders without navigating. Staying on the same route
- * means changing lens never drops the reader out of their inbox or their mode.
+ * Switches how a channel renders by navigating to that lens's route — the URL
+ * is the only source of the lens, so a channel view can be linked and shared in
+ * a specific lens. Both lens routes live inside the chat shell, so switching
+ * still never drops the reader out of their inbox.
  */
 export function ChannelLensToggle({ lens, onChange, className }: ChannelLensToggleProps) {
   return (

@@ -32,8 +32,13 @@ import { useInboxData, type InboxRowData } from './components/inbox/useInboxData
 import { useInboxSelection } from './components/inbox/useInboxSelection';
 
 type InboxMenuTarget =
-  | { kind: 'conversation'; peerUserId: string; unreadCount: number }
-  | { kind: 'channel'; channelId: string };
+  | {
+      kind: 'conversation';
+      peerUserId: string;
+      unreadCount: number;
+      conversationType: 'dm' | 'group';
+    }
+  | { kind: 'channel'; channelId: string; unreadCount: number };
 
 const openMenuAtPoint = (
   setMenu: (menu: InboxMenuState) => void,
@@ -57,6 +62,13 @@ interface InboxPanelProps {
   currentUserId: string | null;
   typingUsers: Record<string, boolean>;
   presenceByUserId?: Record<string, PresenceStatus>;
+  /**
+   * The clear/delete mutations run in `ChatShell`, so their pending state has
+   * to come down as props — a second `useConversationLifecycle()` here would be
+   * a different mutation instance and its flags would never flip.
+   */
+  isClearingConversation?: boolean;
+  isDeletingConversation?: boolean;
   /** The id of whichever container is currently open, for row highlighting. */
   selectedContainerId: string | null;
   selectedSpaceId: string | null;
@@ -77,6 +89,8 @@ export function InboxPanel({
   currentUserId,
   typingUsers,
   presenceByUserId = {},
+  isClearingConversation = false,
+  isDeletingConversation = false,
   selectedContainerId,
   selectedSpaceId,
   onOpenSpaces,
@@ -94,7 +108,8 @@ export function InboxPanel({
   const { isCollapsed, toggleSection } = useInboxSections();
   const isMobile = useIsMobile();
 
-  const { setInboxState, setInboxStateBulk } = useConversationActions();
+  const { setInboxState, setInboxStateBulk, setNotifications, leaveGroup } =
+    useConversationActions();
   const folders = useConversationFolders(true);
   const selection = useInboxSelection();
   const dialogs = useChatDialogs();
@@ -119,10 +134,11 @@ export function InboxPanel({
     );
   };
 
-  const menuConversation =
-    menu?.kind === 'conversation'
-      ? conversations.find((c) => c.conversation_id === menu.peerUserId || c.id === menu.peerUserId) ?? null
-      : null;
+  /** Rows are keyed by peer id; the mutations need the conversation's own id. */
+  const findConversation = (peerUserId: string) =>
+    conversations.find((c) => c.conversation_id === peerUserId || c.id === peerUserId) ?? null;
+
+  const menuConversation = menu?.kind === 'conversation' ? findConversation(menu.peerUserId) : null;
   const menuChannelRow =
     menu?.kind === 'channel' ? channelRows.find((row) => row.channel.id === menu.channelId) ?? null : null;
 
@@ -136,8 +152,8 @@ export function InboxPanel({
           currentUserId={currentUserId}
           isTyping={false}
           onSelect={() => onSelectChannel(row)}
-          onOpenMenuAtPoint={(event) => openMenuAtPoint(setMenu, event, { kind: 'channel', channelId: row.id })}
-          onOpenMenuAtCoordinates={(point) => openMenuAtCoordinates(setMenu, point, { kind: 'channel', channelId: row.id })}
+          onOpenMenuAtPoint={(event) => openMenuAtPoint(setMenu, event, { kind: 'channel', channelId: row.id, unreadCount: row.unreadCount })}
+          onOpenMenuAtCoordinates={(point) => openMenuAtCoordinates(setMenu, point, { kind: 'channel', channelId: row.id, unreadCount: row.unreadCount })}
         />
       );
     }
@@ -170,10 +186,20 @@ export function InboxPanel({
         onSelect={() => onSelectConversation(row)}
         onToggleSelected={() => selection.toggleSelected(row.id, row.conversation.type)}
         onOpenMenuAtPoint={(event) =>
-          openMenuAtPoint(setMenu, event, { kind: 'conversation', peerUserId: row.id, unreadCount: row.unreadCount })
+          openMenuAtPoint(setMenu, event, {
+            kind: 'conversation',
+            peerUserId: row.id,
+            unreadCount: row.unreadCount,
+            conversationType: row.conversation.type,
+          })
         }
         onOpenMenuAtCoordinates={(point) =>
-          openMenuAtCoordinates(setMenu, point, { kind: 'conversation', peerUserId: row.id, unreadCount: row.unreadCount })
+          openMenuAtCoordinates(setMenu, point, {
+            kind: 'conversation',
+            peerUserId: row.id,
+            unreadCount: row.unreadCount,
+            conversationType: row.conversation.type,
+          })
         }
       />
     );
@@ -198,29 +224,42 @@ export function InboxPanel({
         channelRow={menuChannelRow}
         isUpdatingInbox={setInboxState.isPending}
         isMarkingReadConversation={markConversationRead.isPending}
-        isClearingConversation={false}
-        isDeletingConversation={false}
+        isClearingConversation={isClearingConversation}
+        isDeletingConversation={isDeletingConversation}
         isUpdatingChannel={channelInbox.setInboxState.isPending || channelInbox.setNotifications.isPending}
         isMarkingReadChannel={channelInbox.markRead.isPending}
         isLeavingChannel={channelInbox.leave.isPending}
+        isUpdatingConversationNotifications={setNotifications.isPending}
+        isLeavingGroup={leaveGroup.isPending}
         onOpenChange={(open) => {
           if (!open) setMenu(null);
         }}
         onTogglePinConversation={(peerUserId) => {
-          const conversation = conversations.find(
-            (c) => c.conversation_id === peerUserId || c.id === peerUserId
-          );
+          const conversation = findConversation(peerUserId);
           if (conversation) {
             setInboxState.mutate({ conversationId: conversation.id, updates: { pinned: !conversation.pinned } });
           }
         }}
         onToggleArchiveConversation={(peerUserId) => {
-          const conversation = conversations.find(
-            (c) => c.conversation_id === peerUserId || c.id === peerUserId
-          );
+          const conversation = findConversation(peerUserId);
           if (conversation) {
             setInboxState.mutate({ conversationId: conversation.id, updates: { archived: !conversation.archived } });
           }
+        }}
+        onCycleConversationNotifications={(peerUserId, level) => {
+          const conversation = findConversation(peerUserId);
+          if (conversation) {
+            setNotifications.mutate({ conversationId: conversation.id, level });
+          }
+        }}
+        onLeaveGroup={(peerUserId) => {
+          const conversation = findConversation(peerUserId);
+          if (conversation) {
+            leaveGroup.mutate(conversation.id);
+          }
+        }}
+        onToggleArchiveChannel={(channelId, archived) => {
+          channelInbox.setInboxState.mutate({ channelId, updates: { archived } });
         }}
         onMoveToFolderConversation={() => {
           // Row-level "move to folder" reuses the bulk dialog with a single id.

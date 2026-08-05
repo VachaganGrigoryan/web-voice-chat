@@ -40,6 +40,7 @@ export interface ComposeTextInput {
   text: string;
   reply_mode?: ReplyMode | null;
   reply_to_message_id?: string;
+  style?: { background?: string | null; align?: 'start' | 'center' | null } | null;
 }
 
 /**

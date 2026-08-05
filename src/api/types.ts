@@ -207,6 +207,22 @@ export interface FeedPostView {
   comment_count: number;
   has_thread: boolean;
   is_deleted: boolean;
+  /** Presentation for a short text-only post; absent on everything else. */
+  style?: { background?: string | null; align?: 'start' | 'center' | null } | null;
+  /**
+   * Projected so a post can render through the same content components a chat
+   * message does. All optional: an older server omits them and the feed
+   * degrades to text, media and reactions.
+   */
+  sender_id?: string | null;
+  content_type?: ContentType | null;
+  reply_mode?: ReplyMode | null;
+  reply_to_message_id?: string | null;
+  thread_root_id?: string | null;
+  reply_preview?: ReplyPreview | null;
+  mention_user_ids?: string[];
+  mention_scope?: 'here' | 'all' | null;
+  poll_ref?: PollRef | null;
   created_at: string;
   edited_at: string | null;
 }

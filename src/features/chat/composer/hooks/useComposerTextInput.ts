@@ -154,7 +154,9 @@ export function useComposerTextInput({
     resetTypingTimeout();
   };
 
-  const handleSendText = async () => {
+  const handleSendText = async (
+    style?: { background?: string | null; align?: 'start' | 'center' | null } | null
+  ) => {
     const trimmedText = text.trim();
     if (!trimmedText || isSendingText) {
       return false;
@@ -167,6 +169,7 @@ export function useComposerTextInput({
       await onSendText({
         ...container,
         text: trimmedText,
+        ...(style ? { style } : {}),
       });
       clearTextAfterSend();
       return true;

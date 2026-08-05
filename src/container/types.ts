@@ -70,10 +70,17 @@ export interface HistoryParams {
   readonly cursor?: string;
 }
 
+/** Presentation for a short text body; absent on everything else. */
+export interface TextStyleInput {
+  readonly background?: string | null;
+  readonly align?: 'start' | 'center' | null;
+}
+
 export interface SendTextBody {
   readonly text: string;
   readonly reply_mode?: 'quote' | 'thread' | null;
   readonly reply_to_message_id?: string | null;
+  readonly style?: TextStyleInput | null;
 }
 
 /**

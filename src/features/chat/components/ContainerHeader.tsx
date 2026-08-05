@@ -12,7 +12,6 @@ import {
   Hash,
   Info,
   Loader2,
-  Megaphone,
   MoreVertical,
   Phone,
   Pin,
@@ -30,23 +29,16 @@ import { Logo } from '@/shared/branding/Logo';
 import { APP_ROUTES } from '@/app/routes';
 import type { ContainerDescriptor } from '@/container';
 import { ChannelLensToggle } from '@/features/channels/ChannelLensToggle';
+import {
+  HEADER_ACTION_IDS,
+  buildHeaderActionIds,
+  type HeaderActionId,
+} from './headerActions';
 import type { ChannelLens } from '@/features/channels/useChannelLens';
 import { NotificationLevel, PresenceState } from '@/api/types';
 import { ProfileTriggerButton } from './ProfileTriggerButton';
 
-type HeaderActionId =
-  | 'audio_call'
-  | 'video_call'
-  | 'search'
-  | 'saved'
-  | 'scheduled'
-  | 'notifications'
-  | 'chat_pin'
-  | 'folder'
-  | 'archive'
-  | 'send_ping';
-
-type HeaderActionContext = 'dm' | 'group';
+type HeaderActionContext = 'dm' | 'group' | 'channel';
 
 interface HeaderAction {
   id: HeaderActionId;
@@ -68,27 +60,17 @@ interface HeaderMenuRect {
 type QuickActionPreferences = Partial<Record<HeaderActionContext, HeaderActionId[]>>;
 
 const QUICK_ACTION_STORAGE_KEY = 'vogi.chat.header.quickActions.v1';
-const HEADER_ACTION_IDS: readonly HeaderActionId[] = [
-  'audio_call',
-  'video_call',
-  'search',
-  'saved',
-  'scheduled',
-  'notifications',
-  'chat_pin',
-  'folder',
-  'archive',
-  'send_ping',
-];
 const HEADER_ACTION_ID_SET: ReadonlySet<string> = new Set(HEADER_ACTION_IDS);
-const HEADER_ACTION_CONTEXTS: readonly HeaderActionContext[] = ['dm', 'group'];
+const HEADER_ACTION_CONTEXTS: readonly HeaderActionContext[] = ['dm', 'group', 'channel'];
 const DEFAULT_QUICK_ACTIONS: Record<HeaderActionContext, HeaderActionId[]> = {
   dm: ['audio_call', 'video_call'],
   group: [],
+  channel: [],
 };
 const MAX_QUICK_ACTIONS: Record<HeaderActionContext, number> = {
   dm: 2,
   group: 2,
+  channel: 2,
 };
 const HEADER_MENU_WIDTH = 268;
 const HEADER_MENU_ESTIMATED_HEIGHT = 420;
@@ -345,6 +327,8 @@ interface ContainerHeaderProps {
   onClose: () => void;
   onOpenInfo: () => void;
   onOpenSearch?: () => void;
+  /** Opens the container settings slide-over. Offered for every container kind. */
+  onOpenSettings?: () => void;
   onNavigate: (path: string) => void;
 
   // Channel-only.
@@ -372,7 +356,6 @@ interface ContainerHeaderProps {
   canPing?: boolean;
   canCall?: boolean;
   isCallBusy?: boolean;
-  onOpenGroupInfo?: () => void;
   onOpenScheduled?: () => void;
   onOpenSaved?: () => void;
   onSendPing?: () => void;
@@ -390,6 +373,7 @@ export function ContainerHeader({
   onClose,
   onOpenInfo,
   onOpenSearch,
+  onOpenSettings,
   onNavigate,
   lens,
   onLensChange,
@@ -413,7 +397,6 @@ export function ContainerHeader({
   canPing = false,
   canCall = false,
   isCallBusy = false,
-  onOpenGroupInfo,
   onOpenScheduled,
   onOpenSaved,
   onSendPing,
@@ -421,7 +404,6 @@ export function ContainerHeader({
   onStartVideoCall,
 }: ContainerHeaderProps) {
   const [menuAnchorRect, setMenuAnchorRect] = useState<HeaderMenuRect | null>(null);
-  const [isChannelMenuOpen, setIsChannelMenuOpen] = useState(false);
   const [quickActionPreferences, setQuickActionPreferences] = useState<QuickActionPreferences>(
     readQuickActionPreferences
   );
@@ -454,10 +436,24 @@ export function ContainerHeader({
         : 'Send ping';
 
   const actions = useMemo<HeaderAction[]>(() => {
-    if (isChannel) return [];
+    // Which ids are allowed is decided by `headerActions.ts` from the
+    // descriptor; this block only builds the concrete action for each allowed
+    // id. A channel is always open, so it is not gated on the ping handshake.
+    const isOpen = isChannel || isPingAccepted;
+    const allowedIds = new Set(
+      buildHeaderActionIds({
+        kind: isChannel ? 'channel' : isDirectMessage ? 'dm' : 'group',
+        hasConversationOnly: descriptor.conversationOnly !== null,
+        canStartCall: !!canCall,
+        isPingAccepted: isOpen,
+        canPing: !!canPing,
+        canSearch: !!onOpenSearch,
+      })
+    );
+    const allows = (id: HeaderActionId) => allowedIds.has(id);
     const nextActions: HeaderAction[] = [];
 
-    if (isDirectMessage && isPingAccepted) {
+    if (allows('audio_call')) {
       nextActions.push(
         {
           id: 'audio_call',
@@ -478,7 +474,7 @@ export function ContainerHeader({
       );
     }
 
-    if (isDirectMessage && !isPingAccepted) {
+    if (allows('send_ping')) {
       nextActions.push({
         id: 'send_ping',
         label: pingTitle,
@@ -501,7 +497,7 @@ export function ContainerHeader({
     }
 
 
-    if (onOpenSearch) {
+    if (allows('search') && onOpenSearch) {
       nextActions.push({
         id: 'search',
         label: 'Search messages',
@@ -511,7 +507,7 @@ export function ContainerHeader({
       });
     }
 
-    if (onOpenSaved) {
+    if (allows('saved') && onOpenSaved) {
       nextActions.push({
         id: 'saved',
         label: 'Saved messages',
@@ -521,7 +517,7 @@ export function ContainerHeader({
       });
     }
 
-    if (onOpenScheduled) {
+    if (allows('scheduled') && onOpenScheduled) {
       nextActions.push({
         id: 'scheduled',
         label: 'Scheduled messages',
@@ -531,7 +527,7 @@ export function ContainerHeader({
       });
     }
 
-    if (isPingAccepted && onCycleNotificationLevel) {
+    if (allows('notifications') && onCycleNotificationLevel) {
       nextActions.push({
         id: 'notifications',
         label: notificationTitle,
@@ -543,7 +539,7 @@ export function ContainerHeader({
       });
     }
 
-    if (isPingAccepted && onToggleInboxPin) {
+    if (allows('chat_pin') && onToggleInboxPin) {
       nextActions.push({
         id: 'chat_pin',
         label: inboxPinned ? 'Unpin chat' : 'Pin chat',
@@ -554,7 +550,7 @@ export function ContainerHeader({
       });
     }
 
-    if (isPingAccepted && onMoveToFolder) {
+    if (allows('folder') && onMoveToFolder) {
       nextActions.push({
         id: 'folder',
         label: 'Move to folder',
@@ -565,7 +561,7 @@ export function ContainerHeader({
       });
     }
 
-    if (isPingAccepted && onToggleInboxArchive) {
+    if (allows('archive') && onToggleInboxArchive) {
       nextActions.push({
         id: 'archive',
         label: inboxArchived ? 'Unarchive chat' : 'Archive chat',
@@ -576,8 +572,20 @@ export function ContainerHeader({
       });
     }
 
+    if (allows('settings') && onOpenSettings) {
+      nextActions.push({
+        id: 'settings',
+        label: 'Settings',
+        title: 'Settings',
+        icon: Settings,
+        onSelect: onOpenSettings,
+      });
+    }
+
     return nextActions;
   }, [
+    descriptor,
+    onOpenSettings,
     canCall,
     canPing,
     inboxArchived,
@@ -612,11 +620,11 @@ export function ContainerHeader({
   );
   const quickActionIds = quickActions.map((action) => action.id);
 
+  // Channels have their own quick-action context now, so preferences persist
+  // for every container kind rather than being skipped for one of them.
   useEffect(() => {
-    if (!isChannel) {
-      writeQuickActionPreferences(quickActionPreferences);
-    }
-  }, [isChannel, quickActionPreferences]);
+    writeQuickActionPreferences(quickActionPreferences);
+  }, [quickActionPreferences]);
 
   const toggleQuickAction = (actionId: HeaderActionId) => {
     setQuickActionPreferences((currentPreferences) => {
@@ -642,128 +650,6 @@ export function ContainerHeader({
     setMenuAnchorRect({ top: rect.top, right: rect.right, bottom: rect.bottom, left: rect.left });
   };
 
-  if (isChannel) {
-    const KindIcon = descriptor.identity.badge === 'profile-channel' ? Hash : Hash;
-    const isAnnouncement = descriptor.source.kind === 'channel' && descriptor.source.channel.kind === 'announcement';
-    const ChannelKindIcon = isAnnouncement ? Megaphone : KindIcon;
-
-    return (
-      <header
-        aria-label="Channel header"
-        className="h-16 border-b flex items-center px-4 justify-between bg-background/95 backdrop-blur z-10 shrink-0 shadow-sm"
-      >
-        <div className="flex min-w-0 flex-1 items-center gap-3">
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            aria-label="Back to inbox"
-            className="-ml-2 h-9 w-9 shrink-0 cursor-pointer rounded-full md:hidden"
-            onClick={onClose}
-          >
-            <ArrowLeft className="h-4 w-4" />
-          </Button>
-
-          <button
-            type="button"
-            onClick={onOpenInfo}
-            className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 rounded-xl px-1 py-1 text-left transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-border/60 bg-brand-muted text-brand">
-              <ChannelKindIcon className="h-4 w-4" />
-            </span>
-            <span className="min-w-0">
-              <span className="block truncate text-sm font-semibold text-foreground">
-                {descriptor.identity.title}
-              </span>
-              <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                <Users className="h-3 w-3" />
-                {descriptor.identity.subtitle}
-              </span>
-            </span>
-          </button>
-        </div>
-
-        <div className="flex shrink-0 items-center gap-1">
-          {lens && onLensChange ? (
-            <ChannelLensToggle lens={lens} onChange={onLensChange} className="mr-1 hidden sm:inline-flex" />
-          ) : null}
-
-          {onOpenSearch ? (
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              aria-label="Search this channel"
-              className="h-9 w-9 cursor-pointer rounded-full"
-              onClick={onOpenSearch}
-            >
-              <Search className="h-4 w-4" />
-            </Button>
-          ) : null}
-
-          <div className="relative">
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              aria-label="Channel actions"
-              aria-expanded={isChannelMenuOpen}
-              aria-haspopup="menu"
-              className="h-9 w-9 cursor-pointer rounded-full"
-              onClick={() => setIsChannelMenuOpen((current) => !current)}
-            >
-              <MoreVertical className="h-4 w-4" />
-            </Button>
-            {isChannelMenuOpen ? (
-              <>
-                <div className="fixed inset-0 z-40" onClick={() => setIsChannelMenuOpen(false)} />
-                <div
-                  role="menu"
-                  className="absolute right-0 top-full z-50 mt-1 w-56 rounded-xl border bg-popover p-1.5 shadow-e3 animate-in fade-in slide-in-from-top-1 duration-100"
-                >
-                  {lens && onLensChange ? (
-                    <ChannelLensToggle
-                      lens={lens}
-                      onChange={(next) => {
-                        setIsChannelMenuOpen(false);
-                        onLensChange(next);
-                      }}
-                      className="mb-1 flex w-full sm:hidden"
-                    />
-                  ) : null}
-                  <button
-                    type="button"
-                    role="menuitem"
-                    onClick={() => {
-                      setIsChannelMenuOpen(false);
-                      onOpenInfo();
-                    }}
-                    className="flex w-full cursor-pointer items-center gap-2 rounded-lg p-2 text-left text-sm font-medium text-foreground/80 transition-colors hover:bg-muted/60 hover:text-foreground"
-                  >
-                    <Info className="h-4 w-4 shrink-0" />
-                    Channel info
-                  </button>
-                  <button
-                    type="button"
-                    role="menuitem"
-                    onClick={() => {
-                      setIsChannelMenuOpen(false);
-                      onNavigate(APP_ROUTES.channel(descriptor.ref.container_id));
-                    }}
-                    className="flex w-full cursor-pointer items-center gap-2 rounded-lg p-2 text-left text-sm font-medium text-foreground/80 transition-colors hover:bg-muted/60 hover:text-foreground"
-                  >
-                    <Settings className="h-4 w-4 shrink-0" />
-                    Channel settings
-                  </button>
-                </div>
-              </>
-            ) : null}
-          </div>
-        </div>
-      </header>
-    );
-  }
 
   return (
     <div className="h-16 border-b flex items-center px-4 justify-between bg-background/95 backdrop-blur z-10 shrink-0 shadow-sm">
@@ -775,26 +661,31 @@ export function ContainerHeader({
         <ProfileTriggerButton
           title={descriptor.identity.title}
           subtitle={
+            // Presence is a peer property: a group and a channel show what they
+            // are instead, which the descriptor's identity already carries.
             isTyping ? (
               <span className="text-primary font-medium animate-pulse">Typing...</span>
-            ) : isGhost ? (
-              'Reconnect required'
+            ) : isDirectMessage ? (
+              isGhost ? 'Reconnect required' : presenceLabel
             ) : (
-              presenceLabel
+              descriptor.identity.subtitle
             )
           }
           avatarUrl={descriptor.identity.avatar?.url}
           fallback={(descriptor.identity.title || '?')[0].toUpperCase()}
-          onClick={isGroup ? onOpenGroupInfo : onOpenInfo}
-          disabled={isGroup ? false : isGhost}
-          online={!isGroup && !isGhost && isOnline}
-          presenceState={!isGroup && !isGhost ? resolvedPresenceState : 'offline'}
+          onClick={onOpenInfo}
+          disabled={isDirectMessage ? isGhost : false}
+          online={isDirectMessage && !isGhost && isOnline}
+          presenceState={isDirectMessage && !isGhost ? resolvedPresenceState : 'offline'}
           avatarClassName="h-9 w-9 border"
           className="max-w-full"
         />
       </div>
 
       <div className="flex shrink-0 items-center gap-1">
+        {isChannel && lens && onLensChange ? (
+          <ChannelLensToggle lens={lens} onChange={onLensChange} className="mr-1" />
+        ) : null}
         {quickActions.map((action) => (
           <Button
             key={action.id}

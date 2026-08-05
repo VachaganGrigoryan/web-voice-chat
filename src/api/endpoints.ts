@@ -303,6 +303,7 @@ export const messagesApi = {
     text: string;
     reply_mode?: ReplyMode | null;
     reply_to_message_id?: string;
+    style?: { background?: string | null; align?: 'start' | 'center' | null } | null;
   }) => {
     const path =
       data.container_type === 'channel'
@@ -314,6 +315,9 @@ export const messagesApi = {
         text: data.text,
         reply_mode: data.reply_mode ?? null,
         reply_to_message_id: data.reply_to_message_id,
+        // Omitted entirely when unset, so an unstyled post sends the same body
+        // it always did.
+        ...(data.style ? { style: data.style } : {}),
       }
     );
     return extractResponseData(response.data);

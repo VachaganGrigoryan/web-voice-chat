@@ -14,6 +14,11 @@ interface ManageLayoutProps {
   description?: string;
   onBack: () => void;
   sections: readonly PageTab[];
+  /**
+   * Derives the nav from resolved capabilities, so the route shows exactly the
+   * sections the settings registry resolves. Takes precedence over `sections`.
+   */
+  sectionsFor?: (capabilities: ManageCapabilities) => readonly PageTab[];
   activeSection: ManageSectionId;
   onSelectSection: (section: ManageSectionId) => void;
   children: (capabilities: ManageCapabilities) => ReactNode;
@@ -31,6 +36,7 @@ export function ManageLayout({
   description,
   onBack,
   sections,
+  sectionsFor,
   activeSection,
   onSelectSection,
   children,
@@ -60,7 +66,13 @@ export function ManageLayout({
       title={title}
       description={description}
       onBack={onBack}
-      nav={<ManageSectionNav sections={sections} activeSection={activeSection} onSelect={onSelectSection} />}
+      nav={
+        <ManageSectionNav
+          sections={sectionsFor ? sectionsFor(capabilities) : sections}
+          activeSection={activeSection}
+          onSelect={onSelectSection}
+        />
+      }
     >
       {children(capabilities)}
     </PanelPageLayout>

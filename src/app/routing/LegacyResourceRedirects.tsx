@@ -1,8 +1,8 @@
 import { useQuery } from '@tanstack/react-query';
-import { Navigate, useParams } from 'react-router-dom';
+import { Navigate, useLocation, useParams } from 'react-router-dom';
 import { channelsApi, conversationsApi, directoryApi } from '@/api/endpoints';
 import { directoryKeys } from '@/api/queryKeys';
-import { APP_ROUTES, ChannelTab, isChannelTab } from '@/app/routes';
+import { APP_ROUTES, ChannelTab, channelLensFromPath, isChannelTab } from '@/app/routes';
 import ChannelPage from '@/features/channels/ChannelPage';
 import ChatPage from '@/features/chat/ChatPage';
 
@@ -94,6 +94,7 @@ export function LegacyChannelChatRedirect() {
     channelId?: string;
     rootMessageId?: string;
   }>();
+  const lens = channelLensFromPath(useLocation().pathname);
   const channelQuery = useQuery({
     queryKey: ['channels', channelId],
     queryFn: () => channelsApi.get(channelId as string),
@@ -119,7 +120,9 @@ export function LegacyChannelChatRedirect() {
       to={
         rootMessageId
           ? APP_ROUTES.spaceChannelThread(channel.space_id, channel.id, rootMessageId)
-          : APP_ROUTES.spaceChannel(channel.space_id, channel.id, 'chat')
+          : // The lens the legacy path named is preserved, so a shared
+            // `/chat/channels/:id/feed` link still lands in the feed.
+            APP_ROUTES.spaceChannel(channel.space_id, channel.id, lens)
       }
       replace
     />

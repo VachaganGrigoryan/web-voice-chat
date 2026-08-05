@@ -72,6 +72,12 @@ export const APP_ROUTES = {
   chatChannel: (channelId: string) => `/chat/channels/${channelId}`,
   chatChannelThread: (channelId: string, rootMessageId: string) =>
     `/chat/channels/${channelId}/thread/${rootMessageId}`,
+  /**
+   * The feed lens for a channel that belongs to no space. Its space-scoped
+   * sibling is `spaceChannel(spaceId, channelId, 'feed')`; both keep the inbox
+   * visible, so switching lens never drops the reader out of their list.
+   */
+  chatChannelFeed: (channelId: string) => `/chat/channels/${channelId}/feed`,
   calls: '/calls',
   feed: '/feed',
   feedTab: (tab: FeedTab = 'home') => (tab === 'home' ? '/feed' : `/feed/${tab}`),
@@ -151,6 +157,31 @@ export const isSpacesTab = (value?: string): value is SpacesTab =>
 
 export const isChannelTab = (value?: string): value is ChannelTab =>
   !!value && CHANNEL_TABS.includes(value as ChannelTab);
+
+/**
+ * How a channel is being read. The route is the only source of this — there is
+ * deliberately no stored preference competing with the URL, so a channel view
+ * can be linked and shared in a specific lens.
+ */
+export type ChannelLens = 'chat' | 'feed';
+
+export const DEFAULT_CHANNEL_LENS: ChannelLens = 'chat';
+
+/** Where a channel opens in a given lens, space-scoped or not. */
+export const channelLensRoute = (
+  spaceId: string | null | undefined,
+  channelId: string,
+  lens: ChannelLens
+): string => {
+  if (spaceId) return APP_ROUTES.spaceChannel(spaceId, channelId, lens);
+  return lens === 'feed'
+    ? APP_ROUTES.chatChannelFeed(channelId)
+    : APP_ROUTES.chatChannel(channelId);
+};
+
+/** The lens a `/chat/*` or `/spaces/*` channel pathname names. */
+export const channelLensFromPath = (pathname: string): ChannelLens =>
+  /\/feed(\/|$)/.test(pathname) ? 'feed' : DEFAULT_CHANNEL_LENS;
 
 export const isPeopleTab = (value?: string): value is PeopleTab =>
   !!value && PEOPLE_TABS.includes(value as PeopleTab);

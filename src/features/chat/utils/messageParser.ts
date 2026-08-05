@@ -144,6 +144,8 @@ export function parseMessage(doc: MessageDoc, currentUserId?: string | null): Ch
         ...base,
         kind: 'text',
         text: text || '',
+        mentionCount: doc.mention_user_ids?.length ?? 0,
+        mentionScope: doc.mention_scope ?? null,
       } satisfies TextMessage;
     case 'image':
       return {

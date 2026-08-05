@@ -4,6 +4,8 @@ import { Loader2 } from 'lucide-react';
 import { feedsApi } from '@/api/endpoints';
 import { Button } from '@/components/ui/Button';
 import { ProfilePostCard } from '@/features/profile/components/ProfilePostCard';
+import { useAuthStore } from '@/store/authStore';
+import { useFeedPostCapabilities } from './useFeedPostCapabilities';
 
 const PAGE_SIZE = 30;
 
@@ -36,6 +38,10 @@ export function FeedList({ scope }: { scope: FeedScope }) {
     getNextPageParam: (lastPage) => lastPage.meta.next_cursor ?? undefined,
   });
   const posts = query.data?.pages.flatMap((page) => page.data) ?? [];
+  const currentUserId = useAuthStore((state) => state.userId);
+  const { for: capabilitiesFor } = useFeedPostCapabilities(
+    posts.map((post) => post.channel_id)
+  );
 
   if (query.isLoading) {
     return (
@@ -63,14 +69,21 @@ export function FeedList({ scope }: { scope: FeedScope }) {
 
   return (
     <div className="space-y-4">
-      {posts.map((post) => (
-        <ProfilePostCard
-          key={`${post.channel_id}:${post.id}`}
-          post={post}
-          channelId={post.channel_id}
-          canComment={false}
-        />
-      ))}
+      {posts.map((post) => {
+        // Resolved per post, because these come from many channels. Previously
+        // hard-coded to false, so commenting from a feed was impossible.
+        const capabilities = capabilitiesFor(post.channel_id);
+        return (
+          <ProfilePostCard
+            key={`${post.channel_id}:${post.id}`}
+            post={post}
+            channelId={post.channel_id}
+            canComment={capabilities.canComment}
+            canReact={capabilities.canReact}
+            currentUserId={currentUserId}
+          />
+        );
+      })}
       {query.hasNextPage ? (
         <div className="flex justify-center pt-2">
           <Button

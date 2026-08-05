@@ -385,7 +385,12 @@ function MessageDetailsPanel({
   onClose: () => void;
 }) {
   const payloadFields = useMemo(() => getPayloadFields(message), [message]);
-  const rawJson = useMemo(() => JSON.stringify(message.raw, null, 2), [message]);
+  // A projected feed post carries no source document; the Details panel degrades
+  // rather than crashing, since `strict` is off and TS will not catch it here.
+  const rawJson = useMemo(
+    () => (message.raw ? JSON.stringify(message.raw, null, 2) : 'No source document for this item.'),
+    [message]
+  );
   const parsedJson = useMemo(() => {
     const { raw, ...parsedMessage } = message;
     return JSON.stringify(parsedMessage, null, 2);
@@ -423,7 +428,9 @@ function MessageDetailsPanel({
     { label: 'Sender ID', value: message.senderId, mono: true, fullWidth: true },
     {
       label: 'Receipts',
-      value: `${message.raw.receipt_summary.read_count}/${message.raw.receipt_summary.recipient_count} read, ${message.raw.receipt_summary.delivered_count}/${message.raw.receipt_summary.recipient_count} delivered`,
+      value: message.raw
+        ? `${message.raw.receipt_summary.read_count}/${message.raw.receipt_summary.recipient_count} read, ${message.raw.receipt_summary.delivered_count}/${message.raw.receipt_summary.recipient_count} delivered`
+        : '—',
       fullWidth: true,
     },
     { label: 'Client Batch ID', value: message.clientBatchId || '—', mono: true, fullWidth: true },
@@ -524,9 +531,9 @@ function MessageDetailsPanel({
               </PanelSection>
 
               <PanelSection title="Edit History" description="Prior versions retained each time this message was edited.">
-                {message.raw.edit_history.length > 0 ? (
+                {(message.raw?.edit_history?.length ?? 0) > 0 ? (
                   <ol className="space-y-2">
-                    {message.raw.edit_history.map((edit, index) => (
+                    {(message.raw?.edit_history ?? []).map((edit, index) => (
                       <li
                         key={`${edit.edited_at}-${index}`}
                         className="rounded-2xl border border-border/70 bg-muted/20 p-4"

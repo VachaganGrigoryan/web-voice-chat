@@ -98,9 +98,13 @@ export default function App() {
                   <Route path="/spaces/:spaceId/groups/:conversationId/chat/thread/:rootMessageId" element={<ChatPage />} />
                   <Route path="/spaces/:spaceId/channels/:channelId/chat" element={<ChatPage />} />
                   <Route path="/spaces/:spaceId/channels/:channelId/chat/thread/:rootMessageId" element={<ChatPage />} />
+                  {/* The feed lens is a route, not a stored preference, and it lives
+                      inside the shell so switching lens keeps the inbox visible. */}
+                  <Route path="/spaces/:spaceId/channels/:channelId/feed" element={<ChatPage />} />
                   {/* Channel routes precede the :conversationId param so "channels"
                       is never swallowed as a conversation id. */}
                   <Route path="/chat/channels/:channelId" element={<LegacyChannelChatRedirect />} />
+                  <Route path="/chat/channels/:channelId/feed" element={<LegacyChannelChatRedirect />} />
                   <Route path="/chat/channels/:channelId/thread/:rootMessageId" element={<LegacyChannelChatRedirect />} />
                   <Route path="/chat/:conversationId" element={<LegacyConversationRedirect />} />
                   <Route path="/chat/:conversationId/thread/:rootMessageId" element={<LegacyConversationRedirect />} />

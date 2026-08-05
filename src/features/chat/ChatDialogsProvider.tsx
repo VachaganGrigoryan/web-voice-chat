@@ -29,7 +29,6 @@ export const CLOSED_MEDIA_VIEWER: MediaViewerState = {
 interface ChatDialogsState {
   readonly callHistoryMenu: CallHistoryMenuState | null;
   readonly pendingDestructiveAction: SidebarDestructiveAction | null;
-  readonly groupInfoOpen: boolean;
   readonly groupDialogOpen: boolean;
   readonly channelDialogOpen: boolean;
   readonly updatingNotificationConversationId: string | null;
@@ -47,7 +46,6 @@ interface ChatDialogsState {
 const initialState: ChatDialogsState = {
   callHistoryMenu: null,
   pendingDestructiveAction: null,
-  groupInfoOpen: false,
   groupDialogOpen: false,
   channelDialogOpen: false,
   updatingNotificationConversationId: null,
@@ -65,7 +63,6 @@ const initialState: ChatDialogsState = {
 type ChatDialogAction =
   | { type: 'SET_CALL_HISTORY_MENU'; menu: CallHistoryMenuState | null }
   | { type: 'SET_DESTRUCTIVE_ACTION'; action: SidebarDestructiveAction | null }
-  | { type: 'SET_GROUP_INFO_OPEN'; open: boolean }
   | { type: 'SET_GROUP_DIALOG_OPEN'; open: boolean }
   | { type: 'SET_CHANNEL_DIALOG_OPEN'; open: boolean }
   | { type: 'SET_UPDATING_NOTIFICATION_CONVERSATION'; conversationId: string | null }
@@ -85,8 +82,6 @@ function chatDialogsReducer(state: ChatDialogsState, action: ChatDialogAction): 
       return { ...state, callHistoryMenu: action.menu };
     case 'SET_DESTRUCTIVE_ACTION':
       return { ...state, pendingDestructiveAction: action.action };
-    case 'SET_GROUP_INFO_OPEN':
-      return { ...state, groupInfoOpen: action.open };
     case 'SET_GROUP_DIALOG_OPEN':
       return { ...state, groupDialogOpen: action.open };
     case 'SET_CHANNEL_DIALOG_OPEN':
@@ -132,7 +127,6 @@ interface ChatDialogsContextValue {
   readonly state: ChatDialogsState;
   readonly setCallHistoryMenu: (menu: CallHistoryMenuState | null) => void;
   readonly requestDestructiveAction: (action: SidebarDestructiveAction | null) => void;
-  readonly setGroupInfoOpen: (open: boolean) => void;
   readonly setGroupDialogOpen: (open: boolean) => void;
   readonly setChannelDialogOpen: (open: boolean) => void;
   readonly setUpdatingNotificationConversation: (conversationId: string | null) => void;
@@ -163,7 +157,6 @@ export function ChatDialogsProvider({ children }: { children: ReactNode }) {
       state,
       setCallHistoryMenu: (menu) => dispatch({ type: 'SET_CALL_HISTORY_MENU', menu }),
       requestDestructiveAction: (action) => dispatch({ type: 'SET_DESTRUCTIVE_ACTION', action }),
-      setGroupInfoOpen: (open) => dispatch({ type: 'SET_GROUP_INFO_OPEN', open }),
       setGroupDialogOpen: (open) => dispatch({ type: 'SET_GROUP_DIALOG_OPEN', open }),
       setChannelDialogOpen: (open) => dispatch({ type: 'SET_CHANNEL_DIALOG_OPEN', open }),
       setUpdatingNotificationConversation: (conversationId) =>
