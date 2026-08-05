@@ -114,6 +114,7 @@ export default function AppShell() {
           selectedSpaceId={activeSpaceId}
           onSpaceChange={setActiveSpaceId}
           onNavigate={navigate}
+          onOpenSearch={() => setIsPaletteOpen(true)}
           onOpenSettings={handleOpenSettings}
           onLogout={handleLogout}
         />

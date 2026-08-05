@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { LogOut, Settings, UserRound } from 'lucide-react';
+import { LogOut, Search, Settings, UserRound } from 'lucide-react';
 import { User } from '@/api/types';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/Avatar';
 import { SpaceSwitcher } from './SpaceSwitcher';
@@ -11,6 +11,7 @@ interface MobileTopBarProps {
   selectedSpaceId: string | null;
   onSpaceChange: (spaceId: string | null) => void;
   onNavigate: (path: string) => void;
+  onOpenSearch: () => void;
   onOpenSettings: () => void;
   onLogout: () => void;
 }
@@ -25,6 +26,7 @@ export function MobileTopBar({
   selectedSpaceId,
   onSpaceChange,
   onNavigate,
+  onOpenSearch,
   onOpenSettings,
   onLogout,
 }: MobileTopBarProps) {
@@ -49,6 +51,17 @@ export function MobileTopBar({
       </div>
 
       <div className="flex shrink-0 items-center gap-1">
+        <button
+          type="button"
+          onClick={onOpenSearch}
+          aria-label="Search"
+          className={cn(
+            'flex h-10 w-10 cursor-pointer items-center justify-center rounded-full text-muted-foreground transition-colors',
+            'hover:bg-muted/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
+          )}
+        >
+          <Search className="h-5 w-5" />
+        </button>
         <div className="relative">
           <button
             type="button"
