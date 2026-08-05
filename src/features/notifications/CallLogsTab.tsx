@@ -2,14 +2,13 @@ import type { MouseEvent as ReactMouseEvent } from 'react';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import { Loader2, MoreVertical, Phone, Video } from 'lucide-react';
+import { ArrowDownLeft, ArrowUpRight, Loader2, MoreVertical, Phone, PhoneMissed, Video } from 'lucide-react';
 import { conversationsApi } from '@/api/endpoints';
 import { extractApiError } from '@/api/errors';
 import type { CallHistoryItem } from '@/api/types';
 import { APP_ROUTES } from '@/app/routes';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/Avatar';
 import { Button } from '@/components/ui/Button';
-import { PanelSection } from '@/components/panel/PanelPageLayout';
 import {
   CallHistoryActionsMenu,
   type CallHistoryMenuState,
@@ -24,6 +23,17 @@ import { useIsMobile } from '@/hooks/useIsMobile';
 import { cn } from '@/lib/utils';
 import { formatDuration } from '@/utils/dateUtils';
 import { toast } from 'sonner';
+import { ActivitySection } from './ActivitySignalConsole';
+
+export interface CallLogsState {
+  readonly history: readonly CallHistoryItem[];
+  readonly fetchNextPage: () => Promise<unknown>;
+  readonly hasNextPage: boolean;
+  readonly isFetchingNextPage: boolean;
+  readonly isLoading: boolean;
+  readonly deleteHistory: (peerUserId?: string) => Promise<{ deleted_count: number }>;
+  readonly isDeletingHistory: boolean;
+}
 
 function getCallHistoryPeerLabel(peer: CallHistoryItem['peer_user']) {
   return peer.display_name || peer.username || peer.id;
@@ -77,13 +87,17 @@ function CallLogListItem({
         ? 'Video call'
         : 'Audio call';
   const CallTypeIcon = item.type === 'video' ? Video : Phone;
+  const DirectionIcon = item.direction === 'incoming' ? ArrowDownLeft : ArrowUpRight;
   const peerLabel = getCallHistoryPeerLabel(item.peer_user);
+  const isMissed = item.status !== 'ended';
 
   return (
     <div
       className={cn(
-        'group relative w-full min-w-0 overflow-hidden rounded-2xl border p-1.5 transition-all',
-        'border-border/60 bg-background/75 shadow-[0_1px_2px_rgba(15,23,42,0.04)] hover:border-border/80 hover:bg-background/95 hover:shadow-sm'
+        'group relative w-full min-w-0 overflow-hidden rounded-2xl border p-1.5 transition-all duration-200 motion-reduce:transition-none',
+        isMissed
+          ? 'border-rose-200/80 bg-rose-50/70 shadow-e1 hover:border-rose-300 dark:border-rose-900/60 dark:bg-rose-950/20'
+          : 'border-border/60 bg-background/75 shadow-e1 hover:border-border/80 hover:bg-background/95 hover:shadow-e2'
       )}
       onContextMenu={(event) => {
         event.preventDefault();
@@ -109,7 +123,30 @@ function CallLogListItem({
             <span className="truncate pr-1 text-left text-sm font-medium text-foreground/90">{peerLabel}</span>
             <span className="shrink-0 text-[11px] text-muted-foreground">{timestamp}</span>
           </div>
-          <div className="mt-1 truncate text-xs font-medium text-foreground">{preview}</div>
+          <div className="mt-1 flex flex-wrap items-center gap-1.5">
+            <span
+              className={cn(
+                'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold',
+                item.direction === 'incoming'
+                  ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+                  : 'bg-sky-500/10 text-sky-700 dark:text-sky-300'
+              )}
+            >
+              <DirectionIcon className="h-3 w-3" />
+              {item.direction === 'incoming' ? 'Incoming' : 'Outgoing'}
+            </span>
+            <span
+              className={cn(
+                'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold',
+                isMissed
+                  ? 'bg-rose-500/10 text-rose-700 dark:text-rose-300'
+                  : 'bg-muted text-muted-foreground'
+              )}
+            >
+              {isMissed ? <PhoneMissed className="h-3 w-3" /> : null}
+              {preview}
+            </span>
+          </div>
           <div className="mt-1 truncate text-[11px] text-muted-foreground">{secondaryLabel}</div>
         </div>
       </button>
@@ -134,12 +171,51 @@ function CallLogListItem({
   );
 }
 
-export function CallLogsTab() {
+function CallMetricCard({
+  label,
+  value,
+  detail,
+  tone,
+}: {
+  label: string;
+  value: string | number;
+  detail: string;
+  tone: 'sky' | 'emerald' | 'rose' | 'amber';
+}) {
+  const toneClassName =
+    tone === 'emerald'
+      ? 'border-emerald-200 bg-emerald-50/80 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/20 dark:text-emerald-300'
+      : tone === 'rose'
+        ? 'border-rose-200 bg-rose-50/80 text-rose-700 dark:border-rose-900/60 dark:bg-rose-950/20 dark:text-rose-300'
+        : tone === 'amber'
+          ? 'border-amber-200 bg-amber-50/80 text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/20 dark:text-amber-300'
+          : 'border-sky-200 bg-sky-50/80 text-sky-700 dark:border-sky-900/60 dark:bg-sky-950/20 dark:text-sky-300';
+
+  return (
+    <div className={cn('rounded-2xl border p-4 shadow-e1', toneClassName)}>
+      <div className="text-2xl font-semibold tracking-tight">{value}</div>
+      <div className="mt-1 text-sm font-semibold text-foreground">{label}</div>
+      <div className="mt-0.5 text-xs text-muted-foreground">{detail}</div>
+    </div>
+  );
+}
+
+export function CallLogsTab({ state }: { state?: CallLogsState }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const isMobile = useIsMobile();
   const [menu, setMenu] = useState<CallHistoryMenuState | null>(null);
 
+  const localState = useCallHistory({ enabled: !state });
+  const activeState: CallLogsState = state ?? {
+    history: localState.history,
+    fetchNextPage: localState.fetchNextPage,
+    hasNextPage: localState.hasNextPage,
+    isFetchingNextPage: localState.isFetchingNextPage,
+    isLoading: localState.isLoading,
+    deleteHistory: localState.deleteHistory,
+    isDeletingHistory: localState.isDeletingHistory,
+  };
   const {
     history: callHistory,
     fetchNextPage,
@@ -148,7 +224,15 @@ export function CallLogsTab() {
     isLoading,
     deleteHistory,
     isDeletingHistory,
-  } = useCallHistory({ enabled: true });
+  } = activeState;
+
+  const endedCalls = callHistory.filter((item) => item.status === 'ended').length;
+  const missedCalls = callHistory.length - endedCalls;
+  const videoCalls = callHistory.filter((item) => item.type === 'video').length;
+  const talkTimeMs = callHistory.reduce(
+    (total, item) => total + Math.max(item.duration_ms, 0),
+    0
+  );
 
   const openMenu = (event: ReactMouseEvent<HTMLElement>, peerUserId: string) => {
     const rect = event.currentTarget.getBoundingClientRect();
@@ -185,7 +269,7 @@ export function CallLogsTab() {
   };
 
   return (
-    <PanelSection
+    <ActivitySection
       title="Call Logs"
       description="Audio and video call history across your conversations."
       action={
@@ -214,7 +298,33 @@ export function CallLogsTab() {
         onClearHistory={(peerUserId) => void clearPeerHistory(peerUserId)}
       />
 
-      <div className="mx-auto w-full max-w-2xl space-y-2">
+      <div className="space-y-4">
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-[repeat(4,minmax(0,1fr))]">
+          <CallMetricCard
+            label="Calls loaded"
+            value={callHistory.length}
+            detail={`${endedCalls} ended`}
+            tone="sky"
+          />
+          <CallMetricCard
+            label="Talk time"
+            value={talkTimeMs ? formatDuration(talkTimeMs) : '0m'}
+            detail="Completed duration"
+            tone="emerald"
+          />
+          <CallMetricCard
+            label="Video calls"
+            value={videoCalls}
+            detail="Camera sessions"
+            tone="amber"
+          />
+          <CallMetricCard
+            label="Missed / early"
+            value={missedCalls}
+            detail="Rejected, cancelled or expired"
+            tone="rose"
+          />
+        </div>
         {isLoading ? (
           <div className="flex items-center justify-center py-10 text-sm text-muted-foreground">
             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -256,6 +366,6 @@ export function CallLogsTab() {
           </Button>
         ) : null}
       </div>
-    </PanelSection>
+    </ActivitySection>
   );
 }

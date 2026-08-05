@@ -1,16 +1,15 @@
-import { ReactNode, useState } from 'react';
+import { ReactNode, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { formatDistanceToNow } from 'date-fns';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/Avatar';
 import { Button } from '@/components/ui/Button';
 import { APP_ROUTES, ActivityTab } from '@/app/routes';
-import { PanelSection } from '@/components/panel/PanelPageLayout';
 import { PageBody } from '@/components/page/PageBody';
 import { PageHeader } from '@/components/page/PageHeader';
-import { PageTabs } from '@/components/page/PageTabs';
 import { PageTab } from '@/components/page/pageTypes';
 import { useConnections } from '@/hooks/useConnections';
 import { useNotifications } from '@/hooks/useNotifications';
+import { useCallHistory } from '@/hooks/useCallHistory';
 import { useQueryClient } from '@tanstack/react-query';
 import { ConnectionListItem, NotificationView } from '@/api/types';
 import { extractApiError } from '@/api/errors';
@@ -19,6 +18,7 @@ import { useAppNavigation } from '@/navigation/appNavigation';
 import { toast } from 'sonner';
 import {
   AtSign,
+  BarChart3,
   Bell,
   Check,
   CheckCheck,
@@ -36,6 +36,13 @@ import {
 } from 'lucide-react';
 import { JoinByInviteDialog } from '@/features/chat/components/JoinByInviteDialog';
 import { CallLogsTab } from './CallLogsTab';
+import {
+  ActivityEmptyState,
+  ActivityLensBar,
+  ActivitySection,
+  ActivitySignalOverview,
+} from './ActivitySignalConsole';
+import { buildActivityInsights } from './activityInsights';
 
 type PingMetaLabel = {
   desktop: string;
@@ -119,7 +126,7 @@ function ConnectionRowLayout({
   const initial = (label[0] || '?').toUpperCase();
 
   return (
-    <div className="flex flex-col items-start justify-between gap-3 p-4 sm:flex-row sm:items-center hover:bg-muted/30 transition-colors">
+    <div className="flex flex-col items-start justify-between gap-3 rounded-2xl border border-border/70 bg-card p-4 shadow-e1 transition-colors duration-200 hover:border-brand/30 hover:bg-brand-muted/35 sm:flex-row sm:items-center motion-reduce:transition-none">
       <div className="flex min-w-0 items-center gap-3">
         <Avatar className="h-10 w-10 shrink-0 border border-border/50">
           {item.peer.avatar?.url ? <AvatarImage src={item.peer.avatar.url} /> : null}
@@ -238,10 +245,18 @@ function EnhancedNotificationRowLayout({
     <div
       onClick={isUnread && onMarkRead ? () => onMarkRead(notification.id) : undefined}
       className={cn(
-        'flex flex-col items-start justify-between gap-3 p-4 sm:flex-row sm:items-center transition-colors',
-        isUnread ? 'cursor-pointer bg-primary/5 hover:bg-primary/10' : 'hover:bg-muted/30'
+        'relative flex flex-col items-start justify-between gap-3 overflow-hidden rounded-2xl border p-4 shadow-e1 transition-colors duration-200 sm:flex-row sm:items-center motion-reduce:transition-none',
+        isUnread
+          ? 'cursor-pointer border-brand/30 bg-brand-muted/55 hover:bg-brand-muted'
+          : 'border-border/70 bg-card hover:border-brand/25 hover:bg-muted/25'
       )}
     >
+      <span
+        className={cn(
+          'absolute inset-y-3 left-0 w-1 rounded-r-full',
+          isUnread ? 'bg-brand' : 'bg-border'
+        )}
+      />
       <div className="flex min-w-0 items-start gap-3">
         {/* Actor Avatar or Icon Badge */}
         <div className="relative shrink-0 mt-0.5">
@@ -319,6 +334,83 @@ function EnhancedNotificationRowLayout({
   );
 }
 
+function notificationGroupLabel(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'Earlier';
+
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const day = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+  const diff = Math.round((today - day) / (24 * 60 * 60 * 1000));
+  if (diff === 0) return 'Today';
+  if (diff === 1) return 'Yesterday';
+  if (diff < 7) return date.toLocaleDateString(undefined, { weekday: 'long' });
+  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
+function groupNotifications(notifications: readonly NotificationView[]) {
+  const groups = new Map<string, NotificationView[]>();
+  for (const notification of notifications) {
+    const label = notificationGroupLabel(notification.created_at);
+    groups.set(label, [...(groups.get(label) ?? []), notification]);
+  }
+  return [...groups.entries()].map(([label, items]) => ({ label, items }));
+}
+
+function NotificationTimeline({
+  notifications,
+  emptyTitle,
+  emptyDescription,
+  onOpenSpaceRequest,
+  onOpenConversation,
+  onOpenPost,
+  onMarkRead,
+}: {
+  notifications: readonly NotificationView[];
+  emptyTitle: string;
+  emptyDescription: string;
+  onOpenSpaceRequest: (spaceId: string) => void;
+  onOpenConversation: (conversationId: string) => void;
+  onOpenPost: (channelId: string, postId: string) => void;
+  onMarkRead: (notificationId: string) => void;
+}) {
+  const groups = groupNotifications(notifications);
+
+  if (notifications.length === 0) {
+    return <ActivityEmptyState icon={Bell} title={emptyTitle} description={emptyDescription} />;
+  }
+
+  return (
+    <div className="space-y-5">
+      {groups.map((group) => (
+        <section key={group.label} className="space-y-2">
+          <div className="flex items-center gap-3">
+            <h3 className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+              {group.label}
+            </h3>
+            <span className="h-px flex-1 bg-border/70" />
+            <span className="text-xs font-medium text-muted-foreground">
+              {group.items.length} signal{group.items.length === 1 ? '' : 's'}
+            </span>
+          </div>
+          <div className="grid gap-2">
+            {group.items.map((notification) => (
+              <EnhancedNotificationRowLayout
+                key={notification.id}
+                notification={notification}
+                onOpenSpaceRequest={onOpenSpaceRequest}
+                onOpenConversation={onOpenConversation}
+                onOpenPost={onOpenPost}
+                onMarkRead={onMarkRead}
+              />
+            ))}
+          </div>
+        </section>
+      ))}
+    </div>
+  );
+}
+
 export function NotificationsPage() {
   const { tab } = useParams<{ tab?: string }>();
   const navigate = useNavigate();
@@ -358,14 +450,31 @@ export function NotificationsPage() {
         ? 'sent'
         : tab === 'mentions'
           ? 'mentions'
-          : tab === 'call-logs'
-            ? 'call-logs'
+          : tab === 'stats'
+            ? 'stats'
+            : tab === 'call-logs'
+              ? 'call-logs'
             : 'all';
+  const shouldLoadCallHistory = currentTab === 'stats' || currentTab === 'call-logs';
+  const callHistoryState = useCallHistory({ enabled: shouldLoadCallHistory });
 
   const mentionNotifications = notifications.filter(
     (item) => item.kind === 'message_mention' || item.kind === 'message_reply'
   );
   const visibleNotifications = currentTab === 'mentions' ? mentionNotifications : notifications;
+  const pendingIncomingCount = incoming.filter((item) => item.relationship.status === 'pending').length;
+  const pendingOutgoingCount = outgoing.filter((item) => item.relationship.status === 'pending').length;
+  const insights = useMemo(
+    () =>
+      buildActivityInsights({
+        notifications,
+        incoming,
+        outgoing,
+        callHistory: callHistoryState.history,
+        unreadCount,
+      }),
+    [callHistoryState.history, incoming, notifications, outgoing, unreadCount]
+  );
 
   const handleOpenConversation = (peerUserId: string) => {
     goTo(APP_ROUTES.chatConversation(peerUserId));
@@ -411,27 +520,27 @@ export function NotificationsPage() {
     }
   };
 
-  const pendingIncomingCount = incoming.filter((item) => item.relationship.status === 'pending').length;
-
   const tabs: readonly PageTab[] = [
     { id: 'all', label: 'All', icon: Bell, count: unreadCount },
+    { id: 'stats', label: 'Stats', icon: BarChart3, count: currentTab === 'stats' ? insights.loadedSignals : undefined },
     { id: 'mentions', label: 'Mentions', icon: AtSign, count: mentionNotifications.length },
     { id: 'requests', label: 'Requests', icon: UserPlus, count: pendingIncomingCount },
-    { id: 'sent', label: 'Sent', icon: Send, count: 0 },
-    { id: 'call-logs', label: 'Call Logs', icon: PhoneCall },
+    { id: 'sent', label: 'Sent', icon: Send, count: pendingOutgoingCount },
+    { id: 'call-logs', label: 'Call Logs', icon: PhoneCall, count: shouldLoadCallHistory ? callHistoryState.history.length : undefined },
   ];
+  const isInsightLoading =
+    isLoadingNotifications || isLoadingConnections || callHistoryState.isLoading;
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col bg-background">
       <PageHeader
         title="Activity"
-        description="Alerts, mentions, space invitations, connection requests and call logs"
+        description="Signals, requests, mentions and calls"
         tabs={
-          <PageTabs
+          <ActivityLensBar
             tabs={tabs}
             activeTabId={currentTab}
             onSelect={(tabId) => navigate(APP_ROUTES.activityTab(tabId as ActivityTab))}
-            aria-label="Activity sections"
           />
         }
         primaryAction={{
@@ -469,9 +578,18 @@ export function NotificationsPage() {
         ]}
       />
 
-      <PageBody>
+      <PageBody className="space-y-6">
+        {currentTab === 'stats' ? (
+          <ActivitySection
+            title="Activity Stats"
+            description="Real signals derived from loaded notifications, connection requests and call history."
+          >
+            <ActivitySignalOverview snapshot={insights} isLoading={isInsightLoading} />
+          </ActivitySection>
+        ) : null}
+
         {(currentTab === 'all' || currentTab === 'mentions') && (
-          <PanelSection
+          <ActivitySection
             title={currentTab === 'mentions' ? 'Mentions & replies' : 'Activity & notifications'}
             description={
               currentTab === 'mentions'
@@ -484,37 +602,24 @@ export function NotificationsPage() {
                 <Loader2 className="mr-2 h-5 w-5 animate-spin text-brand" />
                 Loading notifications…
               </div>
-            ) : visibleNotifications.length === 0 ? (
-              <div className="p-12 text-center text-muted-foreground">
-                <Bell className="mx-auto h-10 w-10 mb-3 opacity-40 text-brand" />
-                <p className="font-medium text-foreground">
-                  {currentTab === 'mentions' ? 'No mentions yet' : 'No notifications yet'}
-                </p>
-                <p className="text-xs text-muted-foreground mt-1">You're all caught up!</p>
-              </div>
             ) : (
-              <div className="divide-y rounded-2xl border bg-card/60">
-                {visibleNotifications.map((notification) => (
-                  <EnhancedNotificationRowLayout
-                    key={notification.id}
-                    notification={notification}
-                    onOpenSpaceRequest={(spaceId) => navigate(APP_ROUTES.spaceDetail(spaceId))}
-                    onOpenConversation={(convId) => goTo(APP_ROUTES.chatConversation(convId))}
-                    onOpenPost={(channelId, postId) =>
-                      navigate(APP_ROUTES.channelPost(channelId, postId))
-                    }
-                    onMarkRead={markRead}
-                  />
-                ))}
-              </div>
+              <NotificationTimeline
+                notifications={visibleNotifications}
+                emptyTitle={currentTab === 'mentions' ? 'No mentions yet' : 'No notifications yet'}
+                emptyDescription="You're all caught up."
+                onOpenSpaceRequest={(spaceId) => navigate(APP_ROUTES.spaceDetail(spaceId))}
+                onOpenConversation={(convId) => goTo(APP_ROUTES.chatConversation(convId))}
+                onOpenPost={(channelId, postId) => navigate(APP_ROUTES.channelPost(channelId, postId))}
+                onMarkRead={markRead}
+              />
             )}
-          </PanelSection>
+          </ActivitySection>
         )}
 
-        {currentTab === 'call-logs' ? <CallLogsTab /> : null}
+        {currentTab === 'call-logs' ? <CallLogsTab state={callHistoryState} /> : null}
 
         {currentTab === 'requests' && (
-          <PanelSection
+          <ActivitySection
             title="Incoming Connection Requests"
             description="People who want to connect with you on Vogi."
           >
@@ -524,12 +629,9 @@ export function NotificationsPage() {
                 Loading incoming requests…
               </div>
             ) : incoming.length === 0 ? (
-              <div className="p-12 text-center text-muted-foreground">
-                <UserPlus className="mx-auto h-10 w-10 mb-3 opacity-40 text-primary" />
-                <p className="font-medium text-foreground">No pending connection requests</p>
-              </div>
+              <ActivityEmptyState icon={UserPlus} title="No pending connection requests" />
             ) : (
-              <div className="divide-y rounded-2xl border bg-card/60">
+              <div className="grid gap-2">
                 {incoming.map((item) => {
                   const isBusy = actionUserId === item.peer.id;
                   const isPending = item.relationship.status === 'pending';
@@ -586,11 +688,11 @@ export function NotificationsPage() {
                 })}
               </div>
             )}
-          </PanelSection>
+          </ActivitySection>
         )}
 
         {currentTab === 'sent' && (
-          <PanelSection
+          <ActivitySection
             title="Sent Connection Requests"
             description="Connection requests you have sent to other users."
           >
@@ -600,11 +702,9 @@ export function NotificationsPage() {
                 Loading sent requests…
               </div>
             ) : outgoing.length === 0 ? (
-              <div className="p-12 text-center text-muted-foreground">
-                <p className="font-medium text-foreground">No sent requests</p>
-              </div>
+              <ActivityEmptyState icon={Send} title="No sent requests" />
             ) : (
-              <div className="divide-y rounded-2xl border bg-card/60">
+              <div className="grid gap-2">
                 {outgoing.map((item) => {
                   const isBusy = actionUserId === item.peer.id;
                   const isPending = item.relationship.status === 'pending';
@@ -647,7 +747,7 @@ export function NotificationsPage() {
                 })}
               </div>
             )}
-          </PanelSection>
+          </ActivitySection>
         )}
       </PageBody>
 

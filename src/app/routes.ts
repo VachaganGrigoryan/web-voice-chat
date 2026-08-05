@@ -29,7 +29,7 @@ export const CHAT_RESERVED_SEGMENTS = ['channels', 'dms', 'groups'] as const;
 
 /** Requests/sent deliberately live on Activity, not here, so they have one home. */
 export type PeopleTab = 'contacts' | 'following' | 'followers' | 'blocked';
-export type ActivityTab = 'all' | 'mentions' | 'requests' | 'sent' | 'call-logs';
+export type ActivityTab = 'all' | 'stats' | 'mentions' | 'requests' | 'sent' | 'call-logs';
 export type FeedTab = 'home' | 'saved';
 export type DiscoverTab = 'people' | 'channels' | 'spaces' | 'groups';
 export type ManageTab = 'people' | 'spaces' | 'channels' | 'groups';
@@ -47,7 +47,7 @@ export const SETTINGS_TABS: SettingsTab[] = SETTINGS_NAV_ITEMS.map((item) => ite
 export const SPACES_TABS: SpacesTab[] = ['members', 'channels', 'groups'];
 export const CHANNEL_TABS: ChannelTab[] = ['feed', 'chat', 'about', 'members'];
 export const PEOPLE_TABS: PeopleTab[] = ['contacts', 'following', 'followers', 'blocked'];
-export const ACTIVITY_TABS: ActivityTab[] = ['all', 'mentions', 'requests', 'sent', 'call-logs'];
+export const ACTIVITY_TABS: ActivityTab[] = ['all', 'stats', 'mentions', 'requests', 'sent', 'call-logs'];
 export const FEED_TABS: FeedTab[] = ['home', 'saved'];
 export const DISCOVER_TABS: DiscoverTab[] = ['people', 'channels', 'spaces', 'groups'];
 export const MANAGE_TABS: ManageTab[] = ['people', 'spaces', 'channels', 'groups'];
