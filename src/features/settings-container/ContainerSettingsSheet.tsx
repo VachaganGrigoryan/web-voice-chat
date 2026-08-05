@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { APP_ROUTES } from '@/app/routes';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/Sheet';
 import { useManageCapabilities } from '@/features/manage/useManageCapabilities';
 import type { ContainerDescriptor } from '@/container';
@@ -24,9 +26,17 @@ export function ContainerSettingsSheet({
   onOpenChange,
 }: ContainerSettingsSheetProps) {
   const [sectionId, setSectionId] = useState<SettingsSectionId>('general');
+  const navigate = useNavigate();
   const subject = subjectFromDescriptor(descriptor);
   const capabilities = useManageCapabilities(subject.resource);
-  const data = useContainerSettingsData(subject);
+  const data = useContainerSettingsData(subject, {
+    // A deleted container has no chat to return to, so the sheet closes and the
+    // inbox takes over rather than leaving a dead surface open.
+    onDeleted: () => {
+      onOpenChange(false);
+      navigate(APP_ROUTES.chat);
+    },
+  });
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>

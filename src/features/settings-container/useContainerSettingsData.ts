@@ -16,6 +16,7 @@ import type {
   Role,
 } from '@/api/types';
 import { useAuthStore } from '@/store/authStore';
+import { useManageCapabilities } from '@/features/manage/useManageCapabilities';
 import { useConnections } from '@/hooks/useConnections';
 import { useConversationFolders } from '@/features/chat/hooks/useConversationFolders';
 import { useConversationLifecycle } from '@/features/chat/hooks/useConversationLifecycle';
@@ -65,13 +66,26 @@ const COMMENT_RULES: readonly RuleOption<string>[] = [
 
 const notify = (error: unknown, fallback: string) => toast.error(extractApiError(error, fallback));
 
-export function useContainerSettingsData(subject: SettingsSubject): SettingsSectionData {
+export interface ContainerSettingsOptions {
+  /** Called after a delete succeeds, so the surface can close and navigate. */
+  readonly onDeleted?: () => void;
+}
+
+export function useContainerSettingsData(
+  subject: SettingsSubject,
+  options: ContainerSettingsOptions = {}
+): SettingsSectionData {
   const queryClient = useQueryClient();
   const currentUserId = useAuthStore((state) => state.userId);
   const [savingRoleIds, setSavingRoleIds] = useState<ReadonlySet<string>>(new Set());
   const folders = useConversationFolders(true);
   const lifecycle = useConversationLifecycle();
   const { blockUser, isBlocking } = useConnections();
+  // `resource.delete` is deliberately outside the default capability set, so
+  // `descriptor.capabilities.canDeleteContainer` is absent-not-false for a
+  // server-sourced descriptor — which hid this affordance from owners. This
+  // hook asks for the action explicitly and shares the same cache entry.
+  const manageCapabilities = useManageCapabilities(subject.resource);
 
   const { descriptor, kind, resource } = subject;
   const isChannel = kind === 'channel';
@@ -440,8 +454,22 @@ export function useContainerSettingsData(subject: SettingsSubject): SettingsSect
 
   const deleteGroup = useMutation({
     mutationFn: () => conversationsApi.deleteGroup(containerId),
-    onSuccess: invalidateContainer,
+    onSuccess: () => {
+      toast.success(`Deleted ${descriptor?.identity.title ?? 'the group'}`);
+      invalidateContainer();
+      options.onDeleted?.();
+    },
     onError: (error) => notify(error, 'Could not delete this group'),
+  });
+
+  const deleteChannel = useMutation({
+    mutationFn: () => channelsApi.remove(containerId),
+    onSuccess: () => {
+      toast.success(`Deleted ${descriptor?.identity.title ?? 'the channel'}`);
+      invalidateContainer();
+      options.onDeleted?.();
+    },
+    onError: (error) => notify(error, 'Could not delete this channel'),
   });
 
   const danger = useMemo(() => {
@@ -459,15 +487,31 @@ export function useContainerSettingsData(subject: SettingsSubject): SettingsSect
       });
     }
 
-    if (isGroup && descriptor?.capabilities.canDeleteContainer) {
+    if (isGroup && manageCapabilities.canDeleteResource) {
       actions.push({
         id: 'delete',
         label: 'Delete group',
         description: 'Delete this group for everyone. This cannot be undone.',
         confirmTitle: 'Delete this group?',
-        confirmDescription: 'The group and its messages are removed for every member.',
+        confirmDescription:
+          'The group, its messages and every uploaded file are permanently removed for every member. This cannot be undone.',
+        confirmPhrase: descriptor?.identity.title ?? null,
         onConfirm: () => deleteGroup.mutate(),
         isPending: deleteGroup.isPending,
+      });
+    }
+
+    if (isChannel && manageCapabilities.canDeleteResource) {
+      actions.push({
+        id: 'delete',
+        label: 'Delete channel',
+        description: 'Delete this channel for everyone. This cannot be undone.',
+        confirmTitle: 'Delete this channel?',
+        confirmDescription:
+          'The channel, its posts, comments and every uploaded file are permanently removed, and its followers lose it. This cannot be undone.',
+        confirmPhrase: descriptor?.identity.title ?? null,
+        onConfirm: () => deleteChannel.mutate(),
+        isPending: deleteChannel.isPending,
       });
     }
 
@@ -527,6 +571,8 @@ export function useContainerSettingsData(subject: SettingsSubject): SettingsSect
     descriptor,
     leave,
     deleteGroup,
+    deleteChannel,
+    manageCapabilities,
     lifecycle,
     blockUser,
     isBlocking,

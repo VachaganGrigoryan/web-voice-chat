@@ -806,6 +806,9 @@ export const channelsApi = {
     apiClient
       .post<SuccessResponse<boolean>>(`/channels/${channelId}/leave`)
       .then((res) => extractResponseData(res.data)),
+  /** Hard-deletes the channel and everything that named it. Owner only. */
+  remove: (channelId: string) =>
+    apiClient.delete(`/channels/${channelId}`).then(() => undefined),
   setInboxState: (
     channelId: string,
     updates: { pinned?: boolean; archived?: boolean; folder?: string | null }
@@ -1013,6 +1016,9 @@ export const spacesApi = {
     apiClient
       .patch<SuccessResponse<SpaceView>>(`/spaces/${spaceId}`, data)
       .then((res) => extractResponseData(res.data)),
+  /** Hard-deletes the space and every channel and group it owns. Owner only. */
+  remove: (spaceId: string) =>
+    apiClient.delete(`/spaces/${spaceId}`).then(() => undefined),
   createInvite: (
     spaceId: string,
     data: {

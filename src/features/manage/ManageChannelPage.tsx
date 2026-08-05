@@ -87,8 +87,13 @@ function ChannelSettingsBody({
   activeSectionId: string;
   onSectionChange: (sectionId: ManageSectionId) => void;
 }) {
+  const navigate = useNavigate();
   const subject = subjectFromDescriptor(descriptor);
-  const data = useContainerSettingsData(subject);
+  // A management route for a deleted channel has nothing left to manage, so
+  // deletion returns the viewer to the inbox rather than a dead page.
+  const data = useContainerSettingsData(subject, {
+    onDeleted: () => navigate(APP_ROUTES.chat),
+  });
 
   return (
     <ContainerSettings

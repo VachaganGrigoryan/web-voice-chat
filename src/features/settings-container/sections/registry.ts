@@ -94,9 +94,9 @@ export const SETTINGS_SECTIONS: readonly SettingsSectionDefinition[] = [
   },
   {
     id: 'danger',
-    label: 'Leave & remove',
-    description: 'Leaving, clearing history and blocking.',
-    kinds: ['dm', 'group', 'channel'],
+    label: 'Leave & delete',
+    description: 'Leaving, clearing history, blocking and deletion.',
+    kinds: ['dm', 'group', 'channel', 'space'],
     requires: null,
   },
 ];

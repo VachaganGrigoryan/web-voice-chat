@@ -11,6 +11,8 @@ export interface ManageDangerAction {
   readonly confirmDescription: string;
   readonly onConfirm: () => void | Promise<void>;
   readonly isPending?: boolean;
+  /** When set, this phrase must be typed exactly before the action is accepted. */
+  readonly confirmPhrase?: string | null;
 }
 
 interface DangerSectionProps {
@@ -35,6 +37,7 @@ export function DangerSection({ actions }: DangerSectionProps) {
         title={pendingAction?.confirmTitle ?? ''}
         description={pendingAction?.confirmDescription ?? ''}
         actionLabel={pendingAction?.label ?? ''}
+        confirmPhrase={pendingAction?.confirmPhrase ?? null}
         isPending={!!pendingAction?.isPending}
         onOpenChange={(open) => {
           if (!open && !pendingAction?.isPending) setPendingActionId(null);

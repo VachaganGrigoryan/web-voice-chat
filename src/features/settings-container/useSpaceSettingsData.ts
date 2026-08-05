@@ -1,5 +1,11 @@
 import { useMemo, useState } from 'react';
+import { useMutation } from '@tanstack/react-query';
 import { toast } from 'sonner';
+
+import { spacesApi } from '@/api/endpoints';
+import { extractApiError } from '@/api/errors';
+import { useManageCapabilities } from '@/features/manage/useManageCapabilities';
+import type { ManageDangerAction } from '@/features/manage/sections/DangerSection';
 
 import type { Role } from '@/api/types';
 import { useSpaces } from '@/hooks/useSpaces';
@@ -17,9 +23,9 @@ import type { SettingsSectionData } from './sectionData';
  * one section registry serve all four subject kinds.
  *
  * `notifications` is `null` because a space is not a container and has no
- * per-viewer inbox state, and `danger` is empty because the backend exposes no
- * leave-space or delete-space route. The registry already omits both sections
- * for a space, so neither is reachable.
+ * per-viewer inbox state. `danger` offers deletion, which cascades into every
+ * channel and group the space owns — a child left behind would resolve no
+ * owner and could never be managed again.
  */
 
 const SPACE_VISIBILITY_RULES: readonly RuleOption<string>[] = [
@@ -35,9 +41,27 @@ const SPACE_VISIBILITY_RULES: readonly RuleOption<string>[] = [
   },
 ];
 
-export function useSpaceSettingsData(spaceId: string): SettingsSectionData {
+export interface SpaceSettingsOptions {
+  /** Called after the delete succeeds, so the surface can close and navigate. */
+  readonly onDeleted?: () => void;
+}
+
+export function useSpaceSettingsData(
+  spaceId: string,
+  options: SpaceSettingsOptions = {}
+): SettingsSectionData {
   const manage = useSpaces(spaceId);
   const [savingRoleIds, setSavingRoleIds] = useState<ReadonlySet<string>>(new Set());
+  const manageCapabilities = useManageCapabilities({ type: 'space', id: spaceId });
+
+  const deleteSpace = useMutation({
+    mutationFn: () => spacesApi.remove(spaceId),
+    onSuccess: () => {
+      toast.success(`Deleted ${manage.space?.name ?? 'the space'}`);
+      options.onDeleted?.();
+    },
+    onError: (error) => toast.error(extractApiError(error, 'Could not delete this space')),
+  });
 
   const space = manage.space;
 
@@ -205,6 +229,48 @@ export function useSpaceSettingsData(spaceId: string): SettingsSectionData {
     [manage, spaceId]
   );
 
+  const childCount = manage.channels.length + manage.groups.length;
+
+  const danger = useMemo<ManageDangerAction[]>(() => {
+    if (!space || !manageCapabilities.canDeleteResource) return [];
+    // The default space is reserved; the backend refuses to delete it, so the
+    // affordance is absent rather than offered and rejected. `is_default` is
+    // computed server-side, so the reserved slug is not duplicated here.
+    if (space.is_default) return [];
+
+    return [
+      {
+        id: 'delete',
+        label: 'Delete space',
+        description: 'Delete this space and everything inside it. This cannot be undone.',
+        confirmTitle: 'Delete this space?',
+        // The cascade is stated before it runs: a space cannot be deleted
+        // without its children, because a child left behind would resolve no
+        // owner and could never be managed again.
+        confirmDescription:
+          childCount > 0
+            ? `This also permanently deletes ${manage.channels.length} channel${
+                manage.channels.length === 1 ? '' : 's'
+              } and ${manage.groups.length} group${
+                manage.groups.length === 1 ? '' : 's'
+              } inside it, with all of their messages and files. This cannot be undone.`
+            : 'The space, its members, roles and invites are permanently removed. This cannot be undone.',
+        confirmPhrase: space.name,
+        onConfirm: async () => {
+          await deleteSpace.mutateAsync();
+        },
+        isPending: deleteSpace.isPending,
+      },
+    ];
+  }, [
+    space,
+    manageCapabilities.canDeleteResource,
+    childCount,
+    manage.channels.length,
+    manage.groups.length,
+    deleteSpace,
+  ]);
+
   return {
     overview,
     notifications: null,
@@ -213,6 +279,6 @@ export function useSpaceSettingsData(spaceId: string): SettingsSectionData {
     roles,
     invites,
     requests,
-    danger: [],
+    danger,
   };
 }

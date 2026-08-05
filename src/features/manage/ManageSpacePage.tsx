@@ -68,8 +68,13 @@ function SpaceSettingsBody({
   activeSectionId: string;
   onSectionChange: (sectionId: ManageSectionId) => void;
 }) {
+  const navigate = useNavigate();
   const subject = subjectFromSpace(spaceId, name);
-  const data = useSpaceSettingsData(spaceId);
+  // Deleting a space takes its channels and groups with it, so there is no
+  // space surface to return to.
+  const data = useSpaceSettingsData(spaceId, {
+    onDeleted: () => navigate(APP_ROUTES.spaces),
+  });
 
   return (
     <ContainerSettings

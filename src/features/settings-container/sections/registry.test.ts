@@ -70,6 +70,10 @@ describe('settings section registry', () => {
     expect(idsFor('space', ALL)).not.toContain('notifications');
   });
 
+  it('offers the danger section to a space, which can now be deleted', () => {
+    expect(idsFor('space', ALL)).toContain('danger');
+  });
+
   it('resolves a requested section and falls back to the first visible one', () => {
     const visible = resolveSections('channel', ALL);
     expect(resolveActiveSection('roles', visible)?.id).toBe('roles');
