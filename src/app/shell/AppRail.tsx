@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { LogOut, Plus, Settings, UserRound } from 'lucide-react';
+import { LogOut, Plus, Search, Settings, UserRound } from 'lucide-react';
 import { User } from '@/api/types';
 import {
   ACTIVITY_DESTINATION,
@@ -22,6 +22,7 @@ interface AppRailProps {
   onSpaceChange: (spaceId: string | null) => void;
   onNavigate: (path: string) => void;
   onCreate: (actionId: string) => void;
+  onOpenSearch: () => void;
   onOpenSettings: () => void;
   onLogout: () => void;
 }
@@ -39,6 +40,7 @@ export function AppRail({
   onSpaceChange,
   onNavigate,
   onCreate,
+  onOpenSearch,
   onOpenSettings,
   onLogout,
 }: AppRailProps) {
@@ -140,6 +142,14 @@ export function AppRail({
 
       {/* Zone 4 — utility + self dock */}
       <div className="mt-auto flex flex-col items-center gap-1">
+        <RailButton
+          icon={Search}
+          label="Search"
+          active={false}
+          isCurrentPage={false}
+          onClick={onOpenSearch}
+        />
+
         <RailButton
           icon={ActivityIcon}
           label={ACTIVITY_DESTINATION.label}

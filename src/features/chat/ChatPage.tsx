@@ -43,7 +43,6 @@ import { ContainerPane } from './ContainerPane';
 import { ChatWelcomeState } from './components/ChatWelcomeState';
 import { MediaViewer } from './media/MediaViewer';
 import { MessageActionsDialog } from './components/MessageActionsDialog';
-import { MessageSearchDialog } from './components/MessageSearchDialog';
 import { SavedMessagesDialog } from './components/SavedMessagesDialog';
 import { ScheduledMessagesDialog } from './components/ScheduledMessagesDialog';
 import { ForwardMessageDialog } from './components/ForwardMessageDialog';
@@ -530,15 +529,6 @@ export default function ChatPage() {
         onSave={handleSaveMessage}
       />
 
-      <MessageSearchDialog
-        open={dialogs.state.searchOpen}
-        onOpenChange={dialogs.setSearchOpen}
-        onSelectResult={(message) => {
-          dialogs.setSearchOpen(false);
-          navigate(APP_ROUTES.chatConversation(message.conversation_id));
-        }}
-      />
-
       <SavedMessagesDialog
         open={dialogs.state.savedOpen}
         onOpenChange={dialogs.setSavedOpen}
@@ -587,7 +577,6 @@ export default function ChatPage() {
         descriptor={descriptor}
         onClose={closeActiveConversation}
         onOpenInfo={() => setIsInfoOpen(true)}
-        onOpenSearch={() => dialogs.setSearchOpen(true)}
         onOpenSettings={() => setIsSettingsOpen(true)}
         onNavigate={navigate}
         channelLens={isChannelContainer ? channelLens : undefined}

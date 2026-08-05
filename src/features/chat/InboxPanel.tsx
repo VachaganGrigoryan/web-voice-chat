@@ -14,15 +14,15 @@ import {
   Users,
   X,
 } from 'lucide-react';
-import { PresenceStatus } from '@/api/types';
+import type { MessageDoc, PresenceStatus } from '@/api/types';
 import { cn } from '@/lib/utils';
-import { UserSearch } from '@/features/discovery/UserSearch';
 import { useIsMobile } from '@/hooks/useIsMobile';
 import { useChatDialogs } from './ChatDialogsProvider';
 import { useConversationActions } from './hooks/useConversationActions';
 import { useConversationFolders } from './hooks/useConversationFolders';
 import { MoveToFolderDialog } from './components/MoveToFolderDialog';
 import { Button } from '@/components/ui/Button';
+import { ChatSidebarMessageSearch } from './components/inbox/ChatSidebarMessageSearch';
 import { InboxRow } from './components/inbox/InboxRow';
 import { InboxRowMenu, type InboxMenuState } from './components/inbox/InboxRowMenu';
 import { InboxSection } from './components/inbox/InboxSection';
@@ -75,7 +75,7 @@ interface InboxPanelProps {
   onOpenSpaces: () => void;
   onNewGroup: () => void;
   onNewChannel: () => void;
-  onSelectSearchUser: (peerUserId: string) => void;
+  onSelectMessageSearchResult: (message: MessageDoc) => void;
   onSelectConversation: (row: Extract<InboxRowData, { kind: 'conversation' }>) => void;
   onSelectChannel: (row: Extract<InboxRowData, { kind: 'channel' }>) => void;
 }
@@ -96,14 +96,13 @@ export function InboxPanel({
   onOpenSpaces,
   onNewGroup,
   onNewChannel,
-  onSelectSearchUser,
+  onSelectMessageSearchResult,
   onSelectConversation,
   onSelectChannel,
 }: InboxPanelProps) {
   const [showArchived, setShowArchived] = useState(false);
   const [bulkFolderDialogOpen, setBulkFolderDialogOpen] = useState(false);
   const [mobileCreateOpen, setMobileCreateOpen] = useState(false);
-  const [searchExpanded, setSearchExpanded] = useState(false);
   const [menu, setMenu] = useState<InboxMenuState | null>(null);
   const { isCollapsed, toggleSection } = useInboxSections();
   const isMobile = useIsMobile();
@@ -302,12 +301,10 @@ export function InboxPanel({
       <div className={cn('h-full min-h-0 w-full shrink-0 border-r bg-muted/10 md:w-80', className)}>
         <div className="flex h-full min-h-0 w-full min-w-0 flex-1 flex-col overflow-hidden">
           <div className="shrink-0 border-b px-4 py-3">
-            <UserSearch
-              autoFocus={searchExpanded}
-              onSelectUser={(id) => {
-                setSearchExpanded(false);
-                onSelectSearchUser(id);
-              }}
+            <ChatSidebarMessageSearch
+              conversations={conversations}
+              channelRows={channelRows}
+              onSelectMessage={onSelectMessageSearchResult}
             />
           </div>
 

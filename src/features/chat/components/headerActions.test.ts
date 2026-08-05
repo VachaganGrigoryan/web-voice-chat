@@ -7,7 +7,6 @@ const base: HeaderActionInput = {
   canStartCall: true,
   isPingAccepted: true,
   canPing: true,
-  canSearch: true,
 };
 
 const dm = (overrides: Partial<HeaderActionInput> = {}) =>
@@ -31,7 +30,6 @@ describe('header actions', () => {
     expect(dm()).toEqual([
       'audio_call',
       'video_call',
-      'search',
       'saved',
       'scheduled',
       'notifications',
@@ -74,11 +72,6 @@ describe('header actions', () => {
     expect(dm()).toContain('settings');
     expect(group()).toContain('settings');
     expect(channel()).toContain('settings');
-  });
-
-  it('omits search when the host wires up no search handler', () => {
-    expect(channel({ canSearch: false })).not.toContain('search');
-    expect(dm({ canSearch: false })).not.toContain('search');
   });
 
   it('never returns a channel an empty action list', () => {

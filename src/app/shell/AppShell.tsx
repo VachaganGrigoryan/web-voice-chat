@@ -38,8 +38,6 @@ export default function AppShell() {
   const activeSpaceId = useActiveSpace((state) => state.activeSpaceId);
   const setActiveSpaceId = useActiveSpace((state) => state.setActiveSpaceId);
   const requestIntent = useCreateIntent((state) => state.requestIntent);
-  const pendingIntent = useCreateIntent((state) => state.pendingIntent);
-  const clearIntent = useCreateIntent((state) => state.clearIntent);
 
   const [isPaletteOpen, setIsPaletteOpen] = useState(false);
 
@@ -54,25 +52,6 @@ export default function AppShell() {
     const stillMember = spacesQuery.data.some((space) => space.id === activeSpaceId);
     if (!stillMember) setActiveSpaceId(null);
   }, [activeSpaceId, spacesQuery.data, setActiveSpaceId]);
-
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
-        event.preventDefault();
-        setIsPaletteOpen((current) => !current);
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
-
-  // The mobile header has no rail to host a palette trigger, so it raises an intent.
-  useEffect(() => {
-    if (pendingIntent !== 'search') return;
-    clearIntent();
-    setIsPaletteOpen(true);
-  }, [pendingIntent, clearIntent]);
 
   const handleCreate = useCallback(
     (actionId: string) => {
@@ -112,10 +91,6 @@ export default function AppShell() {
     navigate(APP_ROUTES.settingsTab());
   }, [navigate]);
 
-  const handleOpenSearch = useCallback(() => {
-    requestIntent('search');
-  }, [requestIntent]);
-
   return (
     <div className="flex h-[100dvh] overflow-hidden bg-background">
       <AppRail
@@ -127,6 +102,7 @@ export default function AppShell() {
         onSpaceChange={setActiveSpaceId}
         onNavigate={navigate}
         onCreate={handleCreate}
+        onOpenSearch={() => setIsPaletteOpen(true)}
         onOpenSettings={handleOpenSettings}
         onLogout={handleLogout}
       />
@@ -138,7 +114,6 @@ export default function AppShell() {
           selectedSpaceId={activeSpaceId}
           onSpaceChange={setActiveSpaceId}
           onNavigate={navigate}
-          onOpenSearch={handleOpenSearch}
           onOpenSettings={handleOpenSettings}
           onLogout={handleLogout}
         />

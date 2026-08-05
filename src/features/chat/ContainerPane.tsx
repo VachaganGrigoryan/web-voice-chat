@@ -43,7 +43,6 @@ interface ContainerPaneProps {
   // Header
   onClose: () => void;
   onOpenInfo: () => void;
-  onOpenSearch?: () => void;
   onOpenSettings?: () => void;
   onNavigate: (path: string) => void;
   channelLens?: ChannelLens;
@@ -126,7 +125,6 @@ export function ContainerPane({
   descriptor,
   onClose,
   onOpenInfo,
-  onOpenSearch,
   onOpenSettings,
   onNavigate,
   channelLens,
@@ -257,7 +255,6 @@ export function ContainerPane({
         descriptor={descriptor}
         onClose={onClose}
         onOpenInfo={onOpenInfo}
-        onOpenSearch={onOpenSearch}
         onOpenSettings={onOpenSettings}
         onNavigate={onNavigate}
         lens={channelLens}

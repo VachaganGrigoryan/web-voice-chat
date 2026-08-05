@@ -4,8 +4,7 @@ export type CreateIntent =
   | 'new-group'
   | 'new-channel'
   | 'new-space'
-  | 'new-post'
-  | 'search';
+  | 'new-post';
 
 interface CreateIntentState {
   /** The intent awaiting a handler, or null when nothing is pending. */

@@ -32,7 +32,6 @@ interface ChatDialogsState {
   readonly groupDialogOpen: boolean;
   readonly channelDialogOpen: boolean;
   readonly updatingNotificationConversationId: string | null;
-  readonly searchOpen: boolean;
   readonly scheduledOpen: boolean;
   readonly savedOpen: boolean;
   readonly forwardSource: { conversationId: string; messageId: string } | null;
@@ -49,7 +48,6 @@ const initialState: ChatDialogsState = {
   groupDialogOpen: false,
   channelDialogOpen: false,
   updatingNotificationConversationId: null,
-  searchOpen: false,
   scheduledOpen: false,
   savedOpen: false,
   forwardSource: null,
@@ -66,7 +64,6 @@ type ChatDialogAction =
   | { type: 'SET_GROUP_DIALOG_OPEN'; open: boolean }
   | { type: 'SET_CHANNEL_DIALOG_OPEN'; open: boolean }
   | { type: 'SET_UPDATING_NOTIFICATION_CONVERSATION'; conversationId: string | null }
-  | { type: 'SET_SEARCH_OPEN'; open: boolean }
   | { type: 'SET_SCHEDULED_OPEN'; open: boolean }
   | { type: 'SET_SAVED_OPEN'; open: boolean }
   | { type: 'SET_FORWARD_SOURCE'; source: { conversationId: string; messageId: string } | null }
@@ -88,8 +85,6 @@ function chatDialogsReducer(state: ChatDialogsState, action: ChatDialogAction): 
       return { ...state, channelDialogOpen: action.open };
     case 'SET_UPDATING_NOTIFICATION_CONVERSATION':
       return { ...state, updatingNotificationConversationId: action.conversationId };
-    case 'SET_SEARCH_OPEN':
-      return { ...state, searchOpen: action.open };
     case 'SET_SCHEDULED_OPEN':
       return { ...state, scheduledOpen: action.open };
     case 'SET_SAVED_OPEN':
@@ -130,7 +125,6 @@ interface ChatDialogsContextValue {
   readonly setGroupDialogOpen: (open: boolean) => void;
   readonly setChannelDialogOpen: (open: boolean) => void;
   readonly setUpdatingNotificationConversation: (conversationId: string | null) => void;
-  readonly setSearchOpen: (open: boolean) => void;
   readonly setScheduledOpen: (open: boolean) => void;
   readonly setSavedOpen: (open: boolean) => void;
   readonly setForwardSource: (source: { conversationId: string; messageId: string } | null) => void;
@@ -161,7 +155,6 @@ export function ChatDialogsProvider({ children }: { children: ReactNode }) {
       setChannelDialogOpen: (open) => dispatch({ type: 'SET_CHANNEL_DIALOG_OPEN', open }),
       setUpdatingNotificationConversation: (conversationId) =>
         dispatch({ type: 'SET_UPDATING_NOTIFICATION_CONVERSATION', conversationId }),
-      setSearchOpen: (open) => dispatch({ type: 'SET_SEARCH_OPEN', open }),
       setScheduledOpen: (open) => dispatch({ type: 'SET_SCHEDULED_OPEN', open }),
       setSavedOpen: (open) => dispatch({ type: 'SET_SAVED_OPEN', open }),
       setForwardSource: (source) => dispatch({ type: 'SET_FORWARD_SOURCE', source }),

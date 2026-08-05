@@ -18,7 +18,6 @@
 export type HeaderActionId =
   | 'audio_call'
   | 'video_call'
-  | 'search'
   | 'saved'
   | 'scheduled'
   | 'notifications'
@@ -38,15 +37,12 @@ export interface HeaderActionInput {
   /** A DM only offers calls once the ping handshake is accepted. */
   readonly isPingAccepted: boolean;
   readonly canPing: boolean;
-  /** The host supplies a search handler only where search is wired up. */
-  readonly canSearch: boolean;
 }
 
 /** In display order. The header takes the first few as quick actions. */
 export const HEADER_ACTION_IDS: readonly HeaderActionId[] = [
   'audio_call',
   'video_call',
-  'search',
   'saved',
   'scheduled',
   'notifications',
@@ -65,9 +61,6 @@ const isAllowed = (id: HeaderActionId, input: HeaderActionInput): boolean => {
     case 'video_call':
       // Calls are a DM affordance and only after the ping handshake.
       return isDm && input.isPingAccepted && input.canStartCall;
-
-    case 'search':
-      return input.canSearch;
 
     // Saved and scheduled messages are addressed per conversation today.
     case 'saved':

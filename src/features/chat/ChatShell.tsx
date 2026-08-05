@@ -7,6 +7,7 @@ import { useCreateIntent } from '@/app/shell/useCreateIntent';
 import { useAuthStore } from '@/store/authStore';
 import { useCallHistory } from '@/hooks/useCallHistory';
 import { useConversations } from '@/hooks/useConversationList';
+import type { MessageDoc } from '@/api/types';
 import { conversationsApi } from '@/api/endpoints';
 import { extractApiError } from '@/api/errors';
 import { toast } from 'sonner';
@@ -181,6 +182,34 @@ function ChatShellContent() {
     }
   };
 
+  const handleSelectMessageSearchResult = (message: MessageDoc) => {
+    if (message.container_type === 'channel') {
+      navigate(APP_ROUTES.chatChannel(message.container_id));
+      return;
+    }
+
+    const conversationId = message.conversation_id || message.container_id;
+    const conversation = contacts.find(
+      (item) => item.id === conversationId || item.conversation_id === conversationId
+    );
+
+    if (conversation?.type === 'dm') {
+      navigate(APP_ROUTES.dm(conversation.id));
+      return;
+    }
+
+    if (conversation?.type === 'group') {
+      navigate(
+        conversation.space_id
+          ? APP_ROUTES.spaceGroupChat(conversation.space_id, conversation.id)
+          : APP_ROUTES.group(conversation.id)
+      );
+      return;
+    }
+
+    navigate(APP_ROUTES.chatConversation(conversationId));
+  };
+
   return (
     <div className="flex h-full min-h-0 w-full bg-background overflow-hidden">
       <ConfirmDestructiveActionDialog
@@ -240,7 +269,7 @@ function ChatShellContent() {
         onOpenSpaces={() => navigate(APP_ROUTES.spaces)}
         onNewGroup={() => dialogs.setGroupDialogOpen(true)}
         onNewChannel={() => dialogs.setChannelDialogOpen(true)}
-        onSelectSearchUser={(id) => void openDmConversationForUser(id, navigate, queryClient)}
+        onSelectMessageSearchResult={handleSelectMessageSearchResult}
         onSelectConversation={(row) => {
           const conversation = row.conversation;
           if (conversation.type === 'dm') {
@@ -273,20 +302,6 @@ function ChatShellContent() {
       </div>
     </div>
   );
-}
-
-async function openDmConversationForUser(
-  userId: string,
-  navigate: ReturnType<typeof useNavigate>,
-  queryClient: ReturnType<typeof useQueryClient>
-) {
-  try {
-    const conversation = await conversationsApi.createOrGetDm(userId);
-    await queryClient.invalidateQueries({ queryKey: ['conversations'] });
-    navigate(APP_ROUTES.dm(conversation.id));
-  } catch (error) {
-    toast.error(extractApiError(error, 'Failed to open chat'));
-  }
 }
 
 /** Layout route for chat mode: the responsive column frame, an outlet, and

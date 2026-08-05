@@ -16,7 +16,6 @@ import {
   Phone,
   Pin,
   PinOff,
-  Search,
   Settings,
   UserPlus,
   Users,
@@ -326,7 +325,6 @@ interface ContainerHeaderProps {
   descriptor: ContainerDescriptor;
   onClose: () => void;
   onOpenInfo: () => void;
-  onOpenSearch?: () => void;
   /** Opens the container settings slide-over. Offered for every container kind. */
   onOpenSettings?: () => void;
   onNavigate: (path: string) => void;
@@ -372,7 +370,6 @@ export function ContainerHeader({
   descriptor,
   onClose,
   onOpenInfo,
-  onOpenSearch,
   onOpenSettings,
   onNavigate,
   lens,
@@ -447,7 +444,6 @@ export function ContainerHeader({
         canStartCall: !!canCall,
         isPingAccepted: isOpen,
         canPing: !!canPing,
-        canSearch: !!onOpenSearch,
       })
     );
     const allows = (id: HeaderActionId) => allowedIds.has(id);
@@ -493,17 +489,6 @@ export function ContainerHeader({
           pingStatus === 'outgoing_pending' ||
           pingStatus === 'incoming_pending',
         onSelect: () => onSendPing?.(),
-      });
-    }
-
-
-    if (allows('search') && onOpenSearch) {
-      nextActions.push({
-        id: 'search',
-        label: 'Search messages',
-        title: 'Search messages',
-        icon: Search,
-        onSelect: onOpenSearch,
       });
     }
 
@@ -603,7 +588,6 @@ export function ContainerHeader({
     onMoveToFolder,
     onOpenSaved,
     onOpenScheduled,
-    onOpenSearch,
     onSendPing,
     onStartAudioCall,
     onStartVideoCall,

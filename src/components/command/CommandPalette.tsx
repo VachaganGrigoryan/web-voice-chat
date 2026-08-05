@@ -278,8 +278,14 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-xl gap-0 overflow-hidden p-0" aria-label="Command palette">
-        <div className="flex items-center gap-2 border-b px-4">
+      <DialogContent
+        className={cn(
+          'left-0 top-0 flex h-[100dvh] max-w-none translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden rounded-none p-0',
+          'md:left-[50%] md:top-[50%] md:h-auto md:max-h-[82vh] md:max-w-2xl md:translate-x-[-50%] md:translate-y-[-50%] md:rounded-2xl'
+        )}
+        aria-label="Global search"
+      >
+        <div className="flex items-center gap-2 border-b px-4 pr-12">
           <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
           <input
             autoFocus
@@ -287,12 +293,12 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
             onChange={(event) => setQuery(event.target.value)}
             onKeyDown={handleKeyDown}
             placeholder="Jump to a conversation, or search people, channels, spaces and groups"
-            aria-label="Search commands"
-            className="h-14 w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+            aria-label="Search"
+            className="h-14 w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground md:h-16"
           />
         </div>
 
-        <div ref={listRef} role="listbox" className="max-h-80 overflow-y-auto p-2">
+        <div ref={listRef} role="listbox" className="min-h-0 flex-1 overflow-y-auto p-2 md:max-h-[28rem]">
           {results.length === 0 ? (
             <p className="px-3 py-8 text-center text-sm text-muted-foreground">
               Nothing matches “{query}”.
