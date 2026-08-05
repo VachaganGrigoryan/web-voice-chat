@@ -35,7 +35,10 @@ const operationCount = Object.values(spec.paths).reduce(
 // 211 -> 209: -2 from collapsing the duplicate feed routes (GET
 // /feeds/channels/{id}/posts into its /feeds/channels/{id} twin, and GET
 // /users/{username}/posts into its /feeds/users/{username} twin).
-assert.equal(operationCount, 209, 'Unexpected number of OpenAPI operations');
+// 209 -> 211: +2 for DELETE /channels/{id} and DELETE /spaces/{id}, added by
+// hard-delete-owned-resources. This assertion only caught them once the spec
+// stopped being curl-scraped from a possibly-stale server.
+assert.equal(operationCount, 211, 'Unexpected number of OpenAPI operations');
 assert.equal(
   Object.keys(spec.paths).some((route) => route.startsWith('/pings')),
   false,
