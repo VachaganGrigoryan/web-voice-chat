@@ -79,6 +79,7 @@ export function useChatInteractionState({
     isEditing: isEditingMessage,
     isDeleting: isDeletingMessage,
     isTogglingReaction,
+    can,
   } = useMessageActions(descriptor, currentUserId);
 
   useEffect(() => {
@@ -208,9 +209,9 @@ export function useChatInteractionState({
     closeMessageMenu();
   };
 
+  // Addressed by id, not by the menu's subject: the reaction row is used with
+  // the menu closed, which is why this must not consult `activeMessage`.
   const handleToggleReaction = async (messageId: string, emoji: string) => {
-    const targetMessage = activeMessage?.id === messageId ? activeMessage : null;
-    if (!targetMessage) return;
     await toggleReactionAction({ messageId, emoji });
     triggerHaptic('reaction');
   };
@@ -276,6 +277,7 @@ export function useChatInteractionState({
     isEditingMessage,
     isDeletingMessage,
     isTogglingReaction,
+    canReact: can.react,
     createPoll,
   };
 }

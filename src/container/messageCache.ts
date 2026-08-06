@@ -2,6 +2,7 @@ import type { QueryClient } from '@tanstack/react-query';
 import { resolveMessageContent } from '@/api/messageContent';
 import { messageQueryKey, threadMessageQueryKey } from '@/api/queryKeys';
 import type {
+  FeedPostView,
   MessageContainerRef,
   MessageDoc,
   MessageReactionGroup,
@@ -122,6 +123,87 @@ export const updateMessageEverywhere = (
   updateMessageAcrossGroup(queryClient, 'threadMessages', messageId, update);
 };
 
+// --- feed projections -------------------------------------------------------
+
+/**
+ * The caches that render a message as a `FeedPostView`. A post carries the same
+ * `MessageReactionGroup[]` a `MessageDoc` does, so a reaction has to reach both
+ * or the surface the viewer is looking at reverts.
+ *
+ * Two envelopes: the feeds are infinite (`pages[].data`), while a post's comment
+ * list is a plain query (`data`).
+ */
+const FEED_CACHE_KEYS = [['feeds'], ['channel-feed'], ['post-comments']] as const;
+
+interface FeedPage {
+  data?: FeedPostView[];
+}
+
+type FeedCache = FeedPage & { pages?: FeedPage[] };
+
+const updatePostAcrossFeeds = (
+  queryClient: QueryClient,
+  postId: string,
+  update: (post: FeedPostView) => FeedPostView
+): void => {
+  /** The mapped list, or null when the id was not in it — so nothing churns. */
+  const mapList = (posts: FeedPostView[] | undefined): FeedPostView[] | null => {
+    let changed = false;
+    const next = (posts ?? []).map((post) => {
+      if (post.id !== postId) return post;
+      changed = true;
+      return update(post);
+    });
+    return changed ? next : null;
+  };
+
+  for (const queryKey of FEED_CACHE_KEYS) {
+    queryClient.setQueriesData<FeedCache>({ queryKey }, (old) => {
+      if (!old) return old;
+
+      if (old.pages) {
+        let changed = false;
+        const pages = old.pages.map((page) => {
+          const next = mapList(page.data);
+          if (!next) return page;
+          changed = true;
+          return { ...page, data: next };
+        });
+        return changed ? { ...old, pages } : old;
+      }
+
+      const next = mapList(old.data);
+      return next ? { ...old, data: next } : old;
+    });
+  }
+};
+
+/** The first feed projection of this message, for reading its current state. */
+export const findCachedFeedPost = (
+  queryClient: QueryClient,
+  postId: string
+): FeedPostView | null => {
+  for (const queryKey of FEED_CACHE_KEYS) {
+    for (const [, cache] of queryClient.getQueriesData<FeedCache>({ queryKey })) {
+      const posts = cache?.pages
+        ? cache.pages.flatMap((page) => page.data ?? [])
+        : (cache?.data ?? []);
+      const found = posts.find((post) => post.id === postId);
+      if (found) return found;
+    }
+  }
+
+  return null;
+};
+
+export const applyReactionUpdateToFeeds = (
+  queryClient: QueryClient,
+  postId: string,
+  reactions: MessageReactionGroup[]
+): void => {
+  updatePostAcrossFeeds(queryClient, postId, (post) => ({ ...post, reactions }));
+};
+
 export const applyReactionUpdate = (
   queryClient: QueryClient,
   payload: MessageReactionsUpdate
@@ -131,6 +213,7 @@ export const applyReactionUpdate = (
     reactions: payload.reactions,
     updated_at: payload.updated_at,
   }));
+  applyReactionUpdateToFeeds(queryClient, payload.message_id, payload.reactions);
 };
 
 /**

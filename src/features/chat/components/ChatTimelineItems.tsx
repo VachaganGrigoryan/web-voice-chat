@@ -27,6 +27,7 @@ interface ChatTimelineItemsProps {
   onSwipeReply?: (message: ChatMessage) => void;
   onToggleReaction: (messageId: string, emoji: string) => Promise<void>;
   isTogglingReaction?: boolean;
+  canReact: boolean;
   onMediaClick?: (payload: MediaClickPayload) => void;
   audioQueueKey?: string | null;
   audioQueue?: ChatAudioQueueItem[];
@@ -45,6 +46,7 @@ export function ChatTimelineItems({
   onSwipeReply,
   onToggleReaction,
   isTogglingReaction = false,
+  canReact,
   onMediaClick,
   audioQueueKey,
   audioQueue,
@@ -171,6 +173,7 @@ export function ChatTimelineItems({
                 <MessageReactions
                   message={item.message}
                   currentUserId={currentUserId}
+                  canReact={canReact}
                   isBusy={isTogglingReaction}
                   onToggleReaction={(emoji) => onToggleReaction(item.message.id, emoji)}
                 />

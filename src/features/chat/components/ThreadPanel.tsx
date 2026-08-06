@@ -26,6 +26,7 @@ interface ThreadPanelProps {
   onSwipeReply?: (message: ChatMessage) => void;
   onToggleReaction: (messageId: string, emoji: string) => Promise<void>;
   isTogglingReaction?: boolean;
+  canReact: boolean;
   onVisibleUnreadMessages?: (messageIds: string[]) => void;
   onMediaClick?: (payload: MediaClickPayload) => void;
   audioQueueKey?: string | null;
@@ -52,6 +53,7 @@ export function ThreadPanel({
   onSwipeReply,
   onToggleReaction,
   isTogglingReaction = false,
+  canReact,
   onVisibleUnreadMessages,
   onMediaClick,
   audioQueueKey,
@@ -134,6 +136,7 @@ export function ThreadPanel({
               <MessageReactions
                 message={rootMessage}
                 currentUserId={currentUserId}
+                canReact={canReact}
                 isBusy={isTogglingReaction}
                 onToggleReaction={(emoji) => onToggleReaction(rootMessage.id, emoji)}
               />
@@ -155,6 +158,7 @@ export function ThreadPanel({
                 onSwipeReply={onSwipeReply}
                 onToggleReaction={onToggleReaction}
                 isTogglingReaction={isTogglingReaction}
+                canReact={canReact}
                 onMediaClick={onMediaClick}
                 audioQueueKey={audioQueueKey}
                 audioQueue={audioQueue}

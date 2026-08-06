@@ -295,6 +295,7 @@ export default function ChatPage() {
     handleThreadMediaClick,
     isSending,
     isTogglingReaction,
+    canReact,
     createPoll,
   } = useChatInteractionState({
     descriptor,
@@ -704,6 +705,7 @@ export default function ChatPage() {
         onSwipeReply={(message) => handleSwipeReply(message, 'main')}
         onToggleReaction={handleToggleReaction}
         isTogglingReaction={isTogglingReaction}
+        canReact={canReact}
         onMediaClick={handleMainMediaClick}
         audioQueueKey={mainAudioQueueKey}
         audioQueue={mainAudioQueue}
@@ -764,6 +766,7 @@ export default function ChatPage() {
               await handleToggleReaction(messageId, emoji);
             }}
             isTogglingReaction={isTogglingReaction}
+            canReact={canReact}
             onVisibleUnreadMessages={handleVisibleThreadMessageIds}
             onMediaClick={handleThreadMediaClick}
             audioQueueKey={threadAudioQueueKey}

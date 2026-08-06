@@ -96,6 +96,7 @@ interface ContainerPaneProps {
   onSwipeReply?: (message: ChatMessage) => void;
   onToggleReaction: (messageId: string, emoji: string) => Promise<void>;
   isTogglingReaction: boolean;
+  canReact: boolean;
   onMediaClick: (payload: { type: 'image' | 'video'; messageId: string; url: string; downloadName?: string }) => void;
   audioQueueKey?: string | null;
   audioQueue?: Array<{
@@ -172,6 +173,7 @@ export function ContainerPane({
   onSwipeReply,
   onToggleReaction,
   isTogglingReaction,
+  canReact,
   onMediaClick,
   audioQueueKey,
   audioQueue,
@@ -341,6 +343,7 @@ export function ContainerPane({
                   onSwipeReply={onSwipeReply}
                   onToggleReaction={onToggleReaction}
                   isTogglingReaction={isTogglingReaction}
+                  canReact={canReact}
                   onMediaClick={onMediaClick}
                   audioQueueKey={audioQueueKey}
                   audioQueue={audioQueue}

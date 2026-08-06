@@ -4,6 +4,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/Avatar';
 import { cn } from '@/lib/utils';
 import type { FeedPostView } from '@/api/types';
 import { MediaAttachmentList, type MediaClickTarget } from '@/features/chat/content/MediaAttachmentList';
+import { ReactionPicker } from '@/features/chat/content/ReactionPicker';
 import { ReactionSummary } from '@/features/chat/content/ReactionSummary';
 import { MessageTextContent } from '@/features/chat/content/MessageTextContent';
 import { MessagePollContent } from '@/features/chat/content/MessagePollContent';
@@ -121,6 +122,11 @@ export function PostCard({
             currentUserId={currentUserId}
             onToggle={canReact ? onToggleReaction : undefined}
           />
+          {/* Beside the summary rather than inside it, because the summary
+              renders nothing at zero reactions — this is what adds the first. */}
+          {canReact && onToggleReaction ? (
+            <ReactionPicker onSelect={onToggleReaction} />
+          ) : null}
           {canComment || post.has_thread || post.comment_count > 0 ? (
             <button
               type="button"
