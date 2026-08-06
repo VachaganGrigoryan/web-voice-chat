@@ -372,10 +372,10 @@ export default function ChatPage() {
     };
 
     try {
-      const updatedConversation = isActiveMessagePinned
+      const updatedPins = isActiveMessagePinned
         ? await messagesApi.unpinMessage(activeMessage.id)
         : await messagesApi.pinMessage(activeMessage.id);
-      updatePinnedIds(updatedConversation.pinned_message_ids);
+      updatePinnedIds(updatedPins.pinned_message_ids);
       toast.success(isActiveMessagePinned ? 'Message unpinned' : 'Message pinned');
       queryClient.invalidateQueries({ queryKey: ['pinned-messages', pinnedConversationId] });
     } catch (error) {

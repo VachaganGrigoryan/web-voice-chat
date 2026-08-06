@@ -158,7 +158,7 @@ export const fromPermissionStrings = (
     canEditAny: can(ACTION.messageEditAny),
     canDeleteOwn: can(ACTION.messageDeleteOwn) || can(ACTION.messageDeleteAny),
     canDeleteAny: can(ACTION.messageDeleteAny),
-    canPin: isChannel(source) ? false : can(ACTION.messagePin),
+    canPin: can(ACTION.messagePin),
     canForward: isChannel(source) ? false : can(ACTION.messageRead),
     canManage: can(ACTION.resourceManage),
     canManageMembers: can(ACTION.memberManage),
@@ -201,7 +201,7 @@ export const fromPolicy = (
     canEditAny: false,
     canDeleteOwn: true,
     canDeleteAny: false,
-    canPin: source.kind === 'conversation' && viewer.isModerator,
+    canPin: viewer.isModerator,
     canForward: source.kind === 'conversation',
     // Management is never inferred from policy — an ambient Manage button that
     // 403s is worse than one that appears a moment late.

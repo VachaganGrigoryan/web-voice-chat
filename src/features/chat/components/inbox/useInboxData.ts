@@ -126,6 +126,7 @@ export function useInboxData({
             message_count: 0,
             follower_count: 0,
             last_message_id: null,
+            pinned_message_ids: [],
             last_activity_at: null,
             legacy_conversation_id: null,
             created_by: '',

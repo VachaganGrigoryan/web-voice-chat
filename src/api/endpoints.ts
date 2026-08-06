@@ -13,6 +13,7 @@ import {
   CreateChannelRequest,
   UpdateChannelRequest,
   MessageContainerRef,
+  PinnedMessages,
   ClearConversationResponse,
   BlockedUserListItem,
   BlockView,
@@ -392,12 +393,12 @@ export const messagesApi = {
       .then((res) => extractResponseData(res.data)),
   pinMessage: (messageId: string) =>
     apiClient
-      .post<SuccessResponse<Conversation>>(`/messages/${messageId}/pin`)
-      .then((res) => normalizeConversation(extractResponseData(res.data))),
+      .post<SuccessResponse<PinnedMessages>>(`/messages/${messageId}/pin`)
+      .then((res) => extractResponseData(res.data)),
   unpinMessage: (messageId: string) =>
     apiClient
-      .delete<SuccessResponse<Conversation>>(`/messages/${messageId}/pin`)
-      .then((res) => normalizeConversation(extractResponseData(res.data))),
+      .delete<SuccessResponse<PinnedMessages>>(`/messages/${messageId}/pin`)
+      .then((res) => extractResponseData(res.data)),
   getPinnedMessages: (conversationId: string) =>
     apiClient
       .get<SuccessResponse<MessageDoc[]>>(

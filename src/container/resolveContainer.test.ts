@@ -187,11 +187,15 @@ describe('conversation-only affordances', () => {
   });
 });
 
-describe('pin and forward are hard-denied for channels', () => {
+describe('forward is hard-denied for channels', () => {
   it('regardless of viewer standing', () => {
     const { capabilities } = resolve(channel(), 'timeline', OWNER);
-    expect(capabilities.canPin).toBe(false);
     expect(capabilities.canForward).toBe(false);
+  });
+
+  it('but pinning is not — a channel tracks a pinned set of its own', () => {
+    const { capabilities } = resolve(channel(), 'timeline', OWNER);
+    expect(capabilities.canPin).toBe(true);
   });
 });
 
