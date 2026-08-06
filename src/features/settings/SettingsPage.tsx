@@ -1,25 +1,19 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Navigate, useNavigate, useParams } from 'react-router-dom';
-import { APP_ROUTES, isSettingsTab, SettingsTab } from '@/app/routes';
+import { APP_ROUTES, LEGACY_SETTINGS_REDIRECTS, isSettingsTab } from '@/app/routes';
+import { extractApiError } from '@/api/errors';
 import { useProfile } from '@/hooks/useProfile';
 import { useTheme } from '@/components/ThemeProvider';
 import { useNotificationSoundStore } from '@/utils/notificationSound';
 import { PanelPageLayout, PanelSection } from '@/components/panel/PanelPageLayout';
 import { Button } from '@/components/ui/Button';
 import { cn } from '@/lib/utils';
-import {
-  Bell,
-  Loader2,
-  Save,
-  User,
-} from 'lucide-react';
+import { Loader2, Save } from 'lucide-react';
 import { SETTINGS_NAV_ITEMS } from './config';
 import AppearanceSettingsTab from './tabs/AppearanceSettingsTab';
-import DiscoverySettingsTab from './tabs/DiscoverySettingsTab';
 import NotificationsSettingsTab from './tabs/NotificationsSettingsTab';
 import PasskeysSettingsTab from './tabs/PasskeysSettingsTab';
 import PrivacySettingsTab from './tabs/PrivacySettingsTab';
-import ProfileSettingsTab from './tabs/ProfileSettingsTab';
 import AboutSettingsTab from './tabs/AboutSettingsTab';
 import { useAppNavigation } from '@/navigation/appNavigation';
 
@@ -28,18 +22,14 @@ export default function SettingsPage() {
   const { goBack, goTo } = useAppNavigation();
   const { tab } = useParams<{ tab?: string }>();
   const routeTab = isSettingsTab(tab) ? tab : null;
-  const activeTab = routeTab || 'profile';
+  const activeTab = routeTab || 'appearance';
   const activeNavItem = SETTINGS_NAV_ITEMS.find((item) => item.id === activeTab);
   const {
     profile,
     updateProfile,
-    updateUsername,
-    uploadAvatar,
-    deleteAvatar,
     isUpdatingProfile,
-    isUpdatingUsername,
-    isUploadingAvatar,
-    isDeletingAvatar,
+    updateNotificationPreferences,
+    isUpdatingNotificationPreferences,
   } = useProfile();
   const { mode, setMode, theme, setTheme, fontSize, setFontSize, density, setDensity } = useTheme();
   const soundEnabled = useNotificationSoundStore((state) => state.soundEnabled);
@@ -53,23 +43,24 @@ export default function SettingsPage() {
   const enableSoundFromUserGesture = useNotificationSoundStore((state) => state.enableSoundFromUserGesture);
   const requestBrowserNotifications = useNotificationSoundStore((state) => state.requestBrowserNotifications);
   const syncBrowserNotificationState = useNotificationSoundStore((state) => state.syncBrowserNotificationState);
-  const [username, setUsername] = useState('');
-  const [displayName, setDisplayName] = useState('');
-  const [bio, setBio] = useState('');
+  const [timezone, setTimezone] = useState('');
+  const [dndFrom, setDndFrom] = useState('');
+  const [dndTo, setDndTo] = useState('');
+  const [notificationKeywords, setNotificationKeywords] = useState('');
   const [isPrivate, setIsPrivate] = useState(false);
   const [discoveryEnabled, setDiscoveryEnabled] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     if (!profile) {
       return;
     }
 
-    setUsername(profile.username || '');
-    setDisplayName(profile.display_name || '');
-    setBio(profile.bio || '');
+    setTimezone(profile.timezone || '');
+    setDndFrom(profile.dnd_from || '');
+    setDndTo(profile.dnd_to || '');
+    setNotificationKeywords((profile.notification_keywords || []).join(', '));
     setIsPrivate(profile.is_private || false);
     setDiscoveryEnabled(profile.default_discovery_enabled ?? true);
   }, [profile]);
@@ -79,17 +70,17 @@ export default function SettingsPage() {
   }, [syncBrowserNotificationState]);
 
   if (!routeTab) {
-    return <Navigate to={APP_ROUTES.settingsTab('profile')} replace />;
+    // Profile editing, invite codes, passkeys and About all moved; send old links
+    // and bookmarks to wherever their content actually lives now.
+    const moved = tab ? LEGACY_SETTINGS_REDIRECTS[tab] : undefined;
+    return <Navigate to={moved ?? APP_ROUTES.settingsTab()} replace />;
   }
 
-  const showSaveAction = activeTab === 'profile' || activeTab === 'privacy';
-  const isSaving = isUpdatingProfile || isUpdatingUsername;
+  const showSaveAction = activeTab === 'privacy';
+  const isSaving = isUpdatingProfile;
 
   const handleBack = () => {
-    goBack({
-      fallback:
-        activeTab !== 'profile' ? APP_ROUTES.settingsTab('profile') : APP_ROUTES.chat,
-    });
+    goBack({ fallback: APP_ROUTES.chat });
   };
 
   const handleSave = async () => {
@@ -97,69 +88,15 @@ export default function SettingsPage() {
     setSuccess(null);
 
     try {
-      if (username !== (profile?.username || '')) {
-        await updateUsername(username);
-      }
-
       await updateProfile({
-        display_name: displayName,
-        bio,
         is_private: isPrivate,
         default_discovery_enabled: discoveryEnabled,
       });
 
-      setSuccess('Settings updated successfully.');
+      setSuccess('Privacy settings updated successfully.');
       window.setTimeout(() => setSuccess(null), 3000);
-    } catch (err: any) {
-      const errorData = err.response?.data?.error;
-      const message =
-        typeof errorData === 'string'
-          ? errorData
-          : errorData?.message || 'Failed to update settings';
-      setError(message);
-    }
-  };
-
-  const handleAvatarUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) {
-      return;
-    }
-
-    setError(null);
-    setSuccess(null);
-
-    try {
-      await uploadAvatar(file);
-      setSuccess('Avatar updated successfully.');
-      window.setTimeout(() => setSuccess(null), 3000);
-    } catch (err: any) {
-      const errorData = err.response?.data?.error;
-      const message =
-        typeof errorData === 'string'
-          ? errorData
-          : errorData?.message || 'Failed to upload avatar';
-      setError(message);
-    } finally {
-      event.target.value = '';
-    }
-  };
-
-  const handleDeleteAvatar = async () => {
-    setError(null);
-    setSuccess(null);
-
-    try {
-      await deleteAvatar();
-      setSuccess('Avatar removed successfully.');
-      window.setTimeout(() => setSuccess(null), 3000);
-    } catch (err: any) {
-      const errorData = err.response?.data?.error;
-      const message =
-        typeof errorData === 'string'
-          ? errorData
-          : errorData?.message || 'Failed to remove avatar';
-      setError(message);
+    } catch (err) {
+      setError(extractApiError(err, 'Failed to update settings'));
     }
   };
 
@@ -175,7 +112,7 @@ export default function SettingsPage() {
 
       {success ? (
         <PanelSection>
-          <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-600 dark:text-emerald-400">
+          <div className="rounded-2xl border border-presence-online/25 bg-presence-online/10 px-4 py-3 text-sm text-presence-online">
             {success}
           </div>
         </PanelSection>
@@ -219,25 +156,30 @@ export default function SettingsPage() {
     window.setTimeout(() => setError(null), 3000);
   };
 
+  const handleSaveNotificationPreferences = async () => {
+    setError(null);
+    setSuccess(null);
+
+    try {
+      await updateNotificationPreferences({
+        timezone,
+        dnd_from: dndFrom || null,
+        dnd_to: dndTo || null,
+        notification_keywords: notificationKeywords
+          .split(',')
+          .map((keyword) => keyword.trim())
+          .filter(Boolean),
+      });
+      setSuccess('Notification preferences updated successfully.');
+      window.setTimeout(() => setSuccess(null), 3000);
+    } catch (err: any) {
+      const errorData = err.response?.data?.error;
+      setError(errorData?.message || 'Failed to update notification preferences');
+    }
+  };
+
   const sectionContent = (
     <>
-      {activeTab === 'profile' ? (
-        <ProfileSettingsTab
-          profile={profile}
-          username={username}
-          setUsername={setUsername}
-          displayName={displayName}
-          setDisplayName={setDisplayName}
-          bio={bio}
-          setBio={setBio}
-          fileInputRef={fileInputRef}
-          handleAvatarUpload={handleAvatarUpload}
-          handleDeleteAvatar={handleDeleteAvatar}
-          isUploadingAvatar={isUploadingAvatar}
-          isDeletingAvatar={isDeletingAvatar}
-        />
-      ) : null}
-
       {activeTab === 'appearance' ? (
         <AppearanceSettingsTab
           mode={mode}
@@ -261,6 +203,14 @@ export default function SettingsPage() {
           isRequestingBrowserNotifications={isRequestingBrowserNotifications}
           onTestSound={handleTestSound}
           onEnableBrowserNotifications={handleEnableBrowserNotifications}
+          dndFrom={dndFrom}
+          setDndFrom={setDndFrom}
+          dndTo={dndTo}
+          setDndTo={setDndTo}
+          notificationKeywords={notificationKeywords}
+          setNotificationKeywords={setNotificationKeywords}
+          onSaveNotificationPreferences={handleSaveNotificationPreferences}
+          isSavingNotificationPreferences={isUpdatingNotificationPreferences}
         />
       ) : null}
 
@@ -273,23 +223,32 @@ export default function SettingsPage() {
         />
       ) : null}
 
-      {activeTab === 'passkeys' ? <PasskeysSettingsTab /> : null}
-
-      {activeTab === 'discovery' ? <DiscoverySettingsTab /> : null}
-
-      {activeTab === 'about' ? <AboutSettingsTab /> : null}
+      {/* Account bundles sign-in methods with app/build info: both are "this
+          account on this device" rather than preferences. */}
+      {activeTab === 'account' ? (
+        <>
+          <PasskeysSettingsTab />
+          <AboutSettingsTab />
+        </>
+      ) : null}
     </>
   );
 
   return (
     <PanelPageLayout
       title="Settings"
-      description="Profile, appearance, notifications, privacy, passkeys, and discovery controls in one panel system."
+      description="Appearance, notifications, privacy and account preferences."
       onBack={handleBack}
       onClose={() => goTo(APP_ROUTES.chat)}
       headerActions={
         showSaveAction ? (
-          <Button type="button" size="sm" className="gap-2 rounded-full" onClick={handleSave} disabled={isSaving}>
+          <Button
+            type="button"
+            size="sm"
+            className="cursor-pointer gap-2 rounded-full bg-brand text-brand-foreground hover:bg-brand/90"
+            onClick={handleSave}
+            disabled={isSaving}
+          >
             {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
             Save
           </Button>
@@ -317,7 +276,7 @@ export default function SettingsPage() {
                     className={cn(
                       'flex w-full items-start gap-3 rounded-2xl px-4 py-3 text-left transition-colors',
                       activeTab === item.id
-                        ? 'bg-primary text-primary-foreground shadow-sm'
+                        ? 'bg-brand text-brand-foreground shadow-e1'
                         : 'text-muted-foreground hover:bg-accent hover:text-foreground'
                     )}
                   >
@@ -327,7 +286,7 @@ export default function SettingsPage() {
                       <div
                         className={cn(
                           'mt-1 text-xs',
-                          activeTab === item.id ? 'text-primary-foreground/80' : 'text-muted-foreground'
+                          activeTab === item.id ? 'text-brand-foreground/80' : 'text-muted-foreground'
                         )}
                       >
                         {item.description}
@@ -355,7 +314,7 @@ export default function SettingsPage() {
                       className={cn(
                         'inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium transition-colors',
                         activeTab === item.id
-                          ? 'bg-primary text-primary-foreground shadow-sm'
+                          ? 'bg-brand text-brand-foreground shadow-e1'
                           : 'bg-muted text-muted-foreground hover:bg-accent hover:text-foreground'
                       )}
                     >

@@ -1,4 +1,4 @@
-import { CallMeta, EncryptionMode, MediaMeta, MessageContent, MessageDoc } from './types';
+import { CallMeta, EncryptionMode, MediaMeta, MessageContent, MessageDoc, PollRef } from './types';
 
 export interface ResolvedMessageContent {
   encryption: EncryptionMode;
@@ -7,6 +7,13 @@ export interface ResolvedMessageContent {
   text: string | null;
   media: MediaMeta | null;
   call: CallMeta | null;
+  attachments: MediaMeta[];
+  poll: Record<string, unknown> | null;
+  pollRef: PollRef | null;
+  sticker: Record<string, unknown> | null;
+  location: Record<string, unknown> | null;
+  contact: Record<string, unknown> | null;
+  linkPreview: Record<string, unknown> | null;
 }
 
 type ContentBearing = {
@@ -26,7 +33,20 @@ export function resolveMessageContent(message: ContentBearing): ResolvedMessageC
 
   if (content && content.encryption === 'e2ee') {
     // TODO(e2ee): decrypt `content.ciphertext` with the recipient device keys.
-    return { encryption: 'e2ee', isEncrypted: true, text: null, media: null, call: null };
+    return {
+      encryption: 'e2ee',
+      isEncrypted: true,
+      text: null,
+      media: null,
+      call: null,
+      attachments: content.attachments ?? [],
+      poll: null,
+      pollRef: null,
+      sticker: null,
+      location: null,
+      contact: null,
+      linkPreview: null,
+    };
   }
 
   const plaintext = content?.plaintext ?? null;
@@ -36,5 +56,12 @@ export function resolveMessageContent(message: ContentBearing): ResolvedMessageC
     text: plaintext?.text ?? null,
     media: plaintext?.media ?? null,
     call: plaintext?.call ?? null,
+    attachments: content?.attachments ?? [],
+    poll: plaintext?.poll ?? null,
+    pollRef: plaintext?.poll_ref ?? null,
+    sticker: plaintext?.sticker ?? null,
+    location: plaintext?.location ?? null,
+    contact: plaintext?.contact ?? null,
+    linkPreview: plaintext?.link_preview ?? null,
   };
 }

@@ -10,6 +10,8 @@ import {
 } from '@/components/ui/Dialog';
 import { Button } from '@/components/ui/Button';
 import { cn } from '@/lib/utils';
+import type { MessageContainerRef } from '@/api/types';
+import type { SendMediaInput } from '@/features/chat/types/sendInputs';
 import { getSupportedVideoMime } from '@/utils/fileUtils';
 import { ComposerReplyTarget } from '../../types/message';
 
@@ -36,17 +38,8 @@ interface RecordingProfile {
 interface VideoRecorderModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  receiverId: string;
-  onSendVideo: (data: {
-    type: 'media';
-    media_kind: 'video';
-    conversation_id: string;
-    file: File;
-    text?: string;
-    duration_ms?: number;
-    reply_mode?: ComposerReplyTarget['mode'] | null;
-    reply_to_message_id?: string;
-  }) => Promise<any>;
+  container: MessageContainerRef;
+  onSendVideo: (data: SendMediaInput) => Promise<unknown>;
   replyTarget?: ComposerReplyTarget | null;
   onClearReplyTarget?: () => void;
 }
@@ -198,7 +191,7 @@ const buildRecordingProfile = ({
 export default function VideoRecorderModal({
   open,
   onOpenChange,
-  receiverId,
+  container,
   onSendVideo,
   replyTarget,
   onClearReplyTarget,
@@ -661,7 +654,7 @@ export default function VideoRecorderModal({
       await onSendVideo({
         type: 'media',
         media_kind: 'video',
-        conversation_id: receiverId,
+        ...container,
         file,
         duration_ms: recordingDurationSec * 1000,
         reply_mode: replyTarget?.mode,

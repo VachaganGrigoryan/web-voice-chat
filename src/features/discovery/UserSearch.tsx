@@ -2,20 +2,32 @@ import { useEffect, useRef, useState } from 'react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/Avatar';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
-import { usePings } from '@/hooks/usePings';
+import { useConnections } from '@/hooks/useConnections';
 import { useDiscoverySearch } from '@/features/discovery/hooks/useDiscoverySearch';
+import { cn } from '@/lib/utils';
 import { Check, Clock, Loader2, MessageSquare, Search, UserPlus, X } from 'lucide-react';
 
 interface UserSearchProps {
   onSelectUser: (userId: string) => void;
+  autoFocus?: boolean;
+  className?: string;
 }
 
-export function UserSearch({ onSelectUser }: UserSearchProps) {
+export function UserSearch({ onSelectUser, autoFocus = false, className }: UserSearchProps) {
   const [input, setInput] = useState('');
   const [isOpen, setIsOpen] = useState(false);
   const wrapperRef = useRef<HTMLDivElement>(null);
   const { results, isSearching, error, isShortQuery, minLength } = useDiscoverySearch(input);
-  const { incoming, sendPing, acceptPing, declinePing, isSending, isAccepting, isDeclining } = usePings();
+  const {
+    incoming,
+    outgoing,
+    sendPing,
+    acceptPing,
+    declinePing,
+    isSending,
+    isAccepting,
+    isDeclining,
+  } = useConnections();
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -34,10 +46,11 @@ export function UserSearch({ onSelectUser }: UserSearchProps) {
   };
 
   return (
-    <div ref={wrapperRef} className="relative mb-4 flex shrink-0 flex-col gap-2">
+    <div ref={wrapperRef} className={cn('relative mb-4 flex shrink-0 flex-col gap-2', className)}>
       <div className="relative">
         <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
         <Input
+          autoFocus={autoFocus}
           placeholder="Search username or enter code..."
           value={input}
           onChange={(event) => {
@@ -67,7 +80,12 @@ export function UserSearch({ onSelectUser }: UserSearchProps) {
           ) : (
             <div className="p-1">
               {results.map((user) => {
-                const incomingPing = incoming.find((item) => item.peer.id === user.id)?.ping;
+                const incomingConnection = incoming.find(
+                  (item) => item.peer.id === user.id
+                )?.relationship;
+                const hasOutgoingRequest = outgoing.some(
+                  (item) => item.peer.id === user.id
+                );
 
                 return (
                   <div
@@ -97,8 +115,8 @@ export function UserSearch({ onSelectUser }: UserSearchProps) {
                     </div>
 
                     {(() => {
-                      switch (user.ping_status) {
-                        case 'accepted':
+                      switch (user.connection_status) {
+                        case 'active':
                           return (
                             <Button
                               size="sm"
@@ -113,7 +131,15 @@ export function UserSearch({ onSelectUser }: UserSearchProps) {
                               Message
                             </Button>
                           );
-                        case 'incoming_pending':
+                        case 'pending':
+                          if (!incomingConnection) {
+                            return (
+                              <Button size="sm" variant="outline" disabled className="ml-2 shrink-0">
+                                <Clock className="mr-1 h-4 w-4" />
+                                Pending
+                              </Button>
+                            );
+                          }
                           return (
                             <div className="ml-2 flex shrink-0 items-center gap-1">
                               <Button
@@ -121,16 +147,16 @@ export function UserSearch({ onSelectUser }: UserSearchProps) {
                                 variant="outline"
                                 className="h-8 w-8 text-green-600 hover:bg-green-50 hover:text-green-700"
                                 onClick={() => {
-                                  if (!incomingPing) {
+                                  if (!incomingConnection) {
                                     return;
                                   }
 
-                                  acceptPing(incomingPing.id).then(() => {
+                                  acceptPing(incomingConnection.id).then(() => {
                                     onSelectUser(user.id);
                                     clearSearch();
                                   });
                                 }}
-                                disabled={isAccepting || !incomingPing}
+                                disabled={isAccepting}
                               >
                                 <Check className="h-4 w-4" />
                               </Button>
@@ -139,26 +165,26 @@ export function UserSearch({ onSelectUser }: UserSearchProps) {
                                 variant="outline"
                                 className="h-8 w-8 text-destructive hover:bg-destructive/10 hover:text-destructive"
                                 onClick={() => {
-                                  if (incomingPing) {
-                                    declinePing(incomingPing.id);
-                                  }
+                                  declinePing(incomingConnection.id);
                                 }}
-                                disabled={isDeclining || !incomingPing}
+                                disabled={isDeclining}
                               >
                                 <X className="h-4 w-4" />
                               </Button>
                             </div>
                           );
-                        case 'outgoing_pending':
-                          return (
-                            <Button size="sm" variant="outline" disabled className="ml-2 shrink-0">
-                              <Clock className="mr-1 h-4 w-4" />
-                              Pending
-                            </Button>
-                          );
                         case 'declined':
+                        case 'revoked':
                         case 'none':
                         default:
+                          if (hasOutgoingRequest) {
+                            return (
+                              <Button size="sm" variant="outline" disabled className="ml-2 shrink-0">
+                                <Clock className="mr-1 h-4 w-4" />
+                                Pending
+                              </Button>
+                            );
+                          }
                           return (
                             <Button
                               size="sm"

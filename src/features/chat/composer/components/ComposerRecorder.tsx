@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { useEffect, useRef, useState } from 'react';
-import type { SendMediaInput } from '@/hooks/useChat';
+import type { MessageContainerRef } from '@/api/types';
+import type { SendMediaInput } from '@/features/chat/types/sendInputs';
 import type { ComposerReplyTarget } from '../../types/message';
 import VideoRecorderModal from '../../media/recorders/VideoRecorderModal';
 import { RecorderAudioPreview } from '../../media/recorders/RecorderAudioPreview';
@@ -28,7 +29,7 @@ export interface ComposerRecorderProps {
   audio?: boolean;
   video?: boolean;
   defaultMode?: ComposerRecorderMode;
-  receiverId: string;
+  container: MessageContainerRef;
   onSendMedia: (data: SendMediaInput) => Promise<unknown>;
   replyTarget?: ComposerReplyTarget | null;
   onClearReplyTarget?: () => void;
@@ -78,7 +79,7 @@ export function ComposerRecorder({
   audio = true,
   video = true,
   defaultMode = 'audio',
-  receiverId,
+  container,
   onSendMedia,
   replyTarget,
   onClearReplyTarget,
@@ -101,7 +102,7 @@ export function ComposerRecorder({
     defaultMode
   );
   const audioRecorder = useAudioRecorderController({
-    receiverId,
+    container,
     onSendMedia,
     replyTarget,
     onClearReplyTarget,
@@ -216,7 +217,7 @@ export function ComposerRecorder({
       <VideoRecorderModal
         open={isVideoRecorderOpen}
         onOpenChange={setIsVideoRecorderOpen}
-        receiverId={receiverId}
+        container={container}
         onSendVideo={onSendMedia}
         replyTarget={replyTarget}
         onClearReplyTarget={onClearReplyTarget}

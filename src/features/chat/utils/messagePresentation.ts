@@ -7,6 +7,10 @@ export type PresentedMessageKind =
   | 'video'
   | 'file'
   | 'call'
+  | 'poll'
+  | 'location'
+  | 'contact'
+  | 'link'
   | 'unknown';
 
 export const getPresentedMessageKind = (
@@ -23,6 +27,22 @@ export const getPresentedMessageKind = (
 
   if (type === 'file' || mediaKind === 'file') {
     return 'file';
+  }
+
+  if (type === 'poll') {
+    return 'poll';
+  }
+
+  if (type === 'location') {
+    return 'location';
+  }
+
+  if (type === 'contact') {
+    return 'contact';
+  }
+
+  if (type === 'link_preview') {
+    return 'link';
   }
 
   if (type !== 'media') {
@@ -56,6 +76,22 @@ export const getMessageTypeLabel = (
 
   if (type === 'file' || mediaKind === 'file') {
     return 'File';
+  }
+
+  if (type === 'poll') {
+    return 'Poll';
+  }
+
+  if (type === 'location') {
+    return 'Location';
+  }
+
+  if (type === 'contact') {
+    return 'Contact';
+  }
+
+  if (type === 'link_preview') {
+    return 'Link';
   }
 
   switch (mediaKind) {

@@ -101,9 +101,11 @@ export function ThreadPanel({
               : 'No replies yet'}
           </div>
         </div>
-        <Button variant="ghost" size="icon" className="h-9 w-9" onClick={onClose}>
-          <X className="h-4 w-4" />
-        </Button>
+        <div className="flex shrink-0 items-center gap-1">
+          <Button variant="ghost" size="icon" className="h-9 w-9" onClick={onClose}>
+            <X className="h-4 w-4" />
+          </Button>
+        </div>
       </div>
 
       <div

@@ -1,10 +1,12 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 
-import { conversationsApi } from '@/api/endpoints';
-import { ParticipantRole, ParticipantView } from '@/api/types';
+import { conversationsApi, membershipsApi } from '@/api/endpoints';
+import { Conversation, ParticipantRole, ParticipantView, ROLE_ADMIN } from '@/api/types';
 import { useAuthStore } from '@/store/authStore';
+import { EVENTS } from '@/socket/events';
+import { useSocketStore } from '@/socket/socket';
 
 const membersKey = (conversationId: string) => ['members', conversationId] as const;
 
@@ -30,9 +32,13 @@ export const useGroupMembers = (conversationId: string | null, enabled = true) =
  * list. All destructive/write actions surface a toast on failure so a backend
  * 403 (member attempting an owner/admin action) is shown, not swallowed.
  */
-export const useGroupManagement = (conversationId: string | null) => {
+export const useGroupManagement = (
+  conversationId: string | null,
+  conversation?: Pick<Conversation, 'owner_type' | 'owner_id'> | null
+) => {
   const queryClient = useQueryClient();
   const { userId: currentUserId } = useAuthStore();
+  const { socket } = useSocketStore();
 
   const membersQuery = useGroupMembers(conversationId);
   const members = useMemo<ParticipantView[]>(
@@ -45,8 +51,13 @@ export const useGroupManagement = (conversationId: string | null) => {
     return members.find((member) => member.user_id === currentUserId)?.role ?? null;
   }, [members, currentUserId]);
 
-  const isOwner = currentUserRole === 'owner';
-  const isAdmin = currentUserRole === 'admin';
+  // Ownership is read off the conversation, not off a role (§51).
+  const isOwner = !!(
+    currentUserId &&
+    conversation?.owner_type === 'user' &&
+    conversation.owner_id === currentUserId
+  );
+  const isAdmin = currentUserRole === ROLE_ADMIN;
   const canManage = isOwner || isAdmin;
 
   const invalidateMembers = () => {
@@ -58,6 +69,23 @@ export const useGroupManagement = (conversationId: string | null) => {
   const invalidateConversations = () => {
     queryClient.invalidateQueries({ queryKey: ['conversations'] });
   };
+
+  useEffect(() => {
+    if (!socket || !conversationId) return;
+
+    const reconcileMemberships = () => {
+      invalidateMembers();
+      invalidateConversations();
+    };
+    socket.on(EVENTS.RELATIONSHIP_REQUESTED, reconcileMemberships);
+    socket.on(EVENTS.RELATIONSHIP_ACTIVATED, reconcileMemberships);
+    socket.on(EVENTS.RELATIONSHIP_REVOKED, reconcileMemberships);
+    return () => {
+      socket.off(EVENTS.RELATIONSHIP_REQUESTED, reconcileMemberships);
+      socket.off(EVENTS.RELATIONSHIP_ACTIVATED, reconcileMemberships);
+      socket.off(EVENTS.RELATIONSHIP_REVOKED, reconcileMemberships);
+    };
+  }, [conversationId, queryClient, socket]);
 
   const rename = useMutation({
     mutationFn: (title: string) =>
@@ -84,7 +112,11 @@ export const useGroupManagement = (conversationId: string | null) => {
 
   const addMembers = useMutation({
     mutationFn: (participantIds: string[]) =>
-      conversationsApi.addMembers(conversationId as string, participantIds),
+      Promise.all(
+        participantIds.map((participantId) =>
+          membershipsApi.invite('conversation', conversationId as string, participantId)
+        )
+      ),
     onSuccess: () => {
       invalidateMembers();
       invalidateConversations();
@@ -103,7 +135,7 @@ export const useGroupManagement = (conversationId: string | null) => {
   });
 
   const updateMemberRole = useMutation({
-    mutationFn: ({ memberUserId, role }: { memberUserId: string; role: 'admin' | 'member' }) =>
+    mutationFn: ({ memberUserId, role }: { memberUserId: string; role: ParticipantRole }) =>
       conversationsApi.updateMemberRole(conversationId as string, memberUserId, role),
     onSuccess: invalidateMembers,
     onError: (error) => toast.error(errorMessage(error, 'Failed to update role')),

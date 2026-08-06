@@ -10,6 +10,7 @@ import {
 } from '@/components/ui/Dialog';
 import { Button } from '@/components/ui/Button';
 import { cn } from '@/lib/utils';
+import type { MessageContainerRef } from '@/api/types';
 import {
   AttachmentMode,
   AttachmentUploadKind,
@@ -18,7 +19,7 @@ import {
   getAttachmentMessageType,
   validateAttachmentFile,
 } from '@/utils/fileUtils';
-import type { SendMediaInput } from '@/hooks/useChat';
+import type { SendMediaInput } from '@/features/chat/types/sendInputs';
 import { ComposerReplyTarget } from '../../types/message';
 
 type PendingMediaStatus = 'pending' | 'uploading' | 'failed';
@@ -36,7 +37,7 @@ interface PendingMediaItem {
 }
 
 interface MediaComposerProps {
-  receiverId: string;
+  container: MessageContainerRef;
   onSendMedia: (data: SendMediaInput) => Promise<any>;
   isUploading: boolean;
   replyTarget?: ComposerReplyTarget | null;
@@ -51,7 +52,7 @@ const createItemId = () =>
 const createBatchId = () => `media-batch-${createItemId()}`;
 
 export default function MediaComposer({
-  receiverId,
+  container,
   onSendMedia,
   isUploading,
   replyTarget,
@@ -244,7 +245,7 @@ export default function MediaComposer({
 
         const attachCaptionToThisItem = !captionAttached && currentItem.id === captionTargetId;
         const basePayload = {
-          conversation_id: receiverId,
+          ...container,
           file: currentItem.file,
           text: attachCaptionToThisItem ? trimmedCaption : undefined,
           reply_mode: capturedReplyTarget?.mode,

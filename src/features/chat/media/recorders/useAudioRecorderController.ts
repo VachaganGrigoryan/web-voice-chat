@@ -1,19 +1,20 @@
 import { useEffect, useRef, useState } from 'react';
-import type { SendMediaInput } from '@/hooks/useChat';
+import type { MessageContainerRef } from '@/api/types';
+import type { SendMediaInput } from '@/features/chat/types/sendInputs';
 import { getSocket } from '@/socket/socket';
 import { EVENTS } from '@/socket/events';
 import { getSupportedAudioMime, normalizeMimeType } from '@/utils/fileUtils';
 import type { ComposerReplyTarget } from '../../types/message';
 
 interface UseAudioRecorderControllerParams {
-  receiverId: string;
+  container: MessageContainerRef;
   onSendMedia: (data: SendMediaInput) => Promise<unknown>;
   replyTarget?: ComposerReplyTarget | null;
   onClearReplyTarget?: () => void;
 }
 
 export function useAudioRecorderController({
-  receiverId,
+  container,
   onSendMedia,
   replyTarget,
   onClearReplyTarget,
@@ -36,12 +37,15 @@ export function useAudioRecorderController({
 
   const emitTypingStart = () => {
     const socket = getSocket();
-    socket?.emit(EVENTS.CLIENT_TYPING_START, { conversation_id: receiverId });
+    // Typing events are conversation-scoped on the server.
+    if (container.container_type !== 'conversation') return;
+    socket?.emit(EVENTS.CLIENT_TYPING_START, { conversation_id: container.container_id });
   };
 
   const emitTypingStop = () => {
     const socket = getSocket();
-    socket?.emit(EVENTS.CLIENT_TYPING_STOP, { conversation_id: receiverId });
+    if (container.container_type !== 'conversation') return;
+    socket?.emit(EVENTS.CLIENT_TYPING_STOP, { conversation_id: container.container_id });
   };
 
   useEffect(() => {
@@ -216,7 +220,7 @@ export function useAudioRecorderController({
       await onSendMedia({
         type: 'media',
         media_kind: 'voice',
-        conversation_id: receiverId,
+        ...container,
         file,
         duration_ms: durationSec * 1000,
         reply_mode: replyTarget?.mode,

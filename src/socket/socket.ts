@@ -3,16 +3,27 @@ import { create } from 'zustand';
 import { EVENTS } from './events';
 import { getCallDirectionFromMeta, getCallSummaryText } from '@/features/chat/utils/callPresentation';
 import { getMessageTypeLabel, getPresentedMessageKind } from '@/features/chat/utils/messagePresentation';
+import { pollQueryKey } from '@/hooks/usePoll';
 import { useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { MessageDeletedEvent, MessageDoc, MessageReactionsUpdate, ThreadSummary } from '@/api/types';
+import {
+  MessageDeletedEvent,
+  MessageContainerRef,
+  MessageDoc,
+  MessageReactionsUpdate,
+  PollView,
+  PresenceState,
+  PresenceStatus,
+  ThreadSummary,
+} from '@/api/types';
 import { resolveMessageContent } from '@/api/messageContent';
 import { socketClient } from './socketClient';
 import { useAuthStore } from '@/store/authStore';
+import { messageQueryKey, threadMessageQueryKey } from '@/api/queryKeys';
 
 export type MessageStatusScope = 'main' | 'thread';
 
-interface MessageStatusPayloadBase {
+interface MessageStatusPayloadBase extends MessageContainerRef {
   status?: 'sent' | 'delivered' | 'read';
   receipt_summary?: MessageDoc['receipt_summary'];
   conversation_id?: string;
@@ -28,14 +39,25 @@ export type MessageStatusPayload =
   | (MessageStatusPayloadBase & { message_id: string; message_ids?: never })
   | (MessageStatusPayloadBase & { message_ids: string[]; message_id?: never });
 
+interface PollUpdatedPayload {
+  conversation_id: string;
+  poll_id: string;
+  message_id: string | null;
+  closed: boolean;
+  total_votes: number | null;
+  updated_at: string;
+}
+
 interface SocketState {
   socket: Socket | null;
   isConnected: boolean;
   onlineUsers: string[];
+  presenceByUserId: Record<string, PresenceStatus>;
   typingUsers: Record<string, boolean>; // userId -> isTyping
   setSocket: (socket: Socket | null) => void;
   setIsConnected: (isConnected: boolean) => void;
   setOnlineUsers: (users: string[]) => void;
+  setPresence: (userId: string, presence: PresenceStatus) => void;
   setTypingUser: (userId: string, isTyping: boolean) => void;
 }
 
@@ -43,10 +65,28 @@ export const useSocketStore = create<SocketState>((set) => ({
   socket: null,
   isConnected: false,
   onlineUsers: [],
+  presenceByUserId: {},
   typingUsers: {},
   setSocket: (socket) => set({ socket }),
   setIsConnected: (isConnected) => set({ isConnected }),
-  setOnlineUsers: (onlineUsers) => set({ onlineUsers }),
+  setOnlineUsers: (onlineUsers) =>
+    set((state) => {
+      const presenceByUserId = { ...state.presenceByUserId };
+      for (const userId of onlineUsers) {
+        const existingState = presenceByUserId[userId]?.state;
+        presenceByUserId[userId] = {
+          user_id: userId,
+          state: existingState && existingState !== 'offline' ? existingState : 'online',
+          is_online: true,
+          last_seen_at: null,
+        };
+      }
+      return { onlineUsers, presenceByUserId };
+    }),
+  setPresence: (userId, presence) =>
+    set((state) => ({
+      presenceByUserId: { ...state.presenceByUserId, [userId]: presence },
+    })),
   setTypingUser: (userId, isTyping) =>
     set((state) => ({
       typingUsers: { ...state.typingUsers, [userId]: isTyping },
@@ -74,7 +114,7 @@ const setupSocketSync = () => {
   let attachedToSocket: Socket | null = null;
 
   socketClient.onConnect((socket) => {
-    const { setIsConnected, setOnlineUsers, setTypingUser, setSocket } = useSocketStore.getState();
+    const { setIsConnected, setOnlineUsers, setTypingUser, setSocket, setPresence } = useSocketStore.getState();
 
     // Always update connection state — runs on every (re)connect.
     setSocket(socket);
@@ -90,25 +130,32 @@ const setupSocketSync = () => {
 
     // Use a Set for O(1) deduplication — idempotent if both PRESENCE_UPDATE
     // and USER_ONLINE/USER_OFFLINE fire for the same event.
-    const updatePresence = (userId: string, online: boolean) => {
+    const updatePresence = (userId: string, state: PresenceState, lastSeenAt: string | null = null) => {
       const currentSet = new Set(useSocketStore.getState().onlineUsers);
-      if (online) currentSet.add(userId);
+      if (state !== 'offline') currentSet.add(userId);
       else currentSet.delete(userId);
+      setPresence(userId, {
+        user_id: userId,
+        state,
+        is_online: state !== 'offline',
+        last_seen_at: lastSeenAt,
+      });
       setOnlineUsers([...currentSet]);
     };
 
     socket.on(EVENTS.PRESENCE_UPDATE, (payload: any) => {
       if (payload.user_id) {
-        updatePresence(payload.user_id, payload.status === 'online');
+        const state = payload.state || payload.status || (payload.online ? 'online' : 'offline');
+        updatePresence(payload.user_id, state, payload.last_seen_at || null);
       }
     });
 
     socket.on(EVENTS.USER_ONLINE, ({ user_id }: { user_id: string }) => {
-      updatePresence(user_id, true);
+      updatePresence(user_id, 'online');
     });
 
     socket.on(EVENTS.USER_OFFLINE, ({ user_id }: { user_id: string }) => {
-      updatePresence(user_id, false);
+      updatePresence(user_id, 'offline');
     });
 
     socket.on(EVENTS.SERVER_TYPING_START, (payload: any) => {
@@ -214,7 +261,7 @@ const removeMessageAcrossCacheGroup = (
 const findCachedMessage = (
   queryClient: ReturnType<typeof useQueryClient>,
   messageId: string,
-  conversationId?: string
+  container?: Partial<MessageContainerRef>
 ) => {
   const queryGroups = [
     ...queryClient.getQueriesData<any>({ queryKey: ['messages'] }),
@@ -229,7 +276,10 @@ const findCachedMessage = (
           return false;
         }
 
-        return conversationId ? message.conversation_id === conversationId : true;
+        return container?.container_type && container.container_id
+          ? message.container_type === container.container_type &&
+              message.container_id === container.container_id
+          : true;
       });
 
     if (matchedMessage) {
@@ -339,6 +389,8 @@ const updateConversationPreview = (
   queryClient: ReturnType<typeof useQueryClient>,
   message: MessageDoc
 ) => {
+  if (message.container_type !== 'conversation') return;
+
   queryClient.setQueryData(['conversations'], (old: any) => {
     if (!old?.pages) return old;
 
@@ -378,7 +430,12 @@ const rebuildConversationPreview = (
         }
 
         changed = true;
-        const messageHistory = queryClient.getQueryData<any>(['messages', conversationId]);
+        const messageHistory = queryClient.getQueryData<any>(
+          messageQueryKey({
+            container_type: 'conversation',
+            container_id: conversationId,
+          })
+        );
         const latestVisibleMessage =
           messageHistory?.pages
             ?.flatMap((historyPage: any) => historyPage.data || [])
@@ -398,6 +455,46 @@ const rebuildConversationPreview = (
   });
 };
 
+const updateConversationPinnedMessages = (
+  queryClient: ReturnType<typeof useQueryClient>,
+  conversationId: string,
+  pinnedMessageIds: string[]
+) => {
+  queryClient.setQueryData(['conversations'], (old: any) => {
+    if (!old?.pages) return old;
+
+    let changed = false;
+    const pages = old.pages.map((page: any) => ({
+      ...page,
+      data: (page.data || []).map((conversation: any) => {
+        if (
+          conversation.conversation_id !== conversationId &&
+          conversation.id !== conversationId
+        ) {
+          return conversation;
+        }
+
+        changed = true;
+        return {
+          ...conversation,
+          pinned_message_ids: pinnedMessageIds,
+        };
+      }),
+    }));
+
+    return changed ? { ...old, pages } : old;
+  });
+
+  queryClient.setQueryData(['conversation', conversationId], (old: any) => {
+    if (!old) return old;
+
+    return {
+      ...old,
+      pinned_message_ids: pinnedMessageIds,
+    };
+  });
+};
+
 const updateThreadSummaryCaches = (
   queryClient: ReturnType<typeof useQueryClient>,
   summary: ThreadSummary
@@ -405,7 +502,10 @@ const updateThreadSummaryCaches = (
   updateMessageAcrossCacheGroup(
     queryClient,
     'messages',
-    (message) => message.id === summary.thread_root_id,
+    (message) =>
+      message.id === summary.thread_root_id &&
+      message.container_type === summary.container_type &&
+      message.container_id === summary.container_id,
     (message) => ({
       ...message,
       thread_reply_count: summary.thread_reply_count,
@@ -414,21 +514,33 @@ const updateThreadSummaryCaches = (
     })
   );
 
-  queryClient.setQueryData(['threadSummary', summary.thread_root_id], {
-    success: true,
-    data: summary,
-  });
+  queryClient.setQueryData(
+    [
+      'threadSummary',
+      summary.container_type,
+      summary.container_id,
+      summary.thread_root_id,
+    ],
+    {
+      success: true,
+      data: summary,
+    }
+  );
 };
 
 const incrementThreadSummaryCache = (
   queryClient: ReturnType<typeof useQueryClient>,
+  container: MessageContainerRef,
   threadRootId: string,
   replyCreatedAt: string
 ) => {
   updateMessageAcrossCacheGroup(
     queryClient,
     'messages',
-    (message) => message.id === threadRootId,
+    (message) =>
+      message.id === threadRootId &&
+      message.container_type === container.container_type &&
+      message.container_id === container.container_id,
     (message) => ({
       ...message,
       is_thread_root: true,
@@ -443,12 +555,17 @@ const incrementThreadSummaryCache = (
 const updateThreadUnreadCount = (
   queryClient: ReturnType<typeof useQueryClient>,
   threadRootId: string,
-  updater: (current: number) => number
+  updater: (current: number) => number,
+  container?: MessageContainerRef
 ) => {
   updateMessageAcrossCacheGroup(
     queryClient,
     'messages',
-    (message) => message.id === threadRootId,
+    (message) =>
+      message.id === threadRootId &&
+      (!container ||
+        (message.container_type === container.container_type &&
+          message.container_id === container.container_id)),
     (message) => ({
       ...message,
       thread_unread_count: Math.max(0, updater(message.thread_unread_count ?? 0)),
@@ -480,6 +597,9 @@ export const applyMessageStatusUpdateToCaches = (
 
   const messageIdSet = new Set(messageIds);
   const updatedAt = payload.updated_at || new Date().toISOString();
+  const matchesContainer = (message: MessageDoc) =>
+    message.container_type === payload.container_type &&
+    message.container_id === payload.container_id;
 
   const updateStatus = (message: MessageDoc): MessageDoc => {
     const current = message.receipt_summary;
@@ -506,19 +626,27 @@ export const applyMessageStatusUpdateToCaches = (
   updateMessageAcrossCacheGroup(
     queryClient,
     'messages',
-    (message) => messageIdSet.has(message.id),
+    (message) => messageIdSet.has(message.id) && matchesContainer(message),
     updateStatus
   );
 
   updateMessageAcrossCacheGroup(
     queryClient,
     'threadMessages',
-    (message) => messageIdSet.has(message.id),
+    (message) => messageIdSet.has(message.id) && matchesContainer(message),
     updateStatus
   );
 
   if (payload.status === 'read' && payload.scope === 'thread' && payload.thread_root_id) {
-    updateThreadUnreadCount(queryClient, payload.thread_root_id, () => 0);
+    updateThreadUnreadCount(
+      queryClient,
+      payload.thread_root_id,
+      () => 0,
+      {
+        container_type: payload.container_type,
+        container_id: payload.container_id,
+      }
+    );
   }
 
   return true;
@@ -531,7 +659,10 @@ const updateReactionCaches = (
   updateMessageAcrossCacheGroup(
     queryClient,
     'messages',
-    (message) => message.id === payload.message_id,
+    (message) =>
+      message.id === payload.message_id &&
+      message.container_type === payload.container_type &&
+      message.container_id === payload.container_id,
     (message) => ({
       ...message,
       reactions: payload.reactions,
@@ -542,13 +673,34 @@ const updateReactionCaches = (
   updateMessageAcrossCacheGroup(
     queryClient,
     'threadMessages',
-    (message) => message.id === payload.message_id,
+    (message) =>
+      message.id === payload.message_id &&
+      message.container_type === payload.container_type &&
+      message.container_id === payload.container_id,
     (message) => ({
       ...message,
       reactions: payload.reactions,
       updated_at: payload.updated_at,
     })
   );
+};
+
+const updatePollCache = (
+  queryClient: ReturnType<typeof useQueryClient>,
+  payload: PollUpdatedPayload
+) => {
+  const queryKey = pollQueryKey(payload.poll_id);
+  queryClient.setQueryData<PollView>(queryKey, (old) => {
+    if (!old) return old;
+
+    return {
+      ...old,
+      closed: payload.closed,
+      total_votes: payload.total_votes ?? old.total_votes,
+      updated_at: payload.updated_at,
+    };
+  });
+  queryClient.invalidateQueries({ queryKey });
 };
 
 const updateMessageDocumentCaches = (
@@ -558,18 +710,29 @@ const updateMessageDocumentCaches = (
   updateMessageAcrossCacheGroup(
     queryClient,
     'messages',
-    (current) => current.id === message.id,
+    (current) =>
+      current.id === message.id &&
+      current.container_type === message.container_type &&
+      current.container_id === message.container_id,
     () => message
   );
 
   updateMessageAcrossCacheGroup(
     queryClient,
     'threadMessages',
-    (current) => current.id === message.id,
+    (current) =>
+      current.id === message.id &&
+      current.container_type === message.container_type &&
+      current.container_id === message.container_id,
     () => message
   );
 
   updateConversationPreview(queryClient, message);
+  if (message.container_type === 'channel') {
+    queryClient.invalidateQueries({ queryKey: ['feeds'] });
+    queryClient.invalidateQueries({ queryKey: ['channel-feed', message.container_id] });
+    queryClient.invalidateQueries({ queryKey: ['post-comments', message.container_id] });
+  }
 };
 
 export const applyMessageDeletedEventToCaches = (
@@ -577,17 +740,23 @@ export const applyMessageDeletedEventToCaches = (
   payload: MessageDeletedEvent,
   currentUserId?: string | null
 ) => {
-  const cachedMessage = findCachedMessage(queryClient, payload.message_id, payload.conversation_id);
+  const cachedMessage = findCachedMessage(queryClient, payload.message_id, {
+    container_type: payload.container_type,
+    container_id: payload.container_id,
+  });
   const matcher = (message: MessageDoc) =>
     message.id === payload.message_id &&
-    (!payload.conversation_id || message.conversation_id === payload.conversation_id);
+    message.container_type === payload.container_type &&
+    message.container_id === payload.container_id;
   const isActorCurrentUser = !!currentUserId && payload.actor_user_id === currentUserId;
   const isCurrentUsersMessage = !!currentUserId && cachedMessage?.sender_id === currentUserId;
 
   if (payload.hidden_for_me || isActorCurrentUser) {
     removeMessageAcrossCacheGroup(queryClient, 'messages', matcher);
     removeMessageAcrossCacheGroup(queryClient, 'threadMessages', matcher);
-    rebuildConversationPreview(queryClient, payload.conversation_id);
+    if (payload.container_type === 'conversation') {
+      rebuildConversationPreview(queryClient, payload.container_id);
+    }
     return true;
   }
 
@@ -619,7 +788,15 @@ export const applyMessageDeletedEventToCaches = (
   if (cachedMessage) {
     updateConversationPreview(queryClient, applyDeleteMutation(cachedMessage));
   } else {
-    rebuildConversationPreview(queryClient, payload.conversation_id);
+    if (payload.container_type === 'conversation') {
+      rebuildConversationPreview(queryClient, payload.container_id);
+    }
+  }
+
+  if (payload.container_type === 'channel') {
+    queryClient.invalidateQueries({ queryKey: ['feeds'] });
+    queryClient.invalidateQueries({ queryKey: ['channel-feed', payload.container_id] });
+    queryClient.invalidateQueries({ queryKey: ['post-comments', payload.container_id] });
   }
 
   return true;
@@ -633,28 +810,40 @@ const routeIncomingThreadMessage = (
   message: MessageDoc,
   openThreadRootId: string | null,
   currentUserId?: string | null,
-  selectedUser?: string | null
+  selectedContainer?: MessageContainerRef | null
 ) => {
   if (!message.thread_root_id) {
     return;
   }
 
-  queryClient.setQueryData(['threadMessages', message.thread_root_id], (old: any) =>
+  queryClient.setQueryData(threadMessageQueryKey(message, message.thread_root_id), (old: any) =>
     prependMessageToMessageCache(old, message)
   );
 
-  incrementThreadSummaryCache(queryClient, message.thread_root_id, message.created_at);
-  if (openThreadRootId === message.thread_root_id) {
-    updateThreadUnreadCount(queryClient, message.thread_root_id, () => 0);
-  } else if (message.sender_id !== currentUserId) {
-    updateThreadUnreadCount(queryClient, message.thread_root_id, (current) => current + 1);
-  }
-  updateConversationActivity(
+  incrementThreadSummaryCache(
     queryClient,
-    message.conversation_id,
-    message.created_at,
-    message.sender_id !== currentUserId && selectedUser !== message.conversation_id ? 1 : 0
+    message,
+    message.thread_root_id,
+    message.created_at
   );
+  if (openThreadRootId === message.thread_root_id) {
+    updateThreadUnreadCount(queryClient, message.thread_root_id, () => 0, message);
+  } else if (message.sender_id !== currentUserId) {
+    updateThreadUnreadCount(
+      queryClient,
+      message.thread_root_id,
+      (current) => current + 1,
+      message
+    );
+  }
+  if (message.container_type === 'conversation') {
+    updateConversationActivity(
+      queryClient,
+      message.container_id,
+      message.created_at,
+      message.sender_id !== currentUserId && selectedContainer?.container_id !== message.container_id ? 1 : 0
+    );
+  }
 };
 
 const routeIncomingMainChatMessage = (
@@ -664,13 +853,20 @@ const routeIncomingMainChatMessage = (
   selectedUser?: string | null
 ) => {
   queryClient.setQueryData(
-    ['messages', message.conversation_id],
+    messageQueryKey(message),
     (old: any) => prependMessageToMessageCache(old, message)
   );
 
+  if (message.container_type === 'channel') {
+    queryClient.invalidateQueries({ queryKey: ['feeds'] });
+    queryClient.invalidateQueries({ queryKey: ['channel-feed', message.container_id] });
+    queryClient.invalidateQueries({ queryKey: ['post-comments', message.container_id] });
+    return;
+  }
+
   updateConversationLastMessage(
     queryClient,
-    message.conversation_id,
+    message.container_id,
     message,
     currentUserId,
     selectedUser
@@ -685,6 +881,8 @@ const extractThreadReplyEvent = (
       message: payload.message,
       summary: {
         thread_root_id: payload.thread_root_id,
+        container_type: payload.message.container_type,
+        container_id: payload.message.container_id,
         conversation_id: payload.conversation_id,
         is_thread_root: payload.is_thread_root,
         thread_reply_count: payload.thread_reply_count,
@@ -698,6 +896,8 @@ const extractThreadReplyEvent = (
     summary: payload.thread_root_id
       ? {
           thread_root_id: payload.thread_root_id,
+          container_type: payload.container_type,
+          container_id: payload.container_id,
           conversation_id: payload.conversation_id,
           is_thread_root: payload.is_thread_root,
           thread_reply_count: payload.thread_reply_count,
@@ -715,8 +915,10 @@ export const useSocket = () => {
 
 export const usePresence = () => {
   const onlineUsers = useSocketStore((state) => state.onlineUsers);
+  const presenceByUserId = useSocketStore((state) => state.presenceByUserId);
   const setOnlineUsers = useSocketStore((state) => state.setOnlineUsers);
-  return { onlineUsers, setOnlineUsers };
+  const setPresence = useSocketStore((state) => state.setPresence);
+  return { onlineUsers, presenceByUserId, setOnlineUsers, setPresence };
 };
 
 export const useTypingIndicator = (userId?: string) => {
@@ -739,17 +941,23 @@ export const useTypingIndicator = (userId?: string) => {
 import { sendNotification } from '@/utils/notificationSound';
 
 export const useRealtimeMessages = (
-  selectedUser: string | null,
+  selectedContainer: MessageContainerRef | null,
   openThreadRootId: string | null = null
 ) => {
   const queryClient = useQueryClient();
   const { userId: currentUserId } = useAuthStore();
   const { socket } = useSocketStore();
+  const selectedUser = selectedContainer?.container_id ?? null;
 
   useEffect(() => {
     if (!openThreadRootId) return;
-    updateThreadUnreadCount(queryClient, openThreadRootId, () => 0);
-  }, [openThreadRootId, queryClient]);
+    updateThreadUnreadCount(
+      queryClient,
+      openThreadRootId,
+      () => 0,
+      selectedContainer ?? undefined
+    );
+  }, [openThreadRootId, queryClient, selectedContainer]);
 
   useEffect(() => {
     if (!socket) return;
@@ -758,13 +966,13 @@ export const useRealtimeMessages = (
       if (isThreadMessage(message)) {
         // Check cache before routing — reload-safe dedup for MESSAGE_DELIVERED.
         // prependMessageToMessageCache handles duplicate cache insertions independently.
-        const alreadyCached = !!findCachedMessage(queryClient, message.id);
+        const alreadyCached = !!findCachedMessage(queryClient, message.id, message);
         routeIncomingThreadMessage(
           queryClient,
           message,
           openThreadRootId,
           currentUserId,
-          selectedUser
+          selectedContainer
         );
 
         if (!alreadyCached && message.sender_id !== currentUserId) {
@@ -774,6 +982,11 @@ export const useRealtimeMessages = (
           });
         }
 
+        return;
+      }
+
+      if (message.container_type === 'channel') {
+        routeIncomingMainChatMessage(queryClient, message, currentUserId, selectedUser);
         return;
       }
 
@@ -858,11 +1071,15 @@ export const useRealtimeMessages = (
       updateReactionCaches(queryClient, payload);
     };
 
+    const handlePollUpdated = (payload: PollUpdatedPayload) => {
+      updatePollCache(queryClient, payload);
+    };
+
     const handleThreadReplyCreated = (payload: MessageDoc | ({ message: MessageDoc } & ThreadSummary)) => {
       const { message, summary } = extractThreadReplyEvent(payload);
       // Use cache presence for reload-safe dedup — avoids double delivery
       // acknowledgment when both RECEIVE_MESSAGE and THREAD_REPLY_CREATED fire.
-      const alreadyCached = !!findCachedMessage(queryClient, message.id);
+      const alreadyCached = !!findCachedMessage(queryClient, message.id, message);
 
       if (!alreadyCached && isThreadMessage(message)) {
         routeIncomingThreadMessage(
@@ -870,7 +1087,7 @@ export const useRealtimeMessages = (
           message,
           openThreadRootId,
           currentUserId,
-          selectedUser
+          selectedContainer
         );
       }
 
@@ -890,11 +1107,33 @@ export const useRealtimeMessages = (
       updateThreadSummaryCaches(queryClient, payload);
     };
 
+    const handleConversationPinsUpdated = (payload: {
+      conversation_id?: string;
+      pinned_message_ids?: string[];
+    }) => {
+      const conversationId = payload?.conversation_id;
+      if (!conversationId) return;
+
+      updateConversationPinnedMessages(
+        queryClient,
+        conversationId,
+        payload.pinned_message_ids ?? []
+      );
+      queryClient.invalidateQueries({ queryKey: ['pinned-messages', conversationId] });
+    };
+
     const handleConversationHistoryCleared = (payload: { conversation_id: string }) => {
       const conversationId = payload?.conversation_id;
       if (!conversationId) return;
-      queryClient.invalidateQueries({ queryKey: ['messages', conversationId] });
-      queryClient.invalidateQueries({ queryKey: ['threadMessages', conversationId] });
+      queryClient.invalidateQueries({
+        queryKey: messageQueryKey({
+          container_type: 'conversation',
+          container_id: conversationId,
+        }),
+      });
+      queryClient.invalidateQueries({
+        queryKey: ['threadMessages', 'conversation', conversationId],
+      });
       queryClient.invalidateQueries({ queryKey: ['conversations'] });
       queryClient.invalidateQueries({ queryKey: ['members', conversationId] });
     };
@@ -904,8 +1143,10 @@ export const useRealtimeMessages = (
     socket.on(EVENTS.MESSAGE_EDITED, handleMessageEdited);
     socket.on(EVENTS.MESSAGE_DELETED, handleMessageDeleted);
     socket.on(EVENTS.MESSAGE_REACTED, handleMessageReacted);
+    socket.on(EVENTS.POLL_UPDATED, handlePollUpdated);
     socket.on(EVENTS.THREAD_REPLY_CREATED, handleThreadReplyCreated);
     socket.on(EVENTS.THREAD_SUMMARY_UPDATED, handleThreadSummaryUpdated);
+    socket.on(EVENTS.CONVERSATION_PINS_UPDATED, handleConversationPinsUpdated);
     socket.on(EVENTS.CONVERSATION_HISTORY_CLEARED, handleConversationHistoryCleared);
 
     return () => {
@@ -914,9 +1155,11 @@ export const useRealtimeMessages = (
       socket.off(EVENTS.MESSAGE_EDITED, handleMessageEdited);
       socket.off(EVENTS.MESSAGE_DELETED, handleMessageDeleted);
       socket.off(EVENTS.MESSAGE_REACTED, handleMessageReacted);
+      socket.off(EVENTS.POLL_UPDATED, handlePollUpdated);
       socket.off(EVENTS.THREAD_REPLY_CREATED, handleThreadReplyCreated);
       socket.off(EVENTS.THREAD_SUMMARY_UPDATED, handleThreadSummaryUpdated);
+      socket.off(EVENTS.CONVERSATION_PINS_UPDATED, handleConversationPinsUpdated);
       socket.off(EVENTS.CONVERSATION_HISTORY_CLEARED, handleConversationHistoryCleared);
     };
-  }, [queryClient, currentUserId, socket, selectedUser, openThreadRootId]);
+  }, [queryClient, currentUserId, socket, selectedUser, selectedContainer, openThreadRootId]);
 };

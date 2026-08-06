@@ -18,13 +18,26 @@ export type MessageKind =
   | 'system'
   | 'emoji'
   | 'sticker'
+  | 'poll'
+  | 'location'
+  | 'contact'
+  | 'link_preview'
+  | 'attachments'
   | 'unknown';
 
 export type MessageStatus = 'sent' | 'delivered' | 'read' | 'sending' | 'failed';
 
 export interface BaseMessage {
   id: string;
-  raw: MessageDoc;
+  /**
+   * The source document, when the message came from one.
+   *
+   * Optional because a feed post is projected, not fetched as a `MessageDoc` —
+   * making this required is what kept the actions menu chat-only. Nothing in
+   * the renderer tree reads it; only the actions dialog's Details panel does,
+   * and that degrades when it is absent.
+   */
+  raw?: MessageDoc;
   chatId: string;
   senderId: string;
   createdAt: string;
@@ -45,12 +58,20 @@ export interface BaseMessage {
   unreadThreadReplyCount: number;
   lastThreadReplyAt?: string;
   reactions: MessageReactionGroup[];
+  attachments: MediaMeta[];
   clientBatchId?: string;
 }
 
 export interface TextMessage extends BaseMessage {
   kind: 'text';
   text: string;
+  /**
+   * Lifted off `raw` by the parser so the renderer needs no access to the
+   * source document — that was the last `raw` read in the renderer tree, and
+   * removing it is what lets a feed post use the same content component.
+   */
+  mentionCount: number;
+  mentionScope?: 'here' | 'all' | null;
 }
 
 export interface ImageMessage extends BaseMessage {
@@ -113,6 +134,45 @@ export interface StickerMessage extends BaseMessage {
   kind: 'sticker';
   stickerUrl: string;
   media?: MediaMeta;
+  emoji?: string;
+  label?: string;
+}
+
+export interface PollMessage extends BaseMessage {
+  kind: 'poll';
+  /** Links to the first-class poll entity; tallies are fetched via usePoll. */
+  pollId: string;
+  /** Denormalized question for immediate render / fallback. */
+  question: string;
+}
+
+export interface LocationMessage extends BaseMessage {
+  kind: 'location';
+  latitude: number;
+  longitude: number;
+  name?: string;
+  address?: string;
+}
+
+export interface ContactMessage extends BaseMessage {
+  kind: 'contact';
+  displayName: string;
+  userId?: string;
+  phone?: string;
+  email?: string;
+}
+
+export interface LinkPreviewMessage extends BaseMessage {
+  kind: 'link_preview';
+  url: string;
+  title?: string;
+  description?: string;
+  imageUrl?: string;
+}
+
+export interface AttachmentStackMessage extends BaseMessage {
+  kind: 'attachments';
+  text?: string;
 }
 
 export interface UnknownMessage extends BaseMessage {
@@ -132,6 +192,11 @@ export type ChatMessage =
   | SystemMessage
   | EmojiMessage
   | StickerMessage
+  | PollMessage
+  | LocationMessage
+  | ContactMessage
+  | LinkPreviewMessage
+  | AttachmentStackMessage
   | UnknownMessage;
 
 export interface ComposerReplyTarget {

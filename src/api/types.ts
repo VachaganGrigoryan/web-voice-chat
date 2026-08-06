@@ -6,7 +6,6 @@ import type {
   OpenApiMediaUploadType,
   OpenApiMessageState,
   OpenApiMessageType,
-  OpenApiPingStatus,
   OpenApiPreviewMediaKind,
   OpenApiReplyMode,
 } from './openapi-contract';
@@ -28,6 +27,7 @@ export interface User {
   bio: string | null;
   avatar: AvatarMeta | null;
   is_private: boolean;
+  main_channel_id?: string | null;
   default_discovery_enabled: boolean;
   last_seen_at: string | null;
   username_updated_at: string | null;
@@ -43,18 +43,188 @@ export interface User {
   updated_at: string;
 }
 
+export interface NotificationView {
+  id: string;
+  user_id: string;
+  kind: string;
+  actor_user_id: string;
+  resource_type: 'user' | 'conversation' | 'channel' | 'space';
+  resource_id: string;
+  message_id: string | null;
+  read_at: string | null;
+  data: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PushTokenView {
+  id: string;
+  user_id: string;
+  device_id: string | null;
+  platform: 'ios' | 'android' | 'web';
+  token: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface SelectedUserProfile {
   id: string;
   username: string;
   display_name: string | null;
   bio: string | null;
   avatar: AvatarMeta | null;
+  main_channel_id?: string | null;
   status_emoji?: string | null;
   status_text?: string | null;
   status_expires_at?: string | null;
   pronouns?: string | null;
   timezone?: string | null;
   is_online: boolean;
+  presence_state?: PresenceState;
+  last_seen_at?: string | null;
+  profile_visibility: 'full' | 'limited';
+  relationship: ConnectionState;
+  // Populated only when requested via `?include=contact_details` on an accepted contact.
+  connection_timestamp?: string | null;
+  conversation_id?: string | null;
+  shared_conversations?: SharedConversationSummary[];
+  shared_spaces?: SharedSpaceSummary[];
+}
+
+
+export type MessageContainerType = 'conversation' | 'channel';
+
+export interface MessageContainerRef {
+  container_type: MessageContainerType;
+  container_id: string;
+}
+
+export type ChannelKind = 'profile' | 'text' | 'announcement';
+export type ChannelVisibility = 'public' | 'members' | 'private';
+export type ChannelJoinPolicy = 'open' | 'approval' | 'invite_only' | 'closed';
+export type ChannelPostingPolicy = 'owner' | 'moderators' | 'members' | 'everyone';
+export type ChannelCommentPolicy = 'disabled' | 'followers' | 'members' | 'everyone';
+
+export interface Channel {
+  id: string;
+  owner: {
+    type: 'user' | 'space';
+    id: string;
+  };
+  space_id: string | null;
+  kind: ChannelKind;
+  slug: string;
+  name: string;
+  description: string | null;
+  avatar: AvatarMeta | null;
+  banner: AvatarMeta | null;
+  visibility: ChannelVisibility;
+  join_policy: ChannelJoinPolicy;
+  posting_policy: ChannelPostingPolicy;
+  comment_policy: ChannelCommentPolicy;
+  tags: string[];
+  message_count: number;
+  follower_count: number;
+  last_message_id: string | null;
+  last_activity_at: string | null;
+  legacy_conversation_id: string | null;
+  created_by: string;
+  /**
+   * First-paint affordances resolved with the resource. `null` on projections
+   * that do not resolve it, which means "not yet known", not "denied".
+   */
+  viewer?: ViewerBlock | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** The caller's own state on a channel — the channel analogue of an inbox row. */
+export interface ChannelViewerState {
+  channel_id: string;
+  pinned: boolean;
+  archived: boolean;
+  folder: string | null;
+  muted_until: string | null;
+  notification_level: NotificationLevel;
+  last_read_message_id: string | null;
+}
+
+export interface ChannelInboxRow {
+  channel: Channel;
+  state: ChannelViewerState;
+  unread_count: number;
+  joined: boolean;
+}
+
+export interface ChannelMemberView {
+  relationship_id: string;
+  user_id: string;
+  status: string;
+  role_ids: string[];
+  requested_at: string | null;
+  activated_at: string | null;
+}
+
+export interface CreateChannelRequest {
+  name: string;
+  slug: string;
+  kind?: Exclude<ChannelKind, 'profile'>;
+  description?: string | null;
+  visibility?: ChannelVisibility;
+  join_policy?: ChannelJoinPolicy;
+  posting_policy?: ChannelPostingPolicy;
+  comment_policy?: ChannelCommentPolicy;
+  tags?: string[];
+}
+
+export interface UpdateChannelRequest {
+  name?: string | null;
+  description?: string | null;
+  avatar?: AvatarMeta | null;
+  banner?: AvatarMeta | null;
+  visibility?: ChannelVisibility | null;
+  join_policy?: ChannelJoinPolicy | null;
+  posting_policy?: ChannelPostingPolicy | null;
+  comment_policy?: ChannelCommentPolicy | null;
+  tags?: string[] | null;
+}
+
+export interface FeedAuthor {
+  id: string;
+  username: string | null;
+  display_name: string | null;
+  avatar: AvatarMeta | null;
+}
+
+export interface FeedPostView {
+  id: string;
+  channel_id: string;
+  author: FeedAuthor;
+  type: MessageType;
+  text: string | null;
+  attachments: MediaMeta[];
+  reactions: MessageReactionGroup[];
+  comment_count: number;
+  has_thread: boolean;
+  is_deleted: boolean;
+  /** Presentation for a short text-only post; absent on everything else. */
+  style?: { background?: string | null; align?: 'start' | 'center' | null } | null;
+  /**
+   * Projected so a post can render through the same content components a chat
+   * message does. All optional: an older server omits them and the feed
+   * degrades to text, media and reactions.
+   */
+  sender_id?: string | null;
+  content_type?: ContentType | null;
+  reply_mode?: ReplyMode | null;
+  reply_to_message_id?: string | null;
+  thread_root_id?: string | null;
+  reply_preview?: ReplyPreview | null;
+  mention_user_ids?: string[];
+  mention_scope?: 'here' | 'all' | null;
+  poll_ref?: PollRef | null;
+  created_at: string;
+  edited_at: string | null;
 }
 
 export interface TokenPair {
@@ -171,6 +341,9 @@ export interface MessageReactionGroup {
 
 export interface ThreadSummary {
   thread_root_id: string;
+  container_type: MessageContainerType;
+  container_id: string;
+  /** @deprecated Use `container_id`. Present for conversation compatibility. */
   conversation_id: string;
   is_thread_root: boolean;
   thread_reply_count: number;
@@ -180,10 +353,22 @@ export interface ThreadSummary {
 export type EncryptionMode = 'none' | 'e2ee';
 export type ContentType = MessageType | 'system';
 
+export interface PollRef {
+  poll_id: string;
+  question: string;
+}
+
 export interface MessagePlaintext {
   text: string | null;
   media: MediaMeta | null;
   call: CallMeta | null;
+  /** Legacy embedded poll payload; new poll messages link via `poll_ref`. */
+  poll?: Record<string, unknown> | null;
+  poll_ref?: PollRef | null;
+  sticker?: Record<string, unknown> | null;
+  location?: Record<string, unknown> | null;
+  contact?: Record<string, unknown> | null;
+  link_preview?: Record<string, unknown> | null;
 }
 
 /**
@@ -199,6 +384,93 @@ export interface MessageContent {
   envelope: Record<string, unknown> | null;
 }
 
+export interface RichLocationInput {
+  latitude: number;
+  longitude: number;
+  name?: string | null;
+  address?: string | null;
+}
+
+export interface RichContactInput {
+  display_name: string;
+  user_id?: string | null;
+  phone?: string | null;
+  email?: string | null;
+}
+
+export interface RichLinkPreviewInput {
+  url: string;
+  title?: string | null;
+  description?: string | null;
+  image_url?: string | null;
+}
+
+export interface SendRichContentRequest extends MessageContainerRef {
+  // Polls are created via `pollsApi.create` (/polls), not this rich-content path.
+  type: Extract<MessageType, 'sticker' | 'voice' | 'location' | 'contact' | 'link_preview'>;
+  text?: string | null;
+  location?: RichLocationInput | null;
+  contact?: RichContactInput | null;
+  link_preview?: RichLinkPreviewInput | null;
+  reply_mode?: ReplyMode | null;
+  reply_to_message_id?: string | null;
+}
+
+// ---- Polls (PollBot) --------------------------------------------------------
+
+export type PollResultsVisibility = 'after_vote' | 'always' | 'after_close';
+
+export interface PollOptionInput {
+  id: string;
+  text: string;
+}
+
+export interface CreatePollRequest {
+  conversation_id: string;
+  question: string;
+  options: PollOptionInput[];
+  allows_multiple?: boolean;
+  anonymous?: boolean;
+  results_visibility?: PollResultsVisibility;
+  closes_at?: string | null;
+}
+
+export interface PollVoteRequest {
+  option_ids: string[];
+}
+
+export interface PollOptionView {
+  id: string;
+  text: string;
+  /** Present only when results are visible to the caller (per results_visibility). */
+  vote_count: number | null;
+}
+
+export interface PollView {
+  id: string;
+  conversation_id: string;
+  message_id: string | null;
+  created_by: string;
+  bot_id: string;
+  question: string;
+  options: PollOptionView[];
+  allows_multiple: boolean;
+  anonymous: boolean;
+  results_visibility: PollResultsVisibility;
+  closes_at: string | null;
+  closed: boolean;
+  total_votes: number | null;
+  results_visible: boolean;
+  my_option_ids: string[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreatePollResponse {
+  poll: PollView;
+  message: MessageDoc;
+}
+
 export interface ForwardedFrom {
   conversation_id: string;
   message_id: string;
@@ -211,8 +483,22 @@ export interface MessageEdit {
   edited_at: string;
 }
 
-export interface MessageDoc {
+/** A user's private bookmark of a message (GET/POST /me/saved-messages). */
+export interface SavedMessageView {
   id: string;
+  user_id: string;
+  message_id: string;
+  conversation_id: string;
+  saved_at: string;
+  message: MessageDoc | null;
+}
+
+
+export interface MessageDoc {
+  container_type: MessageContainerType;
+  container_id: string;
+  id: string;
+  /** @deprecated Use `container_id`. Present for conversation compatibility. */
   conversation_id: string;
   sender_id: string;
   type: MessageType;
@@ -247,6 +533,9 @@ export interface MessageDoc {
 
 export interface MessageReactionsUpdate {
   message_id: string;
+  container_type: MessageContainerType;
+  container_id: string;
+  /** @deprecated Use `container_id`. Present for conversation compatibility. */
   conversation_id: string;
   reactions: MessageReactionGroup[];
   updated_at: string;
@@ -254,6 +543,9 @@ export interface MessageReactionsUpdate {
 
 export interface DeleteMessageResponse {
   message_id: string;
+  container_type: MessageContainerType;
+  container_id: string;
+  /** @deprecated Use `container_id`. Present for conversation compatibility. */
   conversation_id: string;
   actor_user_id: string;
   deleted_for_everyone: boolean;
@@ -270,13 +562,14 @@ export interface ConversationReadUpdate {
   [key: string]: unknown;
 }
 
-export type PingStatus =
+export type ConnectionStatus =
   | 'none'
-  | 'incoming_pending'
-  | 'outgoing_pending'
-  | 'accepted'
+  | 'pending'
+  | 'active'
   | 'declined'
+  | 'revoked'
   | 'blocked';
+export type ConnectionDirection = 'incoming' | 'outgoing';
 
 export interface UserSummary {
   id: string;
@@ -284,10 +577,33 @@ export interface UserSummary {
   display_name: string | null;
   avatar: AvatarMeta | null;
   is_online: boolean | null;
+  presence_state?: PresenceState;
+  last_seen_at?: string | null;
   can_ping?: boolean;
   chat_allowed?: boolean;
-  ping_status?: PingStatus;
+  connection_status?: ConnectionStatus;
+  connection_direction?: ConnectionDirection | null;
+  relationship_id?: string | null;
   is_ghost?: boolean;
+}
+
+export type PresenceState = 'online' | 'away' | 'dnd' | 'offline';
+
+export interface PresenceStatus {
+  user_id: string;
+  state: PresenceState;
+  is_online: boolean;
+  last_seen_at: string | null;
+}
+
+export interface ConnectionState {
+  can_ping: boolean;
+  chat_allowed: boolean;
+  connection_status: ConnectionStatus;
+  direction: ConnectionDirection | null;
+  relationship_id: string | null;
+  blocked_by_me: boolean;
+  blocks_me: boolean;
 }
 
 export interface ClearConversationResponse {
@@ -298,7 +614,6 @@ export interface ClearConversationResponse {
 export interface DeleteConversationResponse {
   conversation_id: string;
   cleared_count: number;
-  ping_deleted: boolean;
 }
 
 export interface DeleteCallHistoryResponse {
@@ -306,9 +621,18 @@ export interface DeleteCallHistoryResponse {
   hidden_count: number;
 }
 
-export type ConversationType = 'dm' | 'group' | 'channel' | 'thread';
+export type ConversationType = 'dm' | 'group';
 
-export type ParticipantRole = 'owner' | 'admin' | 'member' | 'subscriber';
+/**
+ * Name of the role a participant holds — 'Admin', 'Moderator', 'Member',
+ * 'Guest', or a custom role defined for that conversation. Ownership is NOT a
+ * role: read `owner_type`/`owner_id` on the conversation instead.
+ */
+export type ParticipantRole = string;
+
+export const ROLE_ADMIN = 'Admin';
+export const ROLE_MODERATOR = 'Moderator';
+export const ROLE_MEMBER = 'Member';
 export type NotificationLevel = 'all' | 'mentions' | 'none';
 export type ConversationVisibility = 'private' | 'public';
 export type PostingPolicy = 'everyone' | 'admins';
@@ -317,7 +641,7 @@ export type PostingPolicy = 'everyone' | 'admins';
 export interface ParticipantView {
   conversation_id: string;
   user_id: string;
-  role: ParticipantRole;
+  role: ParticipantRole | null;
   permissions: Record<string, boolean> | null;
   joined_at: string;
   last_read_at: string | null;
@@ -328,9 +652,52 @@ export interface ParticipantView {
   pinned: boolean;
   folder: string | null;
   invited_by: string | null;
+  draft_text: string | null;
   draft_updated_at: string | null;
   muted: boolean;
   hidden: boolean;
+}
+
+/** A user's folder, discovered from per-participant `folder` labels. */
+export interface ConversationFolder {
+  name: string;
+  count: number;
+  archived_count: number;
+}
+
+export type JoinRequestStatus = 'pending' | 'approved' | 'rejected';
+
+/** Invite link to a conversation (POST /conversations/{id}/invites). */
+export interface ConversationInviteLink {
+  id: string;
+  conversation_id: string;
+  code: string;
+  created_by: string;
+  expires_at: string | null;
+  max_uses: number | null;
+  use_count: number;
+  requires_approval: boolean;
+  revoked: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Pending/resolved request to join a conversation. */
+export interface ConversationJoinRequest {
+  id: string;
+  conversation_id: string;
+  user_id: string;
+  status: JoinRequestStatus;
+  invite_code: string | null;
+  responded_at: string | null;
+  created_at: string;
+}
+
+/** Result of redeeming an invite code. */
+export interface RedeemInviteResult {
+  status: 'joined' | 'pending';
+  conversation: Conversation | null;
+  join_request: ConversationJoinRequest | null;
 }
 
 export interface Conversation {
@@ -353,11 +720,15 @@ export interface Conversation {
   participant_ids: string[];
   participant_users: UserSummary[];
   created_by: string;
+  /** Who owns this conversation; ownership is not a role (§51). */
+  owner_type?: 'user' | 'space' | null;
+  owner_id?: string | null;
   title: string | null;
   image?: AvatarMeta | null;
   visibility: ConversationVisibility;
   posting_policy: PostingPolicy;
   space_id: string | null;
+  space_visibility?: 'space_public' | 'invite_only' | null;
   parent_conversation_id: string | null;
   root_message_id: string | null;
   slug: string | null;
@@ -372,6 +743,12 @@ export interface Conversation {
     text: string | null;
     created_at: string;
   } | null;
+  notification_level: NotificationLevel;
+  muted_until: string | null;
+  /** Viewer-relative inbox flags (the requesting user's own participant state). */
+  pinned: boolean;
+  archived: boolean;
+  folder: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -442,29 +819,91 @@ export interface DiscoveredUser extends UserSummary {
   discovered_via: OpenApiDiscoveryVia | null;
 }
 
-export interface Ping {
+export interface RelationshipState {
+  muted_until: string | null;
+  archived: boolean;
+  pinned: boolean;
+  hidden: boolean;
+  folder: string | null;
+  last_read_message_id: string | null;
+  notification_level: NotificationLevel;
+}
+
+export interface Relationship {
   id: string;
-  from_user_id: string;
-  to_user_id: string;
-  status: OpenApiPingStatus;
+  kind: 'connection' | 'follow' | 'membership';
+  user_id: string;
+  target_type: 'user' | 'conversation' | 'space' | 'channel';
+  target_id: string;
+  status: 'pending' | 'active' | 'declined' | 'revoked';
+  initiation: 'request' | 'invite' | 'direct' | 'system';
+  initiated_by: string;
+  approved_by: string | null;
+  pair_id: string | null;
+  role_ids: string[];
+  state: RelationshipState;
+  requested_at: string;
+  activated_at: string | null;
+  ended_at: string | null;
   created_at: string;
   updated_at: string;
-  responded_at: string | null;
 }
 
-export interface PingListItem {
-  ping: Ping;
-  peer: {
-    id: string;
-    username: string;
-    display_name: string | null;
-    avatar: AvatarMeta | null;
-    is_online: boolean;
-  };
+export interface AssignRelationshipRolesRequest {
+  role_ids: string[];
 }
 
-export type PingItem = PingListItem;
-export type PingResponse = Ping;
+export interface Role {
+  id: string;
+  scope_type: 'space' | 'conversation' | 'channel';
+  scope_id: string;
+  name: string;
+  permissions: string[];
+  priority: number;
+  system: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PeerUserSummary {
+  id: string;
+  username: string;
+  display_name: string | null;
+  avatar: AvatarMeta | null;
+  is_online: boolean;
+}
+
+export interface ConnectionListItem {
+  relationship: Relationship;
+  peer: PeerUserSummary;
+  direction: ConnectionDirection;
+  conversation_id: string | null;
+}
+
+export interface BlockView {
+  id: string;
+  blocker_id: string;
+  blocked_id: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface BlockedUserListItem {
+  block: BlockView;
+  user: PeerUserSummary;
+}
+
+export interface SharedConversationSummary {
+  id: string;
+  type: string;
+  title: string | null;
+}
+
+export interface SharedSpaceSummary {
+  id: string;
+  name: string;
+  slug: string;
+}
 
 export type CallType = OpenApiCallType;
 export type CallStatus = OpenApiCallStatus;
@@ -590,4 +1029,238 @@ export interface SuccessResponse<T> {
   success: boolean;
   data: T;
   request_id?: string | null;
+}
+
+export type SpaceKind = 'workspace' | 'community';
+export type SpaceJoinPolicy = 'open' | 'approval' | 'invite_only' | 'closed';
+
+export interface SpaceView {
+  id: string;
+  name: string;
+  slug: string;
+  kind: SpaceKind;
+  visibility: 'private' | 'public';
+  join_policy: SpaceJoinPolicy;
+  avatar: Record<string, any> | null;
+  created_by: string;
+  settings: Record<string, any>;
+  created_at: string;
+  updated_at: string;
+  owner_user_id: string;
+  /** Name of the role the viewer holds here, or null. Ownership is separate. */
+  viewer_role?: ParticipantRole | null;
+  is_default?: boolean;
+}
+
+export interface SpaceInviteLinkView {
+  id: string;
+  target_type: 'space';
+  target_id: string;
+  code: string;
+  created_by: string;
+  expires_at: string | null;
+  max_uses: number | null;
+  uses: number;
+  approval_required: boolean;
+  role_ids: string[];
+  revoked: boolean;
+  invitee_id?: string | null;
+}
+
+export interface SpaceJoinRequestView {
+  id: string;
+  target_type: 'space';
+  target_id: string;
+  user_id: string;
+  status: 'pending' | 'approved' | 'rejected';
+  invite_code: string | null;
+  created_at: string;
+  responded_at: string | null;
+}
+
+export interface RedeemSpaceInviteResponse {
+  status: 'joined' | 'pending';
+  space: SpaceView | null;
+  membership: Relationship;
+}
+
+export interface SpaceMemberUserSummary {
+  id: string;
+  username: string | null;
+  display_name: string | null;
+  avatar: Record<string, any> | null;
+}
+
+export interface SpaceMemberView {
+  id: string;
+  space_id: string;
+  user_id: string;
+  role: ParticipantRole | null;
+  joined_at: string;
+  user: SpaceMemberUserSummary | null;
+}
+
+/**
+ * A channel owned by a space. `joined` reports an explicit channel membership,
+ * which is distinct from read access: a `members`-visibility channel is
+ * readable by any active space member without one.
+ */
+export interface SpaceChannelView {
+  id: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  kind: 'profile' | 'text' | 'announcement';
+  visibility: ChannelVisibility;
+  posting_policy: ChannelPostingPolicy;
+  joined: boolean;
+}
+
+export interface SpaceChannelCreateRequest {
+  name: string;
+  slug: string;
+  description?: string | null;
+  kind?: 'text' | 'announcement';
+  visibility?: ChannelVisibility;
+  posting_policy?: ChannelPostingPolicy;
+  comment_policy?: ChannelCommentPolicy;
+  tags?: string[];
+}
+
+/**
+ * A group conversation owned by a space. Participation is always explicit — a
+ * space member is not implicitly a participant — so `joined` is authoritative.
+ */
+export interface SpaceGroupView {
+  id: string;
+  title: string | null;
+  participant_count: number;
+  joined: boolean;
+  created_at: string;
+}
+
+export interface SpaceGroupCreateRequest {
+  title: string;
+  participant_ids: string[];
+}
+
+// --- viewer capabilities ----------------------------------------------------
+
+/** Scopes the authorization service recognises. */
+export type ResourceScopeType = 'space' | 'conversation' | 'channel';
+
+export interface ResourceRef {
+  type: ResourceScopeType;
+  id: string;
+}
+
+/**
+ * The viewer's posture toward a resource. Not derivable from permissions: a
+ * stranger and a pending applicant hold the same empty permission set but need
+ * different affordances.
+ */
+export interface ViewerStandingView {
+  is_owner: boolean;
+  membership_status: string | null;
+  is_follower: boolean;
+  role_ids: string[];
+}
+
+export interface ResourceCapabilitiesView {
+  resource: ResourceRef;
+  allowed: string[];
+  /**
+   * Explicit rather than "absent means denied", so a client can tell a refusal
+   * from an action the server never evaluated.
+   */
+  denied: string[];
+  standing: ViewerStandingView;
+  /** Policy fields for management forms. Never gate on these. */
+  policy: Record<string, unknown>;
+}
+
+export interface CapabilitiesRequest {
+  resources: ResourceRef[];
+  actions?: string[];
+}
+
+export interface CapabilitiesResponse {
+  capabilities: ResourceCapabilitiesView[];
+}
+
+/**
+ * The container payload's first-paint block. A `null` viewer means "not
+ * resolved on this projection", not "denied".
+ */
+export interface ViewerBlock {
+  can_post: boolean;
+  can_comment: boolean;
+  can_manage: boolean;
+  membership_status: string | null;
+  is_follower: boolean;
+}
+
+// --- directory --------------------------------------------------------------
+
+export type DirectorySort = 'relevance' | 'recent' | 'popular';
+
+export interface DirectoryViewerBlock {
+  membership_status: string | null;
+  is_follower: boolean;
+}
+
+/** The canonical channel shape for every list context. */
+export interface ChannelSummary {
+  id: string;
+  owner: { type: 'user' | 'space'; id: string };
+  space_id: string | null;
+  kind: ChannelKind;
+  slug: string;
+  name: string;
+  description: string | null;
+  avatar: AvatarMeta | null;
+  banner: AvatarMeta | null;
+  visibility: ChannelVisibility;
+  tags: string[];
+  message_count: number;
+  follower_count: number;
+  last_activity_at: string | null;
+  is_main: boolean;
+  viewer: ViewerBlock | null;
+}
+
+export interface SpaceSummary {
+  id: string;
+  slug: string;
+  name: string;
+  description: string | null;
+  avatar: AvatarMeta | null;
+  visibility: 'private' | 'public';
+  join_policy: 'open' | 'approval' | 'invite_only' | 'closed';
+  kind: 'workspace' | 'community';
+  member_count: number;
+  /** Everyone is already in the default space, so offer no join affordance. */
+  is_default: boolean;
+  created_at: string;
+  viewer: DirectoryViewerBlock;
+}
+
+export interface GroupSummary {
+  id: string;
+  title: string | null;
+  slug: string | null;
+  description: string | null;
+  image: AvatarMeta | null;
+  space_id: string;
+  member_count: number;
+  created_at: string;
+  viewer: DirectoryViewerBlock;
+}
+
+/** A bounded preview; the typed directory endpoints are the paginated surface. */
+export interface OmniResults {
+  spaces: SpaceSummary[];
+  channels: ChannelSummary[];
+  groups: GroupSummary[];
+  people: DiscoveredUser[];
 }

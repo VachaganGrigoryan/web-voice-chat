@@ -34,7 +34,6 @@ const replyModeEnum = enumValues(
   'ConversationSendTextRequest.reply_mode'
 );
 const messageStateEnum = enumValues(schema('MessageDoc')?.properties?.state?.enum, 'MessageDoc.state');
-const pingStatusEnum = enumValues(schema('PingResponse')?.properties?.status?.enum, 'PingResponse.status');
 const callTypeEnum = enumValues(schema('CallDoc')?.properties?.type?.enum, 'CallDoc.type');
 const callStatusEnum = enumValues(schema('CallDoc')?.properties?.status?.enum, 'CallDoc.status');
 const discoveryViaEnum = enumValues(
@@ -60,9 +59,6 @@ export type OpenApiReplyMode = (typeof OPENAPI_REPLY_MODES)[number];
 
 export const OPENAPI_MESSAGE_STATES = [${messageStateEnum}] as const;
 export type OpenApiMessageState = (typeof OPENAPI_MESSAGE_STATES)[number];
-
-export const OPENAPI_PING_STATUSES = [${pingStatusEnum}] as const;
-export type OpenApiPingStatus = (typeof OPENAPI_PING_STATUSES)[number];
 
 export const OPENAPI_CALL_TYPES = [${callTypeEnum}] as const;
 export type OpenApiCallType = (typeof OPENAPI_CALL_TYPES)[number];

@@ -16,6 +16,42 @@ export const setLogoutCallback = (callback: () => void) => {
   onLogout = callback;
 };
 
+/**
+ * Called when a container-scoped request is refused, so the capability cache can
+ * discard the entry that said it would be allowed.
+ *
+ * The client gates affordances on cached capabilities, which can go stale. This
+ * bounds how long a wrong UI survives: the first refusal corrects it. Gating is
+ * for affordance quality; the server remains the only authority.
+ */
+let onForbidden: ((scope: string, id: string) => void) | null = null;
+
+export const setForbiddenCallback = (
+  callback: (scope: string, id: string) => void
+) => {
+  onForbidden = callback;
+};
+
+/** Container-scoped path prefixes whose 403 identifies a resource. */
+const FORBIDDEN_SCOPES: ReadonlyArray<readonly [RegExp, string]> = [
+  [/^\/channels\/([^/]+)/, 'channel'],
+  [/^\/conversations\/([^/]+)/, 'conversation'],
+  [/^\/spaces\/([^/]+)/, 'space'],
+];
+
+const reportForbidden = (url: string | undefined) => {
+  if (!onForbidden || !url) return;
+  // Strip the base URL and any query string before matching.
+  const path = url.replace(API_URL, '').split('?')[0];
+  for (const [pattern, scope] of FORBIDDEN_SCOPES) {
+    const match = pattern.exec(path);
+    if (match) {
+      onForbidden(scope, match[1]);
+      return;
+    }
+  }
+};
+
 // Create a dedicated instance for refresh calls to avoid interceptors
 const refreshClient = axios.create({
   baseURL: API_URL,
@@ -110,6 +146,10 @@ apiClient.interceptors.response.use(
       } finally {
         isRefreshing = false;
       }
+    }
+
+    if (error.response?.status === 403) {
+      reportForbidden(originalRequest?.url);
     }
 
     return Promise.reject(error);

@@ -32,7 +32,35 @@ const operationCount = Object.values(spec.paths).reduce(
   0
 );
 
-assert.equal(operationCount, 73, 'Unexpected number of OpenAPI operations');
+// 211 -> 209: -2 from collapsing the duplicate feed routes (GET
+// /feeds/channels/{id}/posts into its /feeds/channels/{id} twin, and GET
+// /users/{username}/posts into its /feeds/users/{username} twin).
+// 209 -> 211: +2 for DELETE /channels/{id} and DELETE /spaces/{id}, added by
+// hard-delete-owned-resources. This assertion only caught them once the spec
+// stopped being curl-scraped from a possibly-stale server.
+assert.equal(operationCount, 211, 'Unexpected number of OpenAPI operations');
+assert.equal(
+  Object.keys(spec.paths).some((route) => route.startsWith('/pings')),
+  false,
+  'Legacy pings routes must not be present'
+);
+
+assert.equal(
+  getJsonResponseRef('post', '/spaces', '201'),
+  '#/components/schemas/SuccessResponse_SpaceView_'
+);
+assert.equal(
+  getJsonResponseRef('post', '/webhooks', '201'),
+  '#/components/schemas/SuccessResponse_WebhookView_'
+);
+assert.equal(
+  getJsonResponseRef('post', '/slash-commands', '201'),
+  '#/components/schemas/SuccessResponse_SlashCommandView_'
+);
+assert.equal(
+  getJsonResponseRef('post', '/reports', '201'),
+  '#/components/schemas/SuccessResponse_ReportView_'
+);
 
 assert.equal(
   getJsonResponseRef('get', '/auth/passkeys', '200'),
@@ -47,32 +75,111 @@ assert.equal(
   '#/components/schemas/SuccessResponse_SelectedUserProfileResponse_'
 );
 assert.equal(
-  getJsonResponseRef('get', '/conversations/{conversation_id}/messages/{message_id}/thread', '200'),
+  getJsonResponseRef('get', '/messages/{message_id}/thread', '200'),
   '#/components/schemas/SuccessResponse_list_MessageDoc__'
 );
 assert.equal(
-  getJsonResponseRef('delete', '/conversations/{conversation_id}/messages/{message_id}', '200'),
-  '#/components/schemas/SuccessResponse_DeleteMessageResponse_'
-);
-assert.equal(
-  getJsonResponseRef('post', '/conversations/{conversation_id}/messages/{message_id}/reactions', '200'),
+  getJsonResponseRef('post', '/conversations/{conversation_id}/messages/content', '201'),
   '#/components/schemas/SuccessResponse_MessageDoc_'
 );
 assert.equal(
-  getJsonResponseRef('post', '/pings/{ping_id}/cancel', '200'),
-  '#/components/schemas/SuccessResponse_PingResponse_'
+  getJsonResponseRef('delete', '/messages/{message_id}', '200'),
+  '#/components/schemas/SuccessResponse_DeleteMessageResponse_'
 );
 assert.equal(
-  getJsonResponseRef('post', '/pings/block', '200'),
-  '#/components/schemas/SuccessResponse_PingResponse_'
+  getJsonResponseRef('post', '/messages/{message_id}/reactions', '200'),
+  '#/components/schemas/SuccessResponse_MessageDoc_'
+);
+// Viewer capabilities: the batch endpoint is the contract, the per-resource
+// ones exist for cold deep links and must return the same shape.
+assert.equal(
+  getJsonResponseRef('post', '/viewer/capabilities', '200'),
+  '#/components/schemas/SuccessResponse_CapabilitiesResponse_'
 );
 assert.equal(
-  getJsonResponseRef('get', '/pings/blocked', '200'),
-  '#/components/schemas/SuccessResponse_list_PingResponse__'
+  getJsonResponseRef('get', '/channels/{resource_id}/capabilities', '200'),
+  '#/components/schemas/SuccessResponse_ResourceCapabilitiesView_'
 );
+assert.equal(
+  getJsonResponseRef('get', '/spaces/{resource_id}/capabilities', '200'),
+  '#/components/schemas/SuccessResponse_ResourceCapabilitiesView_'
+);
+assert.equal(
+  getJsonResponseRef('get', '/conversations/{resource_id}/capabilities', '200'),
+  '#/components/schemas/SuccessResponse_ResourceCapabilitiesView_'
+);
+
+// The directory paginates like every other list surface, so its responses are
+// PaginatedResponse rather than SuccessResponse. The omni preview is the one
+// deliberate exception.
+assert.equal(
+  getJsonResponseRef('get', '/directory/channels', '200'),
+  '#/components/schemas/PaginatedResponse_ChannelSummary_'
+);
+assert.equal(
+  getJsonResponseRef('get', '/directory/spaces', '200'),
+  '#/components/schemas/PaginatedResponse_SpaceSummary_'
+);
+assert.equal(
+  getJsonResponseRef('get', '/directory/groups', '200'),
+  '#/components/schemas/PaginatedResponse_GroupSummary_'
+);
+assert.equal(
+  getJsonResponseRef('get', '/directory', '200'),
+  '#/components/schemas/SuccessResponse_OmniResults_'
+);
+
+// `ChannelSummary` is the canonical list shape; the retired projection renamed
+// four fields, so guard against its return.
+const channelSummary = getSchema('ChannelSummary');
+for (const field of ['name', 'follower_count', 'last_activity_at', 'visibility']) {
+  assert.ok(field in channelSummary.properties, `ChannelSummary must carry ${field}`);
+}
+for (const field of ['title', 'member_count', 'last_message_at', 'read_policy']) {
+  assert.equal(
+    field in channelSummary.properties,
+    false,
+    `ChannelSummary must not resurrect ${field}`
+  );
+}
+assert.equal(
+  Object.keys(spec.components.schemas).some((name) => name === 'UserChannelView'),
+  false,
+  'UserChannelView must stay retired'
+);
+
+assert.equal(
+  getJsonResponseRef('post', '/connections/{user_id}/ping', '201'),
+  '#/components/schemas/SuccessResponse_RelationshipView_'
+);
+assert.equal(
+  getJsonResponseRef('post', '/connections/{relationship_id}/accept', '200'),
+  '#/components/schemas/SuccessResponse_RelationshipView_'
+);
+assert.equal(
+  getJsonResponseRef('get', '/connections', '200'),
+  '#/components/schemas/PaginatedResponse_list_ConnectionListItem__'
+);
+assert.equal(
+  getJsonResponseRef('get', '/connections/pending', '200'),
+  '#/components/schemas/PaginatedResponse_list_ConnectionListItem__'
+);
+assert.equal(
+  getJsonResponseRef('post', '/blocks/{user_id}', '201'),
+  '#/components/schemas/SuccessResponse_BlockView_'
+);
+assert.equal(
+  getJsonResponseRef('get', '/blocks', '200'),
+  '#/components/schemas/PaginatedResponse_list_BlockedUserListItem__'
+);
+assert.ok(getOperation('delete', '/blocks/{user_id}').responses?.['204']);
 assert.equal(
   getJsonResponseRef('get', '/calls/active', '200'),
   '#/components/schemas/SuccessResponse_Union_CallSession__NoneType__'
+);
+assert.equal(
+  getJsonResponseRef('get', '/realtime/presence', '200'),
+  '#/components/schemas/SuccessResponse_dict_str__PresenceStatusResponse__'
 );
 
 assert.deepEqual(
@@ -102,6 +209,10 @@ assert.deepEqual(
 assert.deepEqual(
   getSchema('MessageDoc').properties.state.enum,
   ['sent', 'scheduled']
+);
+assert.deepEqual(
+  getSchema('PresenceStatusResponse').properties.state.enum,
+  ['online', 'away', 'dnd', 'offline']
 );
 
 console.log('OpenAPI contract checks passed');

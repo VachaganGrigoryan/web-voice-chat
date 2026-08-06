@@ -15,11 +15,25 @@ interface ProfileSettingsTabProps {
   setDisplayName: (value: string) => void;
   bio: string;
   setBio: (value: string) => void;
+  pronouns: string;
+  setPronouns: (value: string) => void;
+  timezone: string;
+  setTimezone: (value: string) => void;
+  statusEmoji: string;
+  setStatusEmoji: (value: string) => void;
+  statusText: string;
+  setStatusText: (value: string) => void;
+  statusExpiresAt: string;
+  setStatusExpiresAt: (value: string) => void;
+  handleUpdateStatus: () => Promise<void>;
+  handleClearStatus: () => Promise<void>;
   fileInputRef: RefObject<HTMLInputElement | null>;
   handleAvatarUpload: (event: ChangeEvent<HTMLInputElement>) => Promise<void>;
   handleDeleteAvatar: () => Promise<void>;
   isUploadingAvatar: boolean;
   isDeletingAvatar: boolean;
+  isUpdatingStatus: boolean;
+  isClearingStatus: boolean;
 }
 
 export default function ProfileSettingsTab({
@@ -30,11 +44,25 @@ export default function ProfileSettingsTab({
   setDisplayName,
   bio,
   setBio,
+  pronouns,
+  setPronouns,
+  timezone,
+  setTimezone,
+  statusEmoji,
+  setStatusEmoji,
+  statusText,
+  setStatusText,
+  statusExpiresAt,
+  setStatusExpiresAt,
+  handleUpdateStatus,
+  handleClearStatus,
   fileInputRef,
   handleAvatarUpload,
   handleDeleteAvatar,
   isUploadingAvatar,
   isDeletingAvatar,
+  isUpdatingStatus,
+  isClearingStatus,
 }: ProfileSettingsTabProps) {
   return (
     <>
@@ -138,6 +166,94 @@ export default function ProfileSettingsTab({
               data-1p-ignore="true"
               data-lpignore="true"
             />
+          </div>
+
+          <div className="grid gap-5 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="settings-pronouns">Pronouns</Label>
+              <Input
+                id="settings-pronouns"
+                name="profile-pronouns"
+                value={pronouns}
+                onChange={(event) => setPronouns(event.target.value)}
+                placeholder="Optional"
+                autoComplete="off"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="settings-timezone">Timezone</Label>
+              <Input
+                id="settings-timezone"
+                name="profile-timezone"
+                value={timezone}
+                onChange={(event) => setTimezone(event.target.value)}
+                placeholder="Asia/Yerevan"
+                autoComplete="off"
+              />
+            </div>
+          </div>
+        </div>
+      </PanelSection>
+
+      <PanelSection title="Custom Status" description="This appears on your profile until it expires or is cleared.">
+        <div className="max-w-xl space-y-5">
+          <div className="grid gap-5 sm:grid-cols-[96px_1fr]">
+            <div className="space-y-2">
+              <Label htmlFor="settings-status-emoji">Emoji</Label>
+              <Input
+                id="settings-status-emoji"
+                name="profile-status-emoji"
+                value={statusEmoji}
+                onChange={(event) => setStatusEmoji(event.target.value)}
+                placeholder=":speech:"
+                autoComplete="off"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="settings-status-text">Status</Label>
+              <Input
+                id="settings-status-text"
+                name="profile-status-text"
+                value={statusText}
+                onChange={(event) => setStatusText(event.target.value)}
+                placeholder="Available later"
+                autoComplete="off"
+              />
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="settings-status-expires">Expires</Label>
+            <Input
+              id="settings-status-expires"
+              name="profile-status-expires"
+              type="datetime-local"
+              value={statusExpiresAt}
+              onChange={(event) => setStatusExpiresAt(event.target.value)}
+              className="max-w-xs"
+            />
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              onClick={handleUpdateStatus}
+              disabled={isUpdatingStatus || isClearingStatus}
+            >
+              {isUpdatingStatus ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              Set status
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handleClearStatus}
+              disabled={isUpdatingStatus || isClearingStatus}
+            >
+              {isClearingStatus ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              Clear
+            </Button>
           </div>
         </div>
       </PanelSection>

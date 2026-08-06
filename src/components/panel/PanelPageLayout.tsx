@@ -36,11 +36,13 @@ export function PanelPageLayout({
   contentClassName,
 }: PanelPageLayoutProps) {
   return (
-    <div className="min-h-[100dvh] bg-background">
-      <div className="mx-auto flex h-[100dvh] w-full max-w-6xl flex-col px-3 py-3 sm:px-5 sm:py-5">
+    // Sized to its container, not the viewport: the page now lives inside AppShell's
+    // main region, which already reserves space for the rail and the mobile bars.
+    <div className="h-full min-h-0 w-full bg-background">
+      <div className="mx-auto flex h-full min-h-0 w-full max-w-6xl flex-col px-3 py-3 sm:px-5 sm:py-5">
         <div
           className={cn(
-            'flex min-h-0 flex-1 flex-col overflow-hidden rounded-[28px] border border-border/70 bg-card/95 shadow-[0_20px_70px_rgba(15,23,42,0.10)] backdrop-blur',
+            'flex min-h-0 flex-1 flex-col overflow-hidden rounded-[28px] border border-border/70 bg-card/95 shadow-e3 backdrop-blur',
             className
           )}
         >

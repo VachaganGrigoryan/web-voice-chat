@@ -14,10 +14,14 @@
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit",
     "lint:mobile": "tsc --noEmit -p mobile/tsconfig.json",
-    "sync:openapi": "curl -s http://0.0.0.0:8000/openapi.json -o openapi/openapi.json",
+    "sync:openapi": "cd ../VoiceChat && poetry run python app/scripts/dump_openapi.py ../web-voice-chat/openapi/openapi.json",
     "generate:api-contract": "node scripts/generate-api-contract.mjs",
     "test:api-contract": "node scripts/verify-openapi-contract.mjs",
-    "generate:android-icons": "node scripts/generate-android-icons.mjs"
+    "generate:android-icons": "node scripts/generate-android-icons.mjs",
+    "test:unit": "vitest run",
+    "test:unit:watch": "vitest",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui"
   },
   "dependencies": {
     "@google/genai": "^1.29.0",
@@ -60,6 +64,7 @@
     "zustand": "^5.0.11"
   },
   "devDependencies": {
+    "@playwright/test": "^1.61.1",
     "@types/express": "^4.17.21",
     "@types/node": "^22.14.0",
     "autoprefixer": "^10.4.21",
@@ -68,6 +73,7 @@
     "tsx": "^4.21.0",
     "typescript": "~5.8.2",
     "vite": "^6.2.0",
-    "vite-plugin-pwa": "^1.2.0"
+    "vite-plugin-pwa": "^1.2.0",
+    "vitest": "^4.1.10"
   }
 }
