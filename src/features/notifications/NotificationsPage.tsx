@@ -43,6 +43,7 @@ import {
   ActivitySignalOverview,
 } from './ActivitySignalConsole';
 import { buildActivityInsights } from './activityInsights';
+import { getConnectionActionTargets } from './connectionActionTargets';
 
 type PingMetaLabel = {
   desktop: string;
@@ -417,7 +418,7 @@ export function NotificationsPage() {
   const queryClient = useQueryClient();
   const { goTo } = useAppNavigation();
 
-  const [actionUserId, setActionUserId] = useState<string | null>(null);
+  const [actionRelationshipId, setActionRelationshipId] = useState<string | null>(null);
   const [inviteDialogOpen, setInviteDialogOpen] = useState(false);
 
   const {
@@ -480,10 +481,10 @@ export function NotificationsPage() {
     goTo(APP_ROUTES.chatConversation(peerUserId));
   };
 
-  const handleAccept = async (peerUserId: string) => {
-    setActionUserId(peerUserId);
+  const handleAccept = async (relationshipId: string) => {
+    setActionRelationshipId(relationshipId);
     try {
-      await acceptPing(peerUserId);
+      await acceptPing(relationshipId);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['conversations'] }),
         queryClient.invalidateQueries({ queryKey: ['contacts'] }),
@@ -492,31 +493,31 @@ export function NotificationsPage() {
     } catch (err) {
       toast.error(extractApiError(err, 'Failed to accept connection'));
     } finally {
-      setActionUserId(null);
+      setActionRelationshipId(null);
     }
   };
 
-  const handleDecline = async (peerUserId: string) => {
-    setActionUserId(peerUserId);
+  const handleDecline = async (relationshipId: string) => {
+    setActionRelationshipId(relationshipId);
     try {
-      await declinePing(peerUserId);
+      await declinePing(relationshipId);
       toast.success('Connection declined');
     } catch (err) {
       toast.error(extractApiError(err, 'Failed to decline connection'));
     } finally {
-      setActionUserId(null);
+      setActionRelationshipId(null);
     }
   };
 
-  const handleCancel = async (peerUserId: string) => {
-    setActionUserId(peerUserId);
+  const handleCancel = async (relationshipId: string) => {
+    setActionRelationshipId(relationshipId);
     try {
-      await cancelPing(peerUserId);
+      await cancelPing(relationshipId);
       toast.success('Connection request cancelled');
     } catch (err) {
       toast.error(extractApiError(err, 'Failed to cancel connection'));
     } finally {
-      setActionUserId(null);
+      setActionRelationshipId(null);
     }
   };
 
@@ -633,7 +634,8 @@ export function NotificationsPage() {
             ) : (
               <div className="grid gap-2">
                 {incoming.map((item) => {
-                  const isBusy = actionUserId === item.peer.id;
+                  const { relationshipId, peerUserId } = getConnectionActionTargets(item);
+                  const isBusy = actionRelationshipId === relationshipId;
                   const isPending = item.relationship.status === 'pending';
                   const meta = buildMetaLabel('Received', 'Rec.', item.relationship.updated_at);
 
@@ -648,7 +650,7 @@ export function NotificationsPage() {
                           <>
                             <Button
                               size="sm"
-                              onClick={() => handleAccept(item.peer.id)}
+                              onClick={() => handleAccept(relationshipId)}
                               disabled={isBusy && (isAccepting || isDeclining)}
                             >
                               {isBusy && isAccepting ? (
@@ -661,7 +663,7 @@ export function NotificationsPage() {
                             <Button
                               size="sm"
                               variant="outline"
-                              onClick={() => handleDecline(item.peer.id)}
+                              onClick={() => handleDecline(relationshipId)}
                               disabled={isBusy && (isAccepting || isDeclining)}
                             >
                               {isBusy && isDeclining ? (
@@ -676,7 +678,7 @@ export function NotificationsPage() {
                           <Button
                             size="sm"
                             variant="secondary"
-                            onClick={() => handleOpenConversation(item.peer.id)}
+                            onClick={() => handleOpenConversation(peerUserId)}
                           >
                             <MessageSquare className="mr-1 h-4 w-4" />
                             Message
@@ -706,7 +708,8 @@ export function NotificationsPage() {
             ) : (
               <div className="grid gap-2">
                 {outgoing.map((item) => {
-                  const isBusy = actionUserId === item.peer.id;
+                  const { relationshipId } = getConnectionActionTargets(item);
+                  const isBusy = actionRelationshipId === relationshipId;
                   const isPending = item.relationship.status === 'pending';
                   const meta = buildMetaLabel('Sent', 'Sent', item.relationship.updated_at);
 
@@ -721,7 +724,7 @@ export function NotificationsPage() {
                           <Button
                             size="sm"
                             variant="outline"
-                            onClick={() => handleCancel(item.peer.id)}
+                            onClick={() => handleCancel(relationshipId)}
                             disabled={isBusy && isCancelling}
                           >
                             {isBusy && isCancelling ? (
