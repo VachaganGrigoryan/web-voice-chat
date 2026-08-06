@@ -90,7 +90,11 @@ export function useInboxData({
   const queryClient = useQueryClient();
   const socket = useSocketStore((state) => state.socket);
   const markConversationRead = useMutation({
-    mutationFn: (conversationId: string) => messagesApi.markConversationRead(conversationId),
+    mutationFn: (conversationId: string) =>
+      messagesApi.markContainerRead({
+        container_type: 'conversation',
+        container_id: conversationId,
+      }),
     onSuccess: (_result, conversationId) => {
       resetContainerUnreadCount(queryClient, { container_type: 'conversation', container_id: conversationId });
       socket?.emit(EVENTS.CONVERSATION_READ, { conversation_id: conversationId });

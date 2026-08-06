@@ -255,6 +255,13 @@ export const notificationsApi = {
       .then((res) => extractResponseData(res.data)),
 };
 
+/**
+ * Every message collection operation is addressed by its container, so the
+ * transport no longer varies by container type.
+ */
+const containerPath = (ref: MessageContainerRef, suffix = '') =>
+  `/messages/${ref.container_type}/${ref.container_id}${suffix}`;
+
 export const messagesApi = {
   uploadMedia: async (data: MessageContainerRef & {
     file: File;
@@ -285,12 +292,8 @@ export const messagesApi = {
     if (data.reply_mode) formData.append('reply_mode', data.reply_mode);
     if (data.reply_to_message_id) formData.append('reply_to_message_id', data.reply_to_message_id);
 
-    const mediaPath =
-      data.container_type === 'channel'
-        ? `/channels/${data.container_id}/messages/media`
-        : `/conversations/${data.container_id}/messages/media`;
     const response = await apiClient.post<SuccessResponse<MessageDoc>>(
-      mediaPath,
+      containerPath(data, '/media'),
       formData,
       {
         headers: { 'Content-Type': 'multipart/form-data' },
@@ -306,12 +309,8 @@ export const messagesApi = {
     reply_to_message_id?: string;
     style?: { background?: string | null; align?: 'start' | 'center' | null } | null;
   }) => {
-    const path =
-      data.container_type === 'channel'
-        ? `/channels/${data.container_id}/messages`
-        : `/conversations/${data.container_id}/messages/text`;
     const response = await apiClient.post<SuccessResponse<MessageDoc>>(
-      path,
+      containerPath(data, '/text'),
       {
         text: data.text,
         reply_mode: data.reply_mode ?? null,
@@ -324,12 +323,8 @@ export const messagesApi = {
     return extractResponseData(response.data);
   },
   sendRichContent: async (data: SendRichContentRequest) => {
-    const contentPath =
-      data.container_type === 'channel'
-        ? `/channels/${data.container_id}/messages/content`
-        : `/conversations/${data.container_id}/messages/content`;
     const response = await apiClient.post<SuccessResponse<MessageDoc>>(
-      contentPath,
+      containerPath(data, '/content'),
       {
         type: data.type,
         text: data.text ?? null,
@@ -347,12 +342,8 @@ export const messagesApi = {
     limit = 20,
     cursor?: string
   ) => {
-    const path =
-      container.container_type === 'channel'
-        ? `/channels/${container.container_id}/messages`
-        : `/conversations/${container.container_id}/messages`;
     const response = await apiClient.get<PaginatedResponse<MessageDoc>>(
-      path,
+      containerPath(container),
       { params: { limit, cursor } }
     );
     return response.data;
@@ -399,42 +390,49 @@ export const messagesApi = {
     apiClient
       .delete<SuccessResponse<PinnedMessages>>(`/messages/${messageId}/pin`)
       .then((res) => extractResponseData(res.data)),
-  getPinnedMessages: (conversationId: string) =>
+  getPinnedMessages: (container: MessageContainerRef) =>
     apiClient
-      .get<SuccessResponse<MessageDoc[]>>(
-        `/conversations/${conversationId}/messages/pinned`
-      )
+      .get<SuccessResponse<MessageDoc[]>>(containerPath(container, '/pinned'))
       .then((res) => extractResponseData(res.data)),
-  scheduleMessage: (conversationId: string, text: string, scheduledForIso: string) =>
+  scheduleMessage: (
+    container: MessageContainerRef,
+    text: string,
+    scheduledForIso: string
+  ) =>
     apiClient
-      .post<SuccessResponse<MessageDoc>>(
-        `/conversations/${conversationId}/messages/schedule`,
-        { text, scheduled_for: scheduledForIso }
-      )
+      .post<SuccessResponse<MessageDoc>>(containerPath(container, '/schedule'), {
+        text,
+        scheduled_for: scheduledForIso,
+      })
       .then((res) => extractResponseData(res.data)),
-  getScheduledMessages: (conversationId: string) =>
+  getScheduledMessages: (container: MessageContainerRef) =>
     apiClient
-      .get<SuccessResponse<MessageDoc[]>>(
-        `/conversations/${conversationId}/messages/scheduled`
-      )
+      .get<SuccessResponse<MessageDoc[]>>(containerPath(container, '/scheduled'))
       .then((res) => extractResponseData(res.data)),
-  cancelScheduledMessage: (conversationId: string, messageId: string) =>
-    apiClient.delete(
-      `/conversations/${conversationId}/messages/scheduled/${messageId}`
-    ),
+  /** The scheduled message's id names its container, so no container segment. */
+  cancelScheduledMessage: (messageId: string) =>
+    apiClient.delete(`/messages/${messageId}/scheduled`),
   searchMessages: (query: string, options?: { limit?: number; cursor?: string }) =>
     apiClient
       .get<PaginatedResponse<MessageDoc>>('/search/messages', {
         params: { q: query, limit: options?.limit, cursor: options?.cursor },
       })
       .then((res) => res.data),
-  markConversationRead: async (conversationId: string): Promise<ConversationReadUpdate> => {
-    await apiClient.post(`/conversations/${conversationId}/read`);
+  /**
+   * Container-level read state stays on the container's own resource — it
+   * returns a container-shaped view rather than a message one — so this is the
+   * one place the resource prefix still follows the container type.
+   */
+  markContainerRead: async (
+    container: MessageContainerRef
+  ): Promise<ConversationReadUpdate> => {
+    const base = container.container_type === 'channel' ? '/channels' : '/conversations';
+    await apiClient.post(`${base}/${container.container_id}/read`);
     return {};
   },
-  clearConversation: async (conversationId: string) => {
+  clearContainer: async (container: MessageContainerRef) => {
     const response = await apiClient.delete<SuccessResponse<ClearConversationResponse>>(
-      `/conversations/${conversationId}/messages`
+      containerPath(container)
     );
     return extractResponseData(response.data);
   },
@@ -641,7 +639,10 @@ export const conversationsApi = {
   clearGroupForEveryone: (conversationId: string) =>
     apiClient
       .delete<SuccessResponse<ClearConversationResponse>>(
-        `/conversations/${conversationId}/messages/all`
+        containerPath(
+          { container_type: 'conversation', container_id: conversationId },
+          '/all'
+        )
       )
       .then((res) => extractResponseData(res.data)),
   setDraft: (conversationId: string, text: string) =>

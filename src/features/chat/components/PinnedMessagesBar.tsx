@@ -5,13 +5,13 @@ import { toast } from 'sonner';
 
 import { messagesApi } from '@/api/endpoints';
 import { resolveMessageContent } from '@/api/messageContent';
-import type { MessageDoc } from '@/api/types';
+import type { MessageContainerRef, MessageDoc } from '@/api/types';
 import { extractApiError } from '@/api/errors';
 import { cn } from '@/lib/utils';
 
 interface PinnedMessagesBarProps {
-  conversationId: string;
-  /** The conversation's pinned message ids (from the conversation view). */
+  container: MessageContainerRef;
+  /** The container's pinned message ids (from the container view). */
   pinnedMessageIds: readonly string[];
   /** Whether the viewer may unpin (owner/admin). */
   canManagePins: boolean;
@@ -19,7 +19,8 @@ interface PinnedMessagesBarProps {
   onSelectMessage?: (messageId: string) => void;
 }
 
-const pinnedKey = (conversationId: string) => ['pinned-messages', conversationId] as const;
+const pinnedKey = (container: MessageContainerRef) =>
+  ['pinned-messages', container.container_type, container.container_id] as const;
 
 function previewText(message: MessageDoc): string {
   const resolved = resolveMessageContent(message);
@@ -31,7 +32,7 @@ function previewText(message: MessageDoc): string {
 }
 
 export function PinnedMessagesBar({
-  conversationId,
+  container,
   pinnedMessageIds,
   canManagePins,
   onSelectMessage,
@@ -41,8 +42,8 @@ export function PinnedMessagesBar({
 
   const pinnedQuery = useQuery({
     // Keyed on the id set so a pin/unpin elsewhere refetches the previews.
-    queryKey: [...pinnedKey(conversationId), pinnedMessageIds.join(',')],
-    queryFn: () => messagesApi.getPinnedMessages(conversationId),
+    queryKey: [...pinnedKey(container), pinnedMessageIds.join(',')],
+    queryFn: () => messagesApi.getPinnedMessages(container),
     enabled: pinnedMessageIds.length > 0,
   });
 
@@ -55,7 +56,7 @@ export function PinnedMessagesBar({
     mutationFn: (messageId: string) =>
       messagesApi.unpinMessage(messageId),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: pinnedKey(conversationId) });
+      queryClient.invalidateQueries({ queryKey: pinnedKey(container) });
       queryClient.invalidateQueries({ queryKey: ['conversations'] });
     },
     onError: (error) => {

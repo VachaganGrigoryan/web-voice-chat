@@ -542,7 +542,10 @@ export default function ChatPage() {
         <ScheduledMessagesDialog
           open={dialogs.state.scheduledOpen}
           onOpenChange={dialogs.setScheduledOpen}
-          conversationId={selectedConversation.id}
+          container={{
+            container_type: 'conversation',
+            container_id: selectedConversation.id,
+          }}
         />
       ) : null}
 
@@ -679,7 +682,6 @@ export default function ChatPage() {
         pinnedBar={
           selectedConversation && selectedConversation.pinned_message_ids.length > 0
             ? {
-                conversationId: selectedConversation.id,
                 pinnedMessageIds: selectedConversation.pinned_message_ids,
                 canManagePins,
               }

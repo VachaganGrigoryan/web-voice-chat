@@ -32,7 +32,6 @@ interface AccessGateProps {
 }
 
 interface PinnedBarProps {
-  conversationId: string;
   pinnedMessageIds: string[];
   canManagePins: boolean;
 }
@@ -288,7 +287,7 @@ export function ContainerPane({
 
       {pinnedBar && pinnedBar.pinnedMessageIds.length > 0 ? (
         <PinnedMessagesBar
-          conversationId={pinnedBar.conversationId}
+          container={descriptor.ref}
           pinnedMessageIds={pinnedBar.pinnedMessageIds}
           canManagePins={pinnedBar.canManagePins}
         />

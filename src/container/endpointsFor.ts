@@ -1,4 +1,4 @@
-import { channelsApi, messagesApi } from '@/api/endpoints';
+import { messagesApi } from '@/api/endpoints';
 import { messageQueryKey, threadMessageQueryKey } from '@/api/queryKeys';
 import type { MessageContainerRef, MessageDoc } from '@/api/types';
 import type { ContainerEndpoints, ContainerSource } from './types';
@@ -14,7 +14,6 @@ import { refOf } from './resolveContainer';
  */
 export const endpointsFor = (source: ContainerSource): ContainerEndpoints => {
   const ref: MessageContainerRef = refOf(source);
-  const isChannel = ref.container_type === 'channel';
 
   return {
     ref,
@@ -37,10 +36,7 @@ export const endpointsFor = (source: ContainerSource): ContainerEndpoints => {
       messagesApi.uploadMedia({ ...payload, ...ref } as never) as Promise<MessageDoc>,
     sendContent: (body) =>
       messagesApi.sendRichContent({ ...(body as object), ...ref } as never),
-    markRead: () =>
-      isChannel
-        ? channelsApi.markRead(ref.container_id)
-        : messagesApi.markConversationRead(ref.container_id),
+    markRead: () => messagesApi.markContainerRead(ref),
     queryKey: messageQueryKey(ref),
     threadQueryKey: (rootMessageId: string) => threadMessageQueryKey(ref, rootMessageId),
   };

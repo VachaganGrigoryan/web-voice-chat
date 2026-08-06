@@ -5,7 +5,7 @@ import { toast } from 'sonner';
 
 import { messagesApi } from '@/api/endpoints';
 import { resolveMessageContent } from '@/api/messageContent';
-import type { MessageDoc } from '@/api/types';
+import type { MessageContainerRef, MessageDoc } from '@/api/types';
 import { extractApiError } from '@/api/errors';
 import { Button } from '@/components/ui/Button';
 import {
@@ -20,11 +20,11 @@ import { formatMessageDateTime, getBrowserTimeZone } from '@/utils/dateUtils';
 interface ScheduledMessagesDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  conversationId: string;
+  container: MessageContainerRef;
 }
 
-const scheduledKey = (conversationId: string) =>
-  ['scheduled-messages', conversationId] as const;
+const scheduledKey = (container: MessageContainerRef) =>
+  ['scheduled-messages', container.container_type, container.container_id] as const;
 
 /** Minimum `datetime-local` value: one minute from now, in the user's timezone. */
 function minLocalDateTime(): string {
@@ -36,15 +36,15 @@ function minLocalDateTime(): string {
 export function ScheduledMessagesDialog({
   open,
   onOpenChange,
-  conversationId,
+  container,
 }: ScheduledMessagesDialogProps) {
   const queryClient = useQueryClient();
   const [text, setText] = useState('');
   const [when, setWhen] = useState('');
 
   const scheduledQuery = useQuery({
-    queryKey: scheduledKey(conversationId),
-    queryFn: () => messagesApi.getScheduledMessages(conversationId),
+    queryKey: scheduledKey(container),
+    queryFn: () => messagesApi.getScheduledMessages(container),
     enabled: open,
   });
 
@@ -56,12 +56,12 @@ export function ScheduledMessagesDialog({
   const scheduleMutation = useMutation({
     mutationFn: () => {
       const iso = new Date(when).toISOString();
-      return messagesApi.scheduleMessage(conversationId, text.trim(), iso);
+      return messagesApi.scheduleMessage(container, text.trim(), iso);
     },
     onSuccess: () => {
       setText('');
       setWhen('');
-      queryClient.invalidateQueries({ queryKey: scheduledKey(conversationId) });
+      queryClient.invalidateQueries({ queryKey: scheduledKey(container) });
       toast.success('Message scheduled');
     },
     onError: (error) => {
@@ -71,9 +71,9 @@ export function ScheduledMessagesDialog({
 
   const cancelMutation = useMutation({
     mutationFn: (messageId: string) =>
-      messagesApi.cancelScheduledMessage(conversationId, messageId),
+      messagesApi.cancelScheduledMessage(messageId),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: scheduledKey(conversationId) });
+      queryClient.invalidateQueries({ queryKey: scheduledKey(container) });
     },
     onError: (error) => {
       toast.error(extractApiError(error, 'Could not cancel message'));
