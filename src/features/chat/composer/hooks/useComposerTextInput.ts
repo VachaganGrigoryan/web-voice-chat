@@ -22,7 +22,8 @@ export function useComposerTextInput({
   enableDraft = false,
 }: UseComposerTextInputParams) {
   const containerId = container.container_id;
-  const isConversation = container.container_type === 'conversation';
+  const containerType = container.container_type;
+  const isConversation = containerType === 'conversation';
 
   const [text, setText] = useState('');
   const [isFocused, setIsFocused] = useState(false);
@@ -80,16 +81,20 @@ export function useComposerTextInput({
 
   const emitTypingStart = () => {
     const socket = getSocket();
-    // The typing events carry a conversation_id and the server resolves
-    // participants from it, so they do not apply to channels.
-    if (!isConversation) return;
-    socket?.emit(EVENTS.CLIENT_TYPING_START, { conversation_id: containerId });
+    if (!containerId) return;
+    socket?.emit(EVENTS.CLIENT_TYPING_START, {
+      container_type: containerType,
+      container_id: containerId,
+    });
   };
 
   const emitTypingStop = () => {
     const socket = getSocket();
-    if (!isConversation) return;
-    socket?.emit(EVENTS.CLIENT_TYPING_STOP, { conversation_id: containerId });
+    if (!containerId) return;
+    socket?.emit(EVENTS.CLIENT_TYPING_STOP, {
+      container_type: containerType,
+      container_id: containerId,
+    });
   };
 
   const resetTypingTimeout = () => {

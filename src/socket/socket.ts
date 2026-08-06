@@ -17,6 +17,7 @@ import {
   ThreadSummary,
 } from '@/api/types';
 import { resolveMessageContent } from '@/api/messageContent';
+import { resetContainerUnreadCount } from '@/container/messageCache';
 import { socketClient } from './socketClient';
 import { useAuthStore } from '@/store/authStore';
 import { messageQueryKey, threadMessageQueryKey } from '@/api/queryKeys';
@@ -159,12 +160,14 @@ const setupSocketSync = () => {
     });
 
     socket.on(EVENTS.SERVER_TYPING_START, (payload: any) => {
-      const typingKey = payload.conversation_id || payload.from || payload.sender_id;
+      const typingKey =
+        payload.container_id || payload.conversation_id || payload.from || payload.sender_id;
       if (typingKey) setTypingUser(typingKey, true);
     });
 
     socket.on(EVENTS.SERVER_TYPING_STOP, (payload: any) => {
-      const typingKey = payload.conversation_id || payload.from || payload.sender_id;
+      const typingKey =
+        payload.container_id || payload.conversation_id || payload.from || payload.sender_id;
       if (typingKey) setTypingUser(typingKey, false);
     });
   });
@@ -927,12 +930,12 @@ export const useTypingIndicator = (userId?: string) => {
   
   const isTyping = userId ? !!typingUsers[userId] : false;
   
-  const startTyping = (conversationId: string) => {
-    socket?.emit(EVENTS.CLIENT_TYPING_START, { conversation_id: conversationId });
+  const startTyping = (container: MessageContainerRef) => {
+    socket?.emit(EVENTS.CLIENT_TYPING_START, container);
   };
 
-  const stopTyping = (conversationId: string) => {
-    socket?.emit(EVENTS.CLIENT_TYPING_STOP, { conversation_id: conversationId });
+  const stopTyping = (container: MessageContainerRef) => {
+    socket?.emit(EVENTS.CLIENT_TYPING_STOP, container);
   };
 
   return { isTyping, typingUsers, startTyping, stopTyping };
@@ -1138,6 +1141,16 @@ export const useRealtimeMessages = (
       queryClient.invalidateQueries({ queryKey: ['members', conversationId] });
     };
 
+    /** A channel read on one of this user's devices, applied to the rest. */
+    const handleChannelRead = (payload: { container_id?: string; channel_id?: string }) => {
+      const channelId = payload?.container_id ?? payload?.channel_id;
+      if (!channelId) return;
+      resetContainerUnreadCount(queryClient, {
+        container_type: 'channel',
+        container_id: channelId,
+      });
+    };
+
     socket.on(EVENTS.RECEIVE_MESSAGE, handleReceiveMessage);
     socket.on(EVENTS.MESSAGE_STATUS, handleMessageStatus);
     socket.on(EVENTS.MESSAGE_EDITED, handleMessageEdited);
@@ -1148,6 +1161,7 @@ export const useRealtimeMessages = (
     socket.on(EVENTS.THREAD_SUMMARY_UPDATED, handleThreadSummaryUpdated);
     socket.on(EVENTS.CONVERSATION_PINS_UPDATED, handleConversationPinsUpdated);
     socket.on(EVENTS.CONVERSATION_HISTORY_CLEARED, handleConversationHistoryCleared);
+    socket.on(EVENTS.CHANNEL_READ, handleChannelRead);
 
     return () => {
       socket.off(EVENTS.RECEIVE_MESSAGE, handleReceiveMessage);
@@ -1160,6 +1174,7 @@ export const useRealtimeMessages = (
       socket.off(EVENTS.THREAD_SUMMARY_UPDATED, handleThreadSummaryUpdated);
       socket.off(EVENTS.CONVERSATION_PINS_UPDATED, handleConversationPinsUpdated);
       socket.off(EVENTS.CONVERSATION_HISTORY_CLEARED, handleConversationHistoryCleared);
+      socket.off(EVENTS.CHANNEL_READ, handleChannelRead);
     };
   }, [queryClient, currentUserId, socket, selectedUser, selectedContainer, openThreadRootId]);
 };

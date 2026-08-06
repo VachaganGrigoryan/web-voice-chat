@@ -37,15 +37,18 @@ export function useAudioRecorderController({
 
   const emitTypingStart = () => {
     const socket = getSocket();
-    // Typing events are conversation-scoped on the server.
-    if (container.container_type !== 'conversation') return;
-    socket?.emit(EVENTS.CLIENT_TYPING_START, { conversation_id: container.container_id });
+    socket?.emit(EVENTS.CLIENT_TYPING_START, {
+      container_type: container.container_type,
+      container_id: container.container_id,
+    });
   };
 
   const emitTypingStop = () => {
     const socket = getSocket();
-    if (container.container_type !== 'conversation') return;
-    socket?.emit(EVENTS.CLIENT_TYPING_STOP, { conversation_id: container.container_id });
+    socket?.emit(EVENTS.CLIENT_TYPING_STOP, {
+      container_type: container.container_type,
+      container_id: container.container_id,
+    });
   };
 
   useEffect(() => {
