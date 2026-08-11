@@ -135,7 +135,7 @@ export interface ContainerCapabilities {
   readonly canEditAny: boolean;
   readonly canDeleteOwn: boolean;
   readonly canDeleteAny: boolean;
-  /** Always false for channels: the backend rejects pinning a channel message. */
+  /** Resolved for both container types: a channel tracks a pinned set of its own. */
   readonly canPin: boolean;
   /** Always false for channels: forward targets must be conversations. */
   readonly canForward: boolean;
@@ -173,7 +173,12 @@ export type ContainerPolicyEcho =
  *
  * Marking a container read is deliberately NOT here — channels have their own
  * read endpoint and unread count, so it lives on `endpoints.markRead`. What is
- * genuinely conversation-shaped is the per-message delivery/read receipt.
+ * genuinely conversation-shaped is the per-message delivery/read receipt, and
+ * the acknowledgement that tells the other participants about it.
+ *
+ * Typing is on this group for a conversation's own use, but it is not
+ * conversation-only: a channel relays typing to its room, so the composer emits
+ * it container-generically rather than through here.
  */
 export interface ConversationOnlyAffordances {
   readonly typing: {
@@ -184,6 +189,13 @@ export interface ConversationOnlyAffordances {
   readonly receipts: {
     readonly enabled: boolean;
     readonly markDelivered: (messageId: string) => Promise<unknown>;
+    /** Per-message read, carrying the container envelope the server expects. */
+    readonly markRead: (
+      messageIds: readonly string[],
+      scope?: { readonly threadRootId?: string | null }
+    ) => void;
+    /** Container-level "I have caught up", announced to the other participants. */
+    readonly acknowledgeContainerRead: () => void;
   };
   readonly drafts: {
     readonly value: string | null;
@@ -235,8 +247,11 @@ export interface ContainerEnvelope {
 export interface ContainerRealtime {
   readonly matchesMessage: (event: ContainerEnvelope) => boolean;
   readonly matchesStatus: (event: ContainerEnvelope) => boolean;
-  /** Always false for channels — the server has no channel typing event. */
   readonly matchesTyping: (event: ContainerEnvelope) => boolean;
+  /**
+   * Always false for a channel: `conversation_read` announces to participants
+   * that one of them caught up, and a channel's read is a personal event.
+   */
   readonly matchesRead: (event: ContainerEnvelope) => boolean;
   readonly matchesPins: (event: ContainerEnvelope) => boolean;
   /** Every container delivers live now: channels broadcast to their own room. */

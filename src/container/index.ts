@@ -48,6 +48,7 @@ export type { PolicyThreshold, StandingRank, ViewerStanding } from './policy';
 export {
   containerQueryKeys,
   defaultLensFor,
+  realtimeFor,
   refOf,
   resolveContainer,
 } from './resolveContainer';
@@ -65,6 +66,7 @@ export {
   removeConversationRow,
   resetContainerUnreadCount,
   toggleLocalReactionGroups,
+  updateContainerPinnedMessages,
   updateConversationActivity,
   updateConversationPreview,
   updateMessageAcrossGroup,

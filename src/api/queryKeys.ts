@@ -32,6 +32,9 @@ export const containerKeys = {
   threadsRoot: ['threadMessages'] as const,
   messages: messageQueryKey,
   thread: threadMessageQueryKey,
+  /** The pinned previews for a container. Both container types have a pinned set. */
+  pinned: (container: MessageContainerRef) =>
+    ['pinned-messages', container.container_type, container.container_id] as const,
   /** Every cache group one container owns — the unit of container-level invalidation. */
   allFor: (container: MessageContainerRef) =>
     [

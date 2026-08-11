@@ -1,6 +1,11 @@
 import { QueryClient } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { messageQueryKey, threadMessageQueryKey } from '@/api/queryKeys';
+import {
+  channelKeys,
+  inboxKeys,
+  messageQueryKey,
+  threadMessageQueryKey,
+} from '@/api/queryKeys';
 import type { FeedPostView, MessageContainerRef, MessageDoc } from '@/api/types';
 import {
   applyReactionUpdate,
@@ -13,6 +18,7 @@ import {
   removeConversationRow,
   resetContainerUnreadCount,
   toggleLocalReactionGroups,
+  updateContainerPinnedMessages,
   updateConversationActivity,
   updateMessageEverywhere,
   updateThreadRootSummary,
@@ -421,5 +427,71 @@ describe('resetContainerUnreadCount', () => {
 
   it('is a no-op when the cache has not been populated yet', () => {
     expect(() => resetContainerUnreadCount(queryClient, CHANNEL)).not.toThrow();
+  });
+});
+
+describe('updateContainerPinnedMessages', () => {
+  it('writes the conversation row and its detail under the keys their readers use', () => {
+    queryClient.setQueryData(['conversations'], {
+      pages: [
+        {
+          data: [
+            { id: 'cv_1', conversation_id: 'cv_1', pinned_message_ids: [] },
+            { id: 'cv_2', conversation_id: 'cv_2', pinned_message_ids: ['m_9'] },
+          ],
+        },
+      ],
+      pageParams: [undefined],
+    });
+    queryClient.setQueryData(inboxKeys.conversation('cv_1'), {
+      id: 'cv_1',
+      pinned_message_ids: [],
+    });
+
+    updateContainerPinnedMessages(queryClient, CONVERSATION, ['m_1', 'm_2']);
+
+    const rows = queryClient.getQueryData<{
+      pages: Array<{ data: Array<{ id: string; pinned_message_ids: string[] }> }>;
+    }>(['conversations']);
+    expect(rows?.pages[0].data[0].pinned_message_ids).toEqual(['m_1', 'm_2']);
+    expect(rows?.pages[0].data[1].pinned_message_ids).toEqual(['m_9']);
+    expect(
+      queryClient.getQueryData<{ pinned_message_ids: string[] }>(
+        inboxKeys.conversation('cv_1')
+      )?.pinned_message_ids
+    ).toEqual(['m_1', 'm_2']);
+  });
+
+  it('writes a channel pinned set to the channel detail useContainer resolves from', () => {
+    queryClient.setQueryData(channelKeys.detail('ch_1'), {
+      id: 'ch_1',
+      pinned_message_ids: [],
+    });
+
+    updateContainerPinnedMessages(queryClient, CHANNEL, ['m_3']);
+
+    expect(
+      queryClient.getQueryData<{ pinned_message_ids: string[] }>(channelKeys.detail('ch_1'))
+        ?.pinned_message_ids
+    ).toEqual(['m_3']);
+  });
+
+  it('leaves the conversation list alone for a channel pin', () => {
+    const rows = {
+      pages: [{ data: [{ id: 'cv_1', conversation_id: 'cv_1', pinned_message_ids: [] }] }],
+      pageParams: [undefined],
+    };
+    queryClient.setQueryData(['conversations'], rows);
+
+    updateContainerPinnedMessages(queryClient, CHANNEL, ['m_3']);
+
+    expect(queryClient.getQueryData(['conversations'])).toBe(rows);
+  });
+
+  it('is a no-op when the container has never been fetched', () => {
+    expect(() =>
+      updateContainerPinnedMessages(queryClient, CHANNEL, ['m_3'])
+    ).not.toThrow();
+    expect(queryClient.getQueryData(channelKeys.detail('ch_1'))).toBeUndefined();
   });
 });

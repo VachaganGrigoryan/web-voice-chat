@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Channel, Conversation, MessageDoc, PaginatedResponse } from '@/api/types';
 import { fromPolicy } from './capabilities';
-import { refOf, resolveContainer } from './resolveContainer';
+import { realtimeFor, refOf, resolveContainer } from './resolveContainer';
 import type {
   ContainerEndpoints,
   ContainerSource,
@@ -223,10 +223,36 @@ describe('realtime predicates', () => {
     ).toBe(false);
   });
 
-  it('never matches typing for a channel', () => {
+  it('matches typing for a channel, which relays it to its own room', () => {
     expect(
       realtime.matchesTyping({ container_type: 'channel', container_id: 'ch_1' })
+    ).toBe(true);
+  });
+
+  it('matches pins for a channel, which tracks a pinned set of its own', () => {
+    expect(
+      realtime.matchesPins({ container_type: 'channel', container_id: 'ch_1' })
+    ).toBe(true);
+  });
+
+  it('never matches a conversation read for a channel', () => {
+    expect(
+      realtime.matchesRead({ container_type: 'channel', container_id: 'ch_1' })
     ).toBe(false);
+    expect(
+      resolve(conversation(), 'timeline').realtime.matchesRead({
+        container_type: 'conversation',
+        container_id: 'cv_1',
+      })
+    ).toBe(true);
+  });
+
+  it('agrees with the standalone factory a socket handler uses', () => {
+    const standalone = realtimeFor({ container_type: 'channel', container_id: 'ch_1' });
+    const event = { container_type: 'channel', container_id: 'ch_1' };
+    expect(standalone.matchesMessage(event)).toBe(realtime.matchesMessage(event));
+    expect(standalone.matchesPins(event)).toBe(realtime.matchesPins(event));
+    expect(standalone.matchesRead(event)).toBe(realtime.matchesRead(event));
   });
 
   it('tolerates the legacy conversation_id mirror', () => {

@@ -1,7 +1,5 @@
 import { useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { EVENTS } from '@/socket/events';
-import { useSocketStore } from '@/socket/socket';
 import { resetContainerUnreadCount } from './messageCache';
 import type { ContainerDescriptor } from './types';
 
@@ -12,7 +10,6 @@ import type { ContainerDescriptor } from './types';
  */
 export function useMarkContainerRead(descriptor: ContainerDescriptor | null) {
   const queryClient = useQueryClient();
-  const socket = useSocketStore((state) => state.socket);
   const containerType = descriptor?.ref.container_type;
   const containerId = descriptor?.ref.container_id;
 
@@ -22,9 +19,9 @@ export function useMarkContainerRead(descriptor: ContainerDescriptor | null) {
     void descriptor.endpoints.markRead();
     resetContainerUnreadCount(queryClient, descriptor.ref);
 
-    if (descriptor.ref.container_type === 'conversation') {
-      socket?.emit(EVENTS.CONVERSATION_READ, { conversation_id: descriptor.ref.container_id });
-    }
+    // Announcing the read to the other participants is conversation-shaped, so
+    // it comes off the affordance group rather than from a type check here.
+    descriptor.conversationOnly?.receipts.acknowledgeContainerRead();
     // Keyed on the container's identity, not the descriptor object, so a
     // capability refresh doesn't re-fire this as a side effect.
   }, [containerType, containerId]);

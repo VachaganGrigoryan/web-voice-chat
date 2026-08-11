@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import type { MessageContainerRef } from '@/api/types';
 
 export interface ChatAudioQueueItem {
   id: string;
@@ -9,6 +10,11 @@ export interface ChatAudioQueueItem {
   createdAt?: string | null;
   isRead?: boolean;
   isMe?: boolean;
+  /**
+   * The message's own container. The player outlives the chat it was opened
+   * from, so it cannot ask the open descriptor what kind of thing this is.
+   */
+  container?: MessageContainerRef;
 }
 
 interface ChatAudioPlayerState {

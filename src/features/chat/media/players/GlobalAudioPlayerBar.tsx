@@ -100,7 +100,16 @@ export function GlobalAudioPlayerBar() {
     const handlePlay = () => {
       setIsPlaying(true);
       if (activeItem && !activeItem.isRead && !hasPlayedMessage(activeItem.id)) {
-        getSocket()?.emit(EVENTS.MESSAGE_READ, { message_id: activeItem.id });
+        // Per-message read is conversation-shaped, and the container says which
+        // this is. Sent bare, the server rejects it for want of a conversation.
+        if (activeItem.container?.container_type === 'conversation') {
+          getSocket()?.emit(EVENTS.MESSAGE_READ, {
+            container_type: 'conversation',
+            container_id: activeItem.container.container_id,
+            conversation_id: activeItem.container.container_id,
+            message_id: activeItem.id,
+          });
+        }
         markMessagePlayed(activeItem.id);
       }
     };

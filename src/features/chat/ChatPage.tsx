@@ -2,8 +2,14 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useConversations, useThreadMessages } from '@/hooks/useConversationList';
-import { useContainer, useContainerMessages, useMarkContainerRead } from '@/container';
+import {
+  useContainer,
+  useContainerMessages,
+  useMarkContainerRead,
+  updateContainerPinnedMessages,
+} from '@/container';
 import type { MessageContainerRef } from '@/api/types';
+import { containerKeys } from '@/api/queryKeys';
 import { useConnections } from '@/hooks/useConnections';
 import { useContacts } from '@/hooks/useContacts';
 import { useGroupMembers } from '@/hooks/useGroupManagement';
@@ -34,6 +40,7 @@ import { useChatInteractionState } from './hooks/useChatInteractionState';
 import { useSelectedConversation } from './hooks/useSelectedConversation';
 import { useTimelineViewModel } from './hooks/useTimelineViewModel';
 import { useMessageReadReceipts } from './hooks/useMessageReadReceipts';
+import { useConversationOnly } from './hooks/useConversationOnly';
 import { useThreadPanelLayout } from './hooks/useThreadPanelLayout';
 import { useConversationActions } from './hooks/useConversationActions';
 import { useConversationFolders } from './hooks/useConversationFolders';
@@ -102,8 +109,13 @@ export default function ChatPage() {
     selectedSpaceId
   );
 
+  // Absent for a channel, which is what makes the conversation-only operations
+  // unreachable there rather than guarded at each call site.
+  const conversationOnly = useConversationOnly(container);
+
   const { descriptor, isMissing: isSelectedConversationMissing } = useContainer(container, userId, {
     lens: isChannelContainer && channelLens === 'feed' ? 'feed' : 'timeline',
+    conversationOnly,
   });
   useMarkContainerRead(descriptor);
   const {
@@ -316,8 +328,7 @@ export default function ChatPage() {
   const { highlightedMessageIds, handleVisibleMainMessageIds, handleVisibleThreadMessageIds } =
     useMessageReadReceipts({
       userId,
-      selectedConversationId: container?.container_type === 'conversation' ? selectedUser : null,
-      selectedContainer: container,
+      descriptor,
       selectedThreadRootId,
       mainChatMessages,
       threadReplyMessages,
@@ -348,37 +359,15 @@ export default function ChatPage() {
   );
 
   const handleTogglePinMessage = async () => {
-    if (!activeMessage) return;
-    const pinnedConversationId = activeMessage.chatId;
-    const updatePinnedIds = (pinnedMessageIds: string[]) => {
-      queryClient.setQueryData(['conversations'], (old: any) => {
-        if (!old?.pages) return old;
-        return {
-          ...old,
-          pages: old.pages.map((page: any) => ({
-            ...page,
-            data: page.data.map((conversation: any) =>
-              conversation.conversation_id === pinnedConversationId || conversation.id === pinnedConversationId
-                ? { ...conversation, pinned_message_ids: pinnedMessageIds }
-                : conversation
-            ),
-          })),
-        };
-      });
-
-      queryClient.setQueryData(['conversation', pinnedConversationId], (old: any) => {
-        if (!old) return old;
-        return { ...old, pinned_message_ids: pinnedMessageIds };
-      });
-    };
+    if (!activeMessage || !container) return;
 
     try {
       const updatedPins = isActiveMessagePinned
         ? await messagesApi.unpinMessage(activeMessage.id)
         : await messagesApi.pinMessage(activeMessage.id);
-      updatePinnedIds(updatedPins.pinned_message_ids);
+      updateContainerPinnedMessages(queryClient, container, updatedPins.pinned_message_ids);
       toast.success(isActiveMessagePinned ? 'Message unpinned' : 'Message pinned');
-      queryClient.invalidateQueries({ queryKey: ['pinned-messages', pinnedConversationId] });
+      queryClient.invalidateQueries({ queryKey: containerKeys.pinned(container) });
     } catch (error) {
       toast.error(extractApiError(error, 'Could not update pin'));
     } finally {

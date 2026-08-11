@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { MessageDoc } from '@/api/types';
+import { MessageContainerRef, MessageDoc } from '@/api/types';
 import { AudioMessage, ChatMessage, ImageMessage } from '../types/message';
 import { parseMessages } from '../utils/messageParser';
 import { buildChatRenderItems } from '../utils/mediaGroupUtils';
@@ -23,6 +23,15 @@ const byCreatedAtAscending = (left: ChatMessage, right: ChatMessage) =>
 
 const getAudioMediaKind = (message: AudioMessage): 'voice' | 'audio' =>
   message.media?.kind === 'audio' ? 'audio' : 'voice';
+
+/** Carried onto the audio queue so the global player knows what it is playing from. */
+const containerOfMessage = (message: ChatMessage): MessageContainerRef | undefined =>
+  message.raw
+    ? {
+        container_type: message.raw.container_type,
+        container_id: message.raw.container_id,
+      }
+    : undefined;
 
 /**
  * Turns `MessageDoc` pages into `ChatMessage` render items. Container-agnostic
@@ -106,6 +115,7 @@ export function useTimelineViewModel({
           createdAt: message.createdAt,
           isRead: message.status === 'read',
           isMe: message.isOwn,
+          container: containerOfMessage(message),
         })),
     [mainChatMessages]
   );
@@ -131,6 +141,7 @@ export function useTimelineViewModel({
         createdAt: message.createdAt,
         isRead: message.status === 'read',
         isMe: message.isOwn,
+        container: containerOfMessage(message),
       }));
   }, [orderedThreadMessages, selectedThreadRootId, selectedThreadRootMessage]);
 

@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 
 import { messagesApi } from '@/api/endpoints';
 import { resolveMessageContent } from '@/api/messageContent';
+import { containerKeys } from '@/api/queryKeys';
 import type { MessageContainerRef, MessageDoc } from '@/api/types';
 import { extractApiError } from '@/api/errors';
 import { cn } from '@/lib/utils';
@@ -19,8 +20,7 @@ interface PinnedMessagesBarProps {
   onSelectMessage?: (messageId: string) => void;
 }
 
-const pinnedKey = (container: MessageContainerRef) =>
-  ['pinned-messages', container.container_type, container.container_id] as const;
+const pinnedKey = containerKeys.pinned;
 
 function previewText(message: MessageDoc): string {
   const resolved = resolveMessageContent(message);

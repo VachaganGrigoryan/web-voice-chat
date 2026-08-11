@@ -1,61 +1,64 @@
 import { useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { applyMessageStatusUpdateToCaches, MessageStatusPayload, useSocketStore } from '@/socket/socket';
-import { EVENTS } from '@/socket/events';
-import type { MessageContainerRef } from '@/api/types';
+import { applyMessageStatusUpdateToCaches, MessageStatusPayload } from '@/socket/socket';
+import type { ContainerDescriptor } from '@/container';
 import { ChatMessage } from '../types/message';
 
 /**
  * Per-message delivery/read receipts. Conversation-only: channels have no
  * per-recipient receipt concept, only a container-level unread count, which
  * is handled generically by `useMarkContainerRead` instead.
+ *
+ * That "conversation-only" is not asserted here — it is the descriptor's
+ * `conversationOnly` group being absent for a channel, so the emit is
+ * unreachable rather than guarded.
  */
 export function useMessageReadReceipts({
   userId,
-  selectedConversationId,
-  selectedContainer,
+  descriptor,
   selectedThreadRootId,
   mainChatMessages,
   threadReplyMessages,
 }: {
   userId?: string | null;
-  selectedConversationId: string | null;
-  selectedContainer: MessageContainerRef | null;
+  descriptor: ContainerDescriptor | null;
   selectedThreadRootId: string | null;
   mainChatMessages: ChatMessage[];
   threadReplyMessages: ChatMessage[];
 }) {
   const queryClient = useQueryClient();
-  const socket = useSocketStore((state) => state.socket);
   const [highlightedMessageIds, setHighlightedMessageIds] = useState<Set<string>>(new Set());
   const mainReadEmittedMessagesRef = useRef<Set<string>>(new Set());
   const threadReadEmittedMessagesRef = useRef<Set<string>>(new Set());
+
+  const receipts = descriptor?.conversationOnly?.receipts ?? null;
+  const containerId = descriptor?.ref.container_id ?? null;
 
   useEffect(() => {
     mainReadEmittedMessagesRef.current.clear();
     threadReadEmittedMessagesRef.current.clear();
     setHighlightedMessageIds(new Set());
-  }, [selectedConversationId]);
+  }, [containerId]);
 
   useEffect(() => {
     threadReadEmittedMessagesRef.current.clear();
   }, [selectedThreadRootId]);
 
-  const emitMessageRead = (messageIds: string[], payload: MessageStatusPayload) => {
-    if (!messageIds.length) return;
+  const emitMessageRead = (
+    messageIds: string[],
+    payload: Omit<MessageStatusPayload, 'container_type' | 'container_id'>
+  ) => {
+    if (!messageIds.length || !receipts || !descriptor) return;
 
-    if (socket) {
-      messageIds.forEach((messageId) => {
-        socket.emit(EVENTS.MESSAGE_READ, {
-          container_type: payload.container_type,
-          container_id: payload.container_id,
-          conversation_id: payload.conversation_id,
-          message_id: messageId,
-        });
-      });
-    }
+    receipts.markRead(messageIds, { threadRootId: payload.thread_root_id ?? null });
 
-    applyMessageStatusUpdateToCaches(queryClient, payload);
+    applyMessageStatusUpdateToCaches(queryClient, {
+      ...payload,
+      // The container says what it is; the caches match on it, so a literal
+      // here would silently miss every message it was meant to update.
+      container_type: descriptor.ref.container_type,
+      container_id: descriptor.ref.container_id,
+    } as MessageStatusPayload);
   };
 
   const highlightReadMessages = (messageIds: string[]) => {
@@ -77,7 +80,7 @@ export function useMessageReadReceipts({
   };
 
   const handleVisibleMainMessageIds = (visibleMessageIds: string[]) => {
-    if (!socket || !selectedConversationId || !visibleMessageIds.length) {
+    if (!receipts || !visibleMessageIds.length) {
       return;
     }
 
@@ -98,9 +101,6 @@ export function useMessageReadReceipts({
     visibleIds.forEach((id) => mainReadEmittedMessagesRef.current.add(id));
 
     emitMessageRead(visibleIds, {
-      container_type: 'conversation',
-      container_id:
-        unreadVisibleMessages[0].raw?.container_id ?? selectedContainer?.container_id,
       conversation_id: unreadVisibleMessages[0]?.chatId,
       message_ids: visibleIds,
       status: 'read',
@@ -111,13 +111,7 @@ export function useMessageReadReceipts({
   };
 
   const handleVisibleThreadMessageIds = (visibleMessageIds: string[]) => {
-    if (
-      !socket ||
-      !selectedConversationId ||
-      !selectedThreadRootId ||
-      selectedContainer?.container_type !== 'conversation' ||
-      !visibleMessageIds.length
-    ) {
+    if (!receipts || !selectedThreadRootId || !visibleMessageIds.length) {
       return;
     }
 
@@ -136,9 +130,7 @@ export function useMessageReadReceipts({
     unreadIds.forEach((id) => threadReadEmittedMessagesRef.current.add(id));
 
     emitMessageRead(unreadIds, {
-      container_type: 'conversation',
-      container_id: selectedContainer.container_id,
-      conversation_id: selectedContainer.container_id,
+      conversation_id: containerId ?? undefined,
       thread_root_id: selectedThreadRootId,
       message_ids: unreadIds,
       status: 'read',

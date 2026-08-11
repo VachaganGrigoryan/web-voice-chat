@@ -1,6 +1,11 @@
 import type { QueryClient } from '@tanstack/react-query';
 import { resolveMessageContent } from '@/api/messageContent';
-import { messageQueryKey, threadMessageQueryKey } from '@/api/queryKeys';
+import {
+  channelKeys,
+  inboxKeys,
+  messageQueryKey,
+  threadMessageQueryKey,
+} from '@/api/queryKeys';
 import type {
   FeedPostView,
   MessageContainerRef,
@@ -270,6 +275,7 @@ interface ConversationRow {
   last_message?: { id?: string } | null;
   last_message_at?: string | null;
   unread_count?: number;
+  pinned_message_ids?: string[];
 }
 
 interface InfiniteConversations {
@@ -371,6 +377,37 @@ export const resetContainerUnreadCount = (
   mapConversations(queryClient, (row) =>
     row.conversation_id === container.container_id || row.id === container.container_id
       ? { ...row, unread_count: 0 }
+      : row
+  );
+};
+
+/**
+ * Applies a container's new pinned set to whichever caches hold it.
+ *
+ * The pinned bar keys itself on the id set it is given, so the container's own
+ * record is what has to change — invalidating the bar alone would refetch the
+ * same list. A conversation keeps that record in the inbox row and its detail;
+ * a channel keeps it in the detail `useContainer` resolves its source from.
+ */
+export const updateContainerPinnedMessages = (
+  queryClient: QueryClient,
+  container: MessageContainerRef,
+  pinnedMessageIds: string[]
+): void => {
+  const detailKey =
+    container.container_type === 'channel'
+      ? channelKeys.detail(container.container_id)
+      : inboxKeys.conversation(container.container_id);
+
+  queryClient.setQueryData<{ pinned_message_ids?: string[] }>(detailKey, (old) =>
+    old ? { ...old, pinned_message_ids: pinnedMessageIds } : old
+  );
+
+  if (container.container_type === 'channel') return;
+
+  mapConversations(queryClient, (row) =>
+    row.conversation_id === container.container_id || row.id === container.container_id
+      ? { ...row, pinned_message_ids: pinnedMessageIds }
       : row
   );
 };
