@@ -26,10 +26,9 @@ import {
   usePresence,
   useRealtimeMessages,
   useSocket,
-  useSocketStore,
   useTypingIndicator,
 } from '@/socket/socket';
-import { EVENTS } from '@/socket/events';
+import { useChannelRooms } from '@/socket/useChannelRooms';
 import { startCall, useCallStore } from '@/features/calls/callController';
 import { useNotificationSoundStore } from '@/utils/notificationSound';
 import { NotificationLevel, ROLE_ADMIN, ROLE_MODERATOR } from '@/api/types';
@@ -81,7 +80,6 @@ export default function ChatPage() {
   const queryClient = useQueryClient();
   const dialogs = useChatDialogs();
   const { userId } = useAuthStore();
-  const { socket } = useSocketStore();
   const activeSpaceId = useActiveSpace((state) => state.activeSpaceId);
   const setActiveSpaceId = useActiveSpace((state) => state.setActiveSpaceId);
   const selectedSpaceId = routeSpaceId ?? activeSpaceId;
@@ -90,14 +88,10 @@ export default function ChatPage() {
   useRealtimeMessages(container, selectedThreadRootId);
 
   // Channels broadcast over a per-channel Socket.IO room rather than the
-  // per-user rooms conversations use, so viewing one requires subscribing.
-  useEffect(() => {
-    if (!socket || !isChannelContainer || !selectedUser) return;
-    socket.emit(EVENTS.JOIN_CHANNEL, { channel_id: selectedUser });
-    return () => {
-      socket.emit(EVENTS.LEAVE_CHANNEL, { channel_id: selectedUser });
-    };
-  }, [socket, isChannelContainer, selectedUser]);
+  // per-user rooms conversations use, so viewing one requires subscribing. The
+  // hold is shared with the feed surfaces: leaving the chat must not evict a
+  // room a feed rendering the same channel is still reading from.
+  useChannelRooms(isChannelContainer && selectedUser ? [selectedUser] : []);
 
   const { onlineUsers, presenceByUserId } = usePresence();
   const { isTyping, typingUsers } = useTypingIndicator(selectedUser || undefined);
@@ -762,6 +756,7 @@ export default function ChatPage() {
             audioQueue={threadAudioQueue}
             isMobile={isMobileViewport}
             isMessageMenuOpen={!!activeMessage}
+            showReceipts={descriptor.presentation.showReadReceipts}
             style={{ width: threadPanelWidth }}
             composer={
               displayedThreadRootMessage ? (

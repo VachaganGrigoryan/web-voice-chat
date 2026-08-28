@@ -322,7 +322,7 @@ export function ContainerPane({
                 className="scrollbar-hidden flex-1 overflow-y-auto flex flex-col-reverse p-4 scroll-smooth overscroll-contain"
                 onScroll={(event) => handleScroll(event.currentTarget)}
               >
-                {isTyping ? (
+                {isTyping && descriptor.presentation.showTypingIndicator ? (
                   <div className="self-start mb-2 ml-1 animate-in fade-in slide-in-from-bottom-2 duration-300">
                     <div className="bg-secondary/50 rounded-2xl rounded-tl-none px-4 py-3 text-sm text-muted-foreground flex items-center gap-2 shadow-sm">
                       <div className="flex gap-1">
@@ -350,6 +350,7 @@ export function ContainerPane({
                   isMessageMenuOpen={isMessageMenuOpen}
                   registerMessageElement={registerMessageElement}
                   standaloneSystemMessages
+                  showReceipts={descriptor.presentation.showReadReceipts}
                   getBubbleFooter={(message) =>
                     message.isThreadRoot || message.threadReplyCount > 0 ? (
                       <ThreadReplyBadge message={message} onOpenThread={() => onOpenThread(message)} />

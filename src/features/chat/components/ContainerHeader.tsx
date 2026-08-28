@@ -647,7 +647,7 @@ export function ContainerHeader({
           subtitle={
             // Presence is a peer property: a group and a channel show what they
             // are instead, which the descriptor's identity already carries.
-            isTyping ? (
+            isTyping && descriptor.presentation.showTypingIndicator ? (
               <span className="text-primary font-medium animate-pulse">Typing...</span>
             ) : isDirectMessage ? (
               isGhost ? 'Reconnect required' : presenceLabel

@@ -140,9 +140,12 @@ const buildPresentation = (
     threadDisplay: 'side-panel',
     composer: capabilities.canPost ? 'inline-bar' : 'none',
     groupConsecutive: true,
-    // Receipts and typing are conversation-shaped; a channel has neither.
+    // Receipts are conversation-shaped; a channel has followers, not a
+    // recipient roster, so it can produce no per-message receipt. Typing is
+    // container-generic — a channel relays it to its room the same way it
+    // relays messages.
     showReadReceipts: source.kind === 'conversation',
-    showTypingIndicator: source.kind === 'conversation',
+    showTypingIndicator: true,
     emptyState,
   };
 };

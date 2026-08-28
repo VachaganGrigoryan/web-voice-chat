@@ -148,10 +148,10 @@ describe('presentation follows the lens', () => {
     expect(resolve(source, 'feed', STRANGER).presentation.composer).toBe('none');
   });
 
-  it('never shows receipts or typing for a channel', () => {
+  it('never shows receipts for a channel, but does show typing', () => {
     const { presentation } = resolve(channel(), 'timeline');
     expect(presentation.showReadReceipts).toBe(false);
-    expect(presentation.showTypingIndicator).toBe(false);
+    expect(presentation.showTypingIndicator).toBe(true);
   });
 
   it('shows receipts and typing for a conversation timeline', () => {

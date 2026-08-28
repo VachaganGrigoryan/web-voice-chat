@@ -2,6 +2,7 @@ import type { QueryClient } from '@tanstack/react-query';
 import { resolveMessageContent } from '@/api/messageContent';
 import {
   channelKeys,
+  feedKeys,
   inboxKeys,
   messageQueryKey,
   threadMessageQueryKey,
@@ -199,6 +200,22 @@ export const findCachedFeedPost = (
   }
 
   return null;
+};
+
+/**
+ * Refetch every cache that projects a channel's messages as posts.
+ *
+ * A comment is a thread reply and a post is a root message, so one channel event
+ * can change a feed list, a post's comment list and a post's comment count at
+ * once — which of them is on screen is not the emitting handler's business.
+ */
+export const invalidateChannelFeeds = (
+  queryClient: QueryClient,
+  channelId: string
+): void => {
+  queryClient.invalidateQueries({ queryKey: feedKeys.all });
+  queryClient.invalidateQueries({ queryKey: feedKeys.channel(channelId) });
+  queryClient.invalidateQueries({ queryKey: feedKeys.postCommentsIn(channelId) });
 };
 
 export const applyReactionUpdateToFeeds = (

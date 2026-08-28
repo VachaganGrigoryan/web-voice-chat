@@ -14,6 +14,7 @@ import {
   containerIdOf,
   findCachedFeedPost,
   integrateCreatedMessage,
+  invalidateChannelFeeds,
   prependMessage,
   removeConversationRow,
   resetContainerUnreadCount,
@@ -201,6 +202,34 @@ describe('applyReactionUpdateToFeeds', () => {
     applyReactionUpdateToFeeds(queryClient, 'p_1', thumbsUp);
 
     expect(queryClient.getQueryData(['channel-feed', 'ch_1'])).toBe(cache);
+  });
+});
+
+describe('invalidateChannelFeeds', () => {
+  const isStale = (queryKey: readonly unknown[]) =>
+    queryClient.getQueryState(queryKey)?.isInvalidated ?? false;
+
+  it('marks every projection of the channel stale, including a post it was not told about', () => {
+    queryClient.setQueryData(['feeds', 'home'], { pages: [] });
+    queryClient.setQueryData(['channel-feed', 'ch_1'], { pages: [] });
+    // The handler knows the channel a comment arrived in, not which post it hangs off.
+    queryClient.setQueryData(['post-comments', 'ch_1', 'p_1'], { data: [] });
+
+    invalidateChannelFeeds(queryClient, 'ch_1');
+
+    expect(isStale(['feeds', 'home'])).toBe(true);
+    expect(isStale(['channel-feed', 'ch_1'])).toBe(true);
+    expect(isStale(['post-comments', 'ch_1', 'p_1'])).toBe(true);
+  });
+
+  it('leaves another channel alone', () => {
+    queryClient.setQueryData(['channel-feed', 'ch_2'], { pages: [] });
+    queryClient.setQueryData(['post-comments', 'ch_2', 'p_2'], { data: [] });
+
+    invalidateChannelFeeds(queryClient, 'ch_1');
+
+    expect(isStale(['channel-feed', 'ch_2'])).toBe(false);
+    expect(isStale(['post-comments', 'ch_2', 'p_2'])).toBe(false);
   });
 });
 

@@ -176,16 +176,12 @@ export type ContainerPolicyEcho =
  * genuinely conversation-shaped is the per-message delivery/read receipt, and
  * the acknowledgement that tells the other participants about it.
  *
- * Typing is on this group for a conversation's own use, but it is not
- * conversation-only: a channel relays typing to its room, so the composer emits
- * it container-generically rather than through here.
+ * Typing is not here either, though it started out on this group: a channel
+ * relays typing to its room the same way a conversation does, so the composer
+ * emits it container-generically for both, and this group would only be dead
+ * weight.
  */
 export interface ConversationOnlyAffordances {
-  readonly typing: {
-    readonly start: () => void;
-    readonly stop: () => void;
-    readonly typingUserIds: readonly string[];
-  };
   readonly receipts: {
     readonly enabled: boolean;
     readonly markDelivered: (messageId: string) => Promise<unknown>;

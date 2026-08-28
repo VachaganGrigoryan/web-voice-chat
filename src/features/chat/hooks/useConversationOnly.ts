@@ -12,7 +12,8 @@ import { useSocketStore } from '@/socket/socket';
  *
  * Returns `null` for a channel so the descriptor's `conversationOnly` is absent
  * rather than a bag of disabled flags — a channel cannot then accidentally
- * render a draft box or a typing indicator.
+ * render a draft box or a receipt it has no data for. Typing is not part of
+ * this group; both container types relay it the same way.
  *
  * Marking a container read is deliberately NOT here: channels have their own
  * read endpoint and unread count, so that lives on `descriptor.endpoints.markRead`.
@@ -52,9 +53,6 @@ export function useConversationOnly(
   const peerPresence = useSocketStore((state) =>
     peerUserId ? state.presenceByUserId?.[peerUserId]?.state ?? null : null
   );
-  const typingHere = useSocketStore((state) =>
-    conversationId ? state.typingUsers?.[conversationId] : undefined
-  );
 
   const saveDraft = useMutation({
     mutationFn: (text: string) =>
@@ -87,11 +85,6 @@ export function useConversationOnly(
     if (!conversationId) return null;
 
     return {
-      typing: {
-        start: () => socket?.emit('typing_start', { conversation_id: conversationId }),
-        stop: () => socket?.emit('typing_stop', { conversation_id: conversationId }),
-        typingUserIds: Object.keys(typingHere ?? {}),
-      },
       receipts: {
         // Receipts are DM and small-group focused by design; a large group's
         // per-recipient state is a summary, not a list.
@@ -139,7 +132,6 @@ export function useConversationOnly(
     conversation,
     draftText,
     socket,
-    typingHere,
     peerUserId,
     peerPresence,
     saveDraftAsync,

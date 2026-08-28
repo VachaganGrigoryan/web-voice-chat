@@ -18,6 +18,8 @@ import {
 } from '@/api/types';
 import { resolveMessageContent } from '@/api/messageContent';
 import {
+  applyReactionUpdateToFeeds,
+  invalidateChannelFeeds,
   resetContainerUnreadCount,
   updateContainerPinnedMessages,
 } from '@/container/messageCache';
@@ -59,12 +61,13 @@ interface SocketState {
   isConnected: boolean;
   onlineUsers: string[];
   presenceByUserId: Record<string, PresenceStatus>;
-  typingUsers: Record<string, boolean>; // userId -> isTyping
+  /** containerId -> the set of user ids currently typing there. */
+  typingUsers: Record<string, Record<string, true>>;
   setSocket: (socket: Socket | null) => void;
   setIsConnected: (isConnected: boolean) => void;
   setOnlineUsers: (users: string[]) => void;
   setPresence: (userId: string, presence: PresenceStatus) => void;
-  setTypingUser: (userId: string, isTyping: boolean) => void;
+  setTypingUser: (containerId: string, userId: string, isTyping: boolean) => void;
 }
 
 export const useSocketStore = create<SocketState>((set) => ({
@@ -93,10 +96,16 @@ export const useSocketStore = create<SocketState>((set) => ({
     set((state) => ({
       presenceByUserId: { ...state.presenceByUserId, [userId]: presence },
     })),
-  setTypingUser: (userId, isTyping) =>
-    set((state) => ({
-      typingUsers: { ...state.typingUsers, [userId]: isTyping },
-    })),
+  setTypingUser: (containerId, userId, isTyping) =>
+    set((state) => {
+      const usersHere = { ...state.typingUsers[containerId] };
+      if (isTyping) {
+        usersHere[userId] = true;
+      } else {
+        delete usersHere[userId];
+      }
+      return { typingUsers: { ...state.typingUsers, [containerId]: usersHere } };
+    }),
 }));
 
 const buildLastMessagePreview = (message: MessageDoc) => {
@@ -165,15 +174,15 @@ const setupSocketSync = () => {
     });
 
     socket.on(EVENTS.SERVER_TYPING_START, (payload: any) => {
-      const typingKey =
-        payload.container_id || payload.conversation_id || payload.from || payload.sender_id;
-      if (typingKey) setTypingUser(typingKey, true);
+      const containerId = payload.container_id || payload.conversation_id;
+      const userId = payload.from || payload.sender_id;
+      if (containerId && userId) setTypingUser(containerId, userId, true);
     });
 
     socket.on(EVENTS.SERVER_TYPING_STOP, (payload: any) => {
-      const typingKey =
-        payload.container_id || payload.conversation_id || payload.from || payload.sender_id;
-      if (typingKey) setTypingUser(typingKey, false);
+      const containerId = payload.container_id || payload.conversation_id;
+      const userId = payload.from || payload.sender_id;
+      if (containerId && userId) setTypingUser(containerId, userId, false);
     });
   });
 };
@@ -651,6 +660,10 @@ const updateReactionCaches = (
       updated_at: payload.updated_at,
     })
   );
+
+  // Written rather than invalidated: the same post is rendered as a `FeedPostView`
+  // elsewhere, and a refetch there would drop an optimistic toggle still in flight.
+  applyReactionUpdateToFeeds(queryClient, payload.message_id, payload.reactions);
 };
 
 const updatePollCache = (
@@ -697,9 +710,7 @@ const updateMessageDocumentCaches = (
 
   updateConversationPreview(queryClient, message);
   if (message.container_type === 'channel') {
-    queryClient.invalidateQueries({ queryKey: ['feeds'] });
-    queryClient.invalidateQueries({ queryKey: ['channel-feed', message.container_id] });
-    queryClient.invalidateQueries({ queryKey: ['post-comments', message.container_id] });
+    invalidateChannelFeeds(queryClient, message.container_id);
   }
 };
 
@@ -762,9 +773,7 @@ export const applyMessageDeletedEventToCaches = (
   }
 
   if (payload.container_type === 'channel') {
-    queryClient.invalidateQueries({ queryKey: ['feeds'] });
-    queryClient.invalidateQueries({ queryKey: ['channel-feed', payload.container_id] });
-    queryClient.invalidateQueries({ queryKey: ['post-comments', payload.container_id] });
+    invalidateChannelFeeds(queryClient, payload.container_id);
   }
 
   return true;
@@ -838,7 +847,12 @@ const routeIncomingThreadMessage = (
       message.created_at,
       message.sender_id !== currentUserId && !isOpenContainer ? 1 : 0
     );
+    return;
   }
+
+  // A thread reply in a channel is a comment on a post: it changes the post's
+  // comment list and the comment count every feed renders beside it.
+  invalidateChannelFeeds(queryClient, message.container_id);
 };
 
 const routeIncomingMainChatMessage = (
@@ -853,9 +867,7 @@ const routeIncomingMainChatMessage = (
   );
 
   if (message.container_type === 'channel') {
-    queryClient.invalidateQueries({ queryKey: ['feeds'] });
-    queryClient.invalidateQueries({ queryKey: ['channel-feed', message.container_id] });
-    queryClient.invalidateQueries({ queryKey: ['post-comments', message.container_id] });
+    invalidateChannelFeeds(queryClient, message.container_id);
     return;
   }
 
@@ -916,12 +928,13 @@ export const usePresence = () => {
   return { onlineUsers, presenceByUserId, setOnlineUsers, setPresence };
 };
 
-export const useTypingIndicator = (userId?: string) => {
+export const useTypingIndicator = (containerId?: string) => {
   const typingUsers = useSocketStore((state) => state.typingUsers);
   const socket = useSocketStore((state) => state.socket);
-  
-  const isTyping = userId ? !!typingUsers[userId] : false;
-  
+
+  const typingUserIds = containerId ? Object.keys(typingUsers[containerId] ?? {}) : [];
+  const isTyping = typingUserIds.length > 0;
+
   const startTyping = (container: MessageContainerRef) => {
     socket?.emit(EVENTS.CLIENT_TYPING_START, container);
   };
@@ -930,7 +943,7 @@ export const useTypingIndicator = (userId?: string) => {
     socket?.emit(EVENTS.CLIENT_TYPING_STOP, container);
   };
 
-  return { isTyping, typingUsers, startTyping, stopTyping };
+  return { isTyping, typingUserIds, typingUsers, startTyping, stopTyping };
 };
 
 import { sendNotification } from '@/utils/notificationSound';

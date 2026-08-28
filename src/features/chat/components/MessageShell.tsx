@@ -286,9 +286,15 @@ export const DaySeparator: React.FC<DaySeparatorProps> = ({ label, className }) 
 interface MessageMetaProps {
   message: ChatMessage;
   showTimestamp?: boolean;
+  /** From the container's presentation — a channel has no per-recipient receipts to show. */
+  showReceipts: boolean;
 }
 
-export const MessageMeta: React.FC<MessageMetaProps> = ({ message, showTimestamp = true }) => {
+export const MessageMeta: React.FC<MessageMetaProps> = ({
+  message,
+  showTimestamp = true,
+  showReceipts,
+}) => {
   if (!showTimestamp) {
     return null;
   }
@@ -307,14 +313,14 @@ export const MessageMeta: React.FC<MessageMetaProps> = ({ message, showTimestamp
       ) : null}
       {!message.isDeleted && message.editedAt ? <span>edited</span> : null}
       <span>{formatChatMessageTime(message.createdAt)}</span>
-      {message.isOwn ? (
+      {message.isOwn && showReceipts ? (
         <span
           className={cn(
             "flex items-center",
             message.status === 'read' ? "text-blue-500" : ""
           )}
         >
-          {message.status === 'read' ? (
+          {message.status === 'read' || message.status === 'delivered' ? (
             <CheckCheck className="h-3 w-3" />
           ) : (
             <Check className="h-3 w-3" />

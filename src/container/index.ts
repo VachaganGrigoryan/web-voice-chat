@@ -61,6 +61,7 @@ export {
   clearConversationRow,
   containerIdOf,
   integrateCreatedMessage,
+  invalidateChannelFeeds,
   prependMessage,
   prependThreadMessage,
   removeConversationRow,

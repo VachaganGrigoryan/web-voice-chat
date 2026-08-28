@@ -12,6 +12,7 @@ import { PageHeader } from '@/components/page/PageHeader';
 import { ProfilePostCard } from '@/features/profile/components/ProfilePostCard';
 import { useFeedPostCapabilities } from './useFeedPostCapabilities';
 import { useAppNavigation } from '@/navigation/appNavigation';
+import { useRealtimeChannelPosts } from '@/socket/useChannelRooms';
 import { useAuthStore } from '@/store/authStore';
 
 export default function PostDetailPage() {
@@ -33,6 +34,9 @@ export default function PostDetailPage() {
   });
 
   const { for: capabilitiesFor } = useFeedPostCapabilities(channelId ? [channelId] : []);
+  // Subscribed while the post is open, so a comment or a reaction from another
+  // client lands on the card rather than waiting for a manual refresh.
+  useRealtimeChannelPosts(channelId ? [channelId] : []);
 
   const doc = messageQuery.data;
 
