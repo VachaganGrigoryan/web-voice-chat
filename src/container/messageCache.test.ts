@@ -1,16 +1,26 @@
 import { QueryClient } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { messageQueryKey, threadMessageQueryKey } from '@/api/queryKeys';
-import type { MessageContainerRef, MessageDoc } from '@/api/types';
+import {
+  channelKeys,
+  inboxKeys,
+  messageQueryKey,
+  threadMessageQueryKey,
+} from '@/api/queryKeys';
+import type { FeedPostView, MessageContainerRef, MessageDoc } from '@/api/types';
 import {
   applyReactionUpdate,
+  applyReactionUpdateToFeeds,
   clearConversationMessages,
   containerIdOf,
+  findCachedFeedPost,
   integrateCreatedMessage,
+  invalidateChannelFeeds,
+  invalidatePostDocument,
   prependMessage,
   removeConversationRow,
   resetContainerUnreadCount,
   toggleLocalReactionGroups,
+  updateContainerPinnedMessages,
   updateConversationActivity,
   updateMessageEverywhere,
   updateThreadRootSummary,
@@ -146,6 +156,118 @@ describe('applyReactionUpdate', () => {
       updated_at: 'now',
     } as never);
     expect(timeline(CONVERSATION)?.pages[0].data[0].reactions).toHaveLength(1);
+  });
+});
+
+describe('applyReactionUpdateToFeeds', () => {
+  const post = (id: string) =>
+    ({ id, channel_id: 'ch_1', reactions: [], comment_count: 0 }) as unknown as FeedPostView;
+
+  const feedPage = (posts: FeedPostView[]) => ({
+    pages: [{ data: posts, meta: { next_cursor: null, limit: 30, total: posts.length } }],
+    pageParams: [undefined],
+  });
+
+  const thumbsUp = [{ emoji: '👍', user_ids: ['u_2'], count: 1, updated_at: 'now' }];
+
+  it('updates a post held only in an infinite feed, leaving its neighbours alone', () => {
+    const neighbour = post('p_2');
+    queryClient.setQueryData(['feeds', 'home'], feedPage([post('p_1'), neighbour]));
+
+    applyReactionUpdateToFeeds(queryClient, 'p_1', thumbsUp);
+
+    const page = queryClient.getQueryData<{ pages: Array<{ data: FeedPostView[] }> }>([
+      'feeds',
+      'home',
+    ])?.pages[0].data;
+    expect(page?.[0].reactions).toEqual(thumbsUp);
+    // Identity, not equality: an unrelated card must not re-render.
+    expect(page?.[1]).toBe(neighbour);
+  });
+
+  it('updates the flat comment-list shape, which has no pages', () => {
+    queryClient.setQueryData(['post-comments', 'ch_1', 'p_1'], { data: [post('c_1')] });
+
+    applyReactionUpdateToFeeds(queryClient, 'c_1', thumbsUp);
+
+    expect(
+      queryClient.getQueryData<{ data: FeedPostView[] }>(['post-comments', 'ch_1', 'p_1'])
+        ?.data[0].reactions
+    ).toEqual(thumbsUp);
+  });
+
+  it('leaves a cache that does not hold the id untouched', () => {
+    const cache = feedPage([post('p_9')]);
+    queryClient.setQueryData(['channel-feed', 'ch_1'], cache);
+
+    applyReactionUpdateToFeeds(queryClient, 'p_1', thumbsUp);
+
+    expect(queryClient.getQueryData(['channel-feed', 'ch_1'])).toBe(cache);
+  });
+
+  it('updates the single document an open post detail page reads', () => {
+    queryClient.setQueryData(['messages', 'p_1'], message({ id: 'p_1', reactions: [] }));
+
+    applyReactionUpdateToFeeds(queryClient, 'p_1', thumbsUp);
+
+    expect(queryClient.getQueryData<MessageDoc>(['messages', 'p_1'])?.reactions).toEqual(
+      thumbsUp
+    );
+  });
+});
+
+describe('invalidatePostDocument', () => {
+  it('marks only the open post stale, not a container timeline sharing the prefix', () => {
+    queryClient.setQueryData(['messages', 'p_1'], message({ id: 'p_1' }));
+    queryClient.setQueryData(['messages', 'channel', 'ch_1'], { pages: [] });
+
+    invalidatePostDocument(queryClient, 'p_1');
+
+    expect(queryClient.getQueryState(['messages', 'p_1'])?.isInvalidated).toBe(true);
+    expect(queryClient.getQueryState(['messages', 'channel', 'ch_1'])?.isInvalidated).toBe(
+      false
+    );
+  });
+});
+
+describe('invalidateChannelFeeds', () => {
+  const isStale = (queryKey: readonly unknown[]) =>
+    queryClient.getQueryState(queryKey)?.isInvalidated ?? false;
+
+  it('marks every projection of the channel stale, including a post it was not told about', () => {
+    queryClient.setQueryData(['feeds', 'home'], { pages: [] });
+    queryClient.setQueryData(['channel-feed', 'ch_1'], { pages: [] });
+    // The handler knows the channel a comment arrived in, not which post it hangs off.
+    queryClient.setQueryData(['post-comments', 'ch_1', 'p_1'], { data: [] });
+
+    invalidateChannelFeeds(queryClient, 'ch_1');
+
+    expect(isStale(['feeds', 'home'])).toBe(true);
+    expect(isStale(['channel-feed', 'ch_1'])).toBe(true);
+    expect(isStale(['post-comments', 'ch_1', 'p_1'])).toBe(true);
+  });
+
+  it('leaves another channel alone', () => {
+    queryClient.setQueryData(['channel-feed', 'ch_2'], { pages: [] });
+    queryClient.setQueryData(['post-comments', 'ch_2', 'p_2'], { data: [] });
+
+    invalidateChannelFeeds(queryClient, 'ch_1');
+
+    expect(isStale(['channel-feed', 'ch_2'])).toBe(false);
+    expect(isStale(['post-comments', 'ch_2', 'p_2'])).toBe(false);
+  });
+});
+
+describe('findCachedFeedPost', () => {
+  it('finds a post the message caches have never held', () => {
+    const found = { id: 'p_1', channel_id: 'ch_7', reactions: [] } as unknown as FeedPostView;
+    queryClient.setQueryData(['channel-feed', 'ch_7'], {
+      pages: [{ data: [found] }],
+      pageParams: [undefined],
+    });
+
+    expect(findCachedFeedPost(queryClient, 'p_1')).toBe(found);
+    expect(findCachedFeedPost(queryClient, 'p_missing')).toBeNull();
   });
 });
 
@@ -359,5 +481,71 @@ describe('resetContainerUnreadCount', () => {
 
   it('is a no-op when the cache has not been populated yet', () => {
     expect(() => resetContainerUnreadCount(queryClient, CHANNEL)).not.toThrow();
+  });
+});
+
+describe('updateContainerPinnedMessages', () => {
+  it('writes the conversation row and its detail under the keys their readers use', () => {
+    queryClient.setQueryData(['conversations'], {
+      pages: [
+        {
+          data: [
+            { id: 'cv_1', conversation_id: 'cv_1', pinned_message_ids: [] },
+            { id: 'cv_2', conversation_id: 'cv_2', pinned_message_ids: ['m_9'] },
+          ],
+        },
+      ],
+      pageParams: [undefined],
+    });
+    queryClient.setQueryData(inboxKeys.conversation('cv_1'), {
+      id: 'cv_1',
+      pinned_message_ids: [],
+    });
+
+    updateContainerPinnedMessages(queryClient, CONVERSATION, ['m_1', 'm_2']);
+
+    const rows = queryClient.getQueryData<{
+      pages: Array<{ data: Array<{ id: string; pinned_message_ids: string[] }> }>;
+    }>(['conversations']);
+    expect(rows?.pages[0].data[0].pinned_message_ids).toEqual(['m_1', 'm_2']);
+    expect(rows?.pages[0].data[1].pinned_message_ids).toEqual(['m_9']);
+    expect(
+      queryClient.getQueryData<{ pinned_message_ids: string[] }>(
+        inboxKeys.conversation('cv_1')
+      )?.pinned_message_ids
+    ).toEqual(['m_1', 'm_2']);
+  });
+
+  it('writes a channel pinned set to the channel detail useContainer resolves from', () => {
+    queryClient.setQueryData(channelKeys.detail('ch_1'), {
+      id: 'ch_1',
+      pinned_message_ids: [],
+    });
+
+    updateContainerPinnedMessages(queryClient, CHANNEL, ['m_3']);
+
+    expect(
+      queryClient.getQueryData<{ pinned_message_ids: string[] }>(channelKeys.detail('ch_1'))
+        ?.pinned_message_ids
+    ).toEqual(['m_3']);
+  });
+
+  it('leaves the conversation list alone for a channel pin', () => {
+    const rows = {
+      pages: [{ data: [{ id: 'cv_1', conversation_id: 'cv_1', pinned_message_ids: [] }] }],
+      pageParams: [undefined],
+    };
+    queryClient.setQueryData(['conversations'], rows);
+
+    updateContainerPinnedMessages(queryClient, CHANNEL, ['m_3']);
+
+    expect(queryClient.getQueryData(['conversations'])).toBe(rows);
+  });
+
+  it('is a no-op when the container has never been fetched', () => {
+    expect(() =>
+      updateContainerPinnedMessages(queryClient, CHANNEL, ['m_3'])
+    ).not.toThrow();
+    expect(queryClient.getQueryData(channelKeys.detail('ch_1'))).toBeUndefined();
   });
 });

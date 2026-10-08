@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/Button';
 import { useChannelFeed } from '@/hooks/useChannelFeed';
 import { AddPostModal } from '@/features/feed/AddPostModal';
 import { useFeedPostCapabilities } from '@/features/feed/useFeedPostCapabilities';
+import { useRealtimeChannelPosts } from '@/socket/useChannelRooms';
 import { useAuthStore } from '@/store/authStore';
 
 import { ProfilePostCard } from './ProfilePostCard';
@@ -26,6 +27,7 @@ export function ProfileChannelTimeline({ channelId }: ProfileChannelTimelineProp
   const currentUserId = useAuthStore((state) => state.userId);
   const { for: capabilitiesFor } = useFeedPostCapabilities([channelId]);
   const { canPost, canComment, canReact } = capabilitiesFor(channelId);
+  useRealtimeChannelPosts([channelId]);
 
   const { data, isLoading, isError, fetchNextPage, hasNextPage, isFetchingNextPage } =
     useChannelFeed(channelId);

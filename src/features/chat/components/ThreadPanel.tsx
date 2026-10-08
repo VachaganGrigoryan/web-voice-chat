@@ -26,6 +26,7 @@ interface ThreadPanelProps {
   onSwipeReply?: (message: ChatMessage) => void;
   onToggleReaction: (messageId: string, emoji: string) => Promise<void>;
   isTogglingReaction?: boolean;
+  canReact: boolean;
   onVisibleUnreadMessages?: (messageIds: string[]) => void;
   onMediaClick?: (payload: MediaClickPayload) => void;
   audioQueueKey?: string | null;
@@ -35,6 +36,8 @@ interface ThreadPanelProps {
   isMessageMenuOpen?: boolean;
   className?: string;
   style?: React.CSSProperties;
+  /** From the container's presentation — a channel has no per-recipient receipts to show. */
+  showReceipts: boolean;
 }
 
 export function ThreadPanel({
@@ -52,6 +55,7 @@ export function ThreadPanel({
   onSwipeReply,
   onToggleReaction,
   isTogglingReaction = false,
+  canReact,
   onVisibleUnreadMessages,
   onMediaClick,
   audioQueueKey,
@@ -61,6 +65,7 @@ export function ThreadPanel({
   isMessageMenuOpen = false,
   className,
   style,
+  showReceipts,
 }: ThreadPanelProps) {
   const {
     scrollContainerRef,
@@ -134,10 +139,11 @@ export function ThreadPanel({
               <MessageReactions
                 message={rootMessage}
                 currentUserId={currentUserId}
+                canReact={canReact}
                 isBusy={isTogglingReaction}
                 onToggleReaction={(emoji) => onToggleReaction(rootMessage.id, emoji)}
               />
-              <MessageMeta message={rootMessage} />
+              <MessageMeta message={rootMessage} showReceipts={showReceipts} />
             </MessageItem>
           </div>
 
@@ -155,11 +161,13 @@ export function ThreadPanel({
                 onSwipeReply={onSwipeReply}
                 onToggleReaction={onToggleReaction}
                 isTogglingReaction={isTogglingReaction}
+                canReact={canReact}
                 onMediaClick={onMediaClick}
                 audioQueueKey={audioQueueKey}
                 audioQueue={audioQueue}
                 isMessageMenuOpen={isMessageMenuOpen}
                 registerMessageElement={registerMessageElement}
+                showReceipts={showReceipts}
               />
             ) : (
               <div className="rounded-2xl border border-dashed border-border/70 bg-muted/20 px-4 py-6 text-center">

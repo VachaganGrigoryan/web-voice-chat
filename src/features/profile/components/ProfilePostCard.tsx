@@ -8,6 +8,7 @@ import { extractApiError } from '@/api/errors';
 import type { FeedPostView } from '@/api/types';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/Avatar';
 import { Button } from '@/components/ui/Button';
+import { useMessageActions } from '@/container';
 import { PostCard, authorName } from '@/features/feed/PostCard';
 
 /**
@@ -142,12 +143,18 @@ export function ProfilePostCard({
   currentUserId,
   defaultShowComments = false,
 }: ProfilePostCardProps) {
+  // No descriptor: a feed's posts come from many channels and have no single
+  // container. The reaction route is addressed by message id anyway, and the
+  // gate is the already-resolved `canReact` rather than the descriptor's.
+  const { toggleReaction } = useMessageActions(null, currentUserId ?? null);
+
   return (
     <PostCard
       post={post}
       canComment={canComment}
       canReact={canReact}
       currentUserId={currentUserId}
+      onToggleReaction={(emoji) => void toggleReaction({ messageId: post.id, emoji })}
       defaultShowComments={defaultShowComments}
       comments={
         <PostComments channelId={channelId} postId={post.id} canComment={canComment} />

@@ -32,6 +32,9 @@ export const containerKeys = {
   threadsRoot: ['threadMessages'] as const,
   messages: messageQueryKey,
   thread: threadMessageQueryKey,
+  /** The pinned previews for a container. Both container types have a pinned set. */
+  pinned: (container: MessageContainerRef) =>
+    ['pinned-messages', container.container_type, container.container_id] as const,
   /** Every cache group one container owns — the unit of container-level invalidation. */
   allFor: (container: MessageContainerRef) =>
     [
@@ -73,6 +76,8 @@ export const feedKeys = {
   channel: (channelId: string) => ['channel-feed', channelId] as const,
   postComments: (channelId: string, postId: string) =>
     ['post-comments', channelId, postId] as const,
+  /** Every post's comment list in one channel — a comment invalidates its own without naming it. */
+  postCommentsIn: (channelId: string) => ['post-comments', channelId] as const,
   saved: ['saved-messages'] as const,
 } as const;
 

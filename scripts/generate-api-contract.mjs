@@ -18,16 +18,16 @@ const enumValues = (value, fallbackName) => {
 
 const messageTypeEnum = enumValues(schema('MessageDoc')?.properties?.type?.enum, 'MessageDoc.type');
 const uploadTypeEnum = enumValues(
-  schema('Body_send_media_conversations__conversation_id__messages_media_post')?.properties?.type?.enum,
-  'Body_send_media_conversations__conversation_id__messages_media_post.type'
+  schema('Body_send_container_media_messages__container_type___container_id__media_post')?.properties?.type?.enum,
+  'Body_send_container_media_messages__container_type___container_id__media_post.type'
 );
 const mediaKindEnum = enumValues(
   schema('MediaMeta')?.properties?.kind?.enum,
   'MediaMeta.kind'
 );
 const previewMediaKindEnum = enumValues(
-  schema('Body_send_media_conversations__conversation_id__messages_media_post')?.properties?.media_kind?.anyOf?.[0]?.enum,
-  'Body_send_media_conversations__conversation_id__messages_media_post.media_kind'
+  schema('Body_send_container_media_messages__container_type___container_id__media_post')?.properties?.media_kind?.anyOf?.[0]?.enum,
+  'Body_send_container_media_messages__container_type___container_id__media_post.media_kind'
 );
 const replyModeEnum = enumValues(
   schema('ConversationSendTextRequest')?.properties?.reply_mode?.anyOf?.[0]?.enum,

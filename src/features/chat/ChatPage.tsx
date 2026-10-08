@@ -2,11 +2,16 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useConversations, useThreadMessages } from '@/hooks/useConversationList';
-import { useContainer, useContainerMessages, useMarkContainerRead } from '@/container';
+import {
+  useContainer,
+  useContainerMessages,
+  useMarkContainerRead,
+  updateContainerPinnedMessages,
+} from '@/container';
 import type { MessageContainerRef } from '@/api/types';
+import { containerKeys } from '@/api/queryKeys';
 import { useConnections } from '@/hooks/useConnections';
 import { useContacts } from '@/hooks/useContacts';
-import { useGroupMembers } from '@/hooks/useGroupManagement';
 import { APP_ROUTES } from '@/app/routes';
 import { conversationsApi, messagesApi, notificationsApi, savedMessagesApi } from '@/api/endpoints';
 import { extractApiError } from '@/api/errors';
@@ -20,13 +25,12 @@ import {
   usePresence,
   useRealtimeMessages,
   useSocket,
-  useSocketStore,
   useTypingIndicator,
 } from '@/socket/socket';
-import { EVENTS } from '@/socket/events';
+import { useChannelRooms } from '@/socket/useChannelRooms';
 import { startCall, useCallStore } from '@/features/calls/callController';
 import { useNotificationSoundStore } from '@/utils/notificationSound';
-import { NotificationLevel, ROLE_ADMIN, ROLE_MODERATOR } from '@/api/types';
+import { NotificationLevel } from '@/api/types';
 import { cn } from '@/lib/utils';
 import { useChatDialogs, CLOSED_MEDIA_VIEWER } from './ChatDialogsProvider';
 import { useChatRouteParams } from './hooks/useChatRouteParams';
@@ -34,6 +38,7 @@ import { useChatInteractionState } from './hooks/useChatInteractionState';
 import { useSelectedConversation } from './hooks/useSelectedConversation';
 import { useTimelineViewModel } from './hooks/useTimelineViewModel';
 import { useMessageReadReceipts } from './hooks/useMessageReadReceipts';
+import { useConversationOnly } from './hooks/useConversationOnly';
 import { useThreadPanelLayout } from './hooks/useThreadPanelLayout';
 import { useConversationActions } from './hooks/useConversationActions';
 import { useConversationFolders } from './hooks/useConversationFolders';
@@ -74,7 +79,6 @@ export default function ChatPage() {
   const queryClient = useQueryClient();
   const dialogs = useChatDialogs();
   const { userId } = useAuthStore();
-  const { socket } = useSocketStore();
   const activeSpaceId = useActiveSpace((state) => state.activeSpaceId);
   const setActiveSpaceId = useActiveSpace((state) => state.setActiveSpaceId);
   const selectedSpaceId = routeSpaceId ?? activeSpaceId;
@@ -83,14 +87,10 @@ export default function ChatPage() {
   useRealtimeMessages(container, selectedThreadRootId);
 
   // Channels broadcast over a per-channel Socket.IO room rather than the
-  // per-user rooms conversations use, so viewing one requires subscribing.
-  useEffect(() => {
-    if (!socket || !isChannelContainer || !selectedUser) return;
-    socket.emit(EVENTS.JOIN_CHANNEL, { channel_id: selectedUser });
-    return () => {
-      socket.emit(EVENTS.LEAVE_CHANNEL, { channel_id: selectedUser });
-    };
-  }, [socket, isChannelContainer, selectedUser]);
+  // per-user rooms conversations use, so viewing one requires subscribing. The
+  // hold is shared with the feed surfaces: leaving the chat must not evict a
+  // room a feed rendering the same channel is still reading from.
+  useChannelRooms(isChannelContainer && selectedUser ? [selectedUser] : []);
 
   const { onlineUsers, presenceByUserId } = usePresence();
   const { isTyping, typingUsers } = useTypingIndicator(selectedUser || undefined);
@@ -102,8 +102,13 @@ export default function ChatPage() {
     selectedSpaceId
   );
 
+  // Absent for a channel, which is what makes the conversation-only operations
+  // unreachable there rather than guarded at each call site.
+  const conversationOnly = useConversationOnly(container);
+
   const { descriptor, isMissing: isSelectedConversationMissing } = useContainer(container, userId, {
     lens: isChannelContainer && channelLens === 'feed' ? 'feed' : 'timeline',
+    conversationOnly,
   });
   useMarkContainerRead(descriptor);
   const {
@@ -295,6 +300,7 @@ export default function ChatPage() {
     handleThreadMediaClick,
     isSending,
     isTogglingReaction,
+    canReact,
     createPoll,
   } = useChatInteractionState({
     descriptor,
@@ -315,8 +321,7 @@ export default function ChatPage() {
   const { highlightedMessageIds, handleVisibleMainMessageIds, handleVisibleThreadMessageIds } =
     useMessageReadReceipts({
       userId,
-      selectedConversationId: container?.container_type === 'conversation' ? selectedUser : null,
-      selectedContainer: container,
+      descriptor,
       selectedThreadRootId,
       mainChatMessages,
       threadReplyMessages,
@@ -324,60 +329,34 @@ export default function ChatPage() {
 
   const { activeMessage, activeMessageAnchor, mediaViewer } = dialogs.state;
 
-  // DMs allow either participant to manage message pins; larger conversations
-  // follow the owner/admin pin right.
-  const isPinCapableConversation = selectedConversation?.type === 'group';
-  const { data: pinMembers } = useGroupMembers(isPinCapableConversation ? selectedConversation?.id ?? null : null);
-  const canManagePins = useMemo(() => {
-    if (selectedConversation?.type === 'dm') {
-      return true;
-    }
-    if (selectedConversation?.owner_type === 'user' && selectedConversation.owner_id === userId) {
-      return true;
-    }
-    const role = pinMembers?.find((member) => member.user_id === userId)?.role;
-    return role === ROLE_ADMIN || role === ROLE_MODERATOR;
-  }, [pinMembers, selectedConversation?.type, selectedConversation?.owner_type, selectedConversation?.owner_id, userId]);
+  // The pin right is resolved by the server for both container types, and a
+  // channel tracks a pinned set of its own.
+  const canManagePins = !!descriptor?.capabilities.canPin;
+  const pinnedMessageIds = useMemo(() => {
+    const source = descriptor?.source;
+    if (!source) return [];
+    return source.kind === 'conversation'
+      ? source.conversation.pinned_message_ids ?? []
+      : source.channel.pinned_message_ids ?? [];
+  }, [descriptor?.source]);
 
-  const isActiveMessagePinned = !!(
-    activeMessage && selectedConversation?.pinned_message_ids.includes(activeMessage.id)
-  );
+  const isActiveMessagePinned = !!(activeMessage && pinnedMessageIds.includes(activeMessage.id));
   const canPinActiveMessage = !!(
-    canManagePins && activeMessage && activeMessage.chatId === selectedConversation?.id
+    canManagePins &&
+    activeMessage &&
+    (activeMessage.raw?.container_id ?? activeMessage.chatId) === container?.container_id
   );
 
   const handleTogglePinMessage = async () => {
-    if (!activeMessage) return;
-    const pinnedConversationId = activeMessage.chatId;
-    const updatePinnedIds = (pinnedMessageIds: string[]) => {
-      queryClient.setQueryData(['conversations'], (old: any) => {
-        if (!old?.pages) return old;
-        return {
-          ...old,
-          pages: old.pages.map((page: any) => ({
-            ...page,
-            data: page.data.map((conversation: any) =>
-              conversation.conversation_id === pinnedConversationId || conversation.id === pinnedConversationId
-                ? { ...conversation, pinned_message_ids: pinnedMessageIds }
-                : conversation
-            ),
-          })),
-        };
-      });
-
-      queryClient.setQueryData(['conversation', pinnedConversationId], (old: any) => {
-        if (!old) return old;
-        return { ...old, pinned_message_ids: pinnedMessageIds };
-      });
-    };
+    if (!activeMessage || !container) return;
 
     try {
-      const updatedConversation = isActiveMessagePinned
+      const updatedPins = isActiveMessagePinned
         ? await messagesApi.unpinMessage(activeMessage.id)
         : await messagesApi.pinMessage(activeMessage.id);
-      updatePinnedIds(updatedConversation.pinned_message_ids);
+      updateContainerPinnedMessages(queryClient, container, updatedPins.pinned_message_ids);
       toast.success(isActiveMessagePinned ? 'Message unpinned' : 'Message pinned');
-      queryClient.invalidateQueries({ queryKey: ['pinned-messages', pinnedConversationId] });
+      queryClient.invalidateQueries({ queryKey: containerKeys.pinned(container) });
     } catch (error) {
       toast.error(extractApiError(error, 'Could not update pin'));
     } finally {
@@ -542,7 +521,10 @@ export default function ChatPage() {
         <ScheduledMessagesDialog
           open={dialogs.state.scheduledOpen}
           onOpenChange={dialogs.setScheduledOpen}
-          conversationId={selectedConversation.id}
+          container={{
+            container_type: 'conversation',
+            container_id: selectedConversation.id,
+          }}
         />
       ) : null}
 
@@ -552,6 +534,7 @@ export default function ChatPage() {
         conversations={conversations}
         sourceConversationId={dialogs.state.forwardSource?.conversationId ?? null}
         messageId={dialogs.state.forwardSource?.messageId ?? null}
+        forwardMessage={descriptor?.conversationOnly?.forward ?? null}
         onForwarded={(targetConversationId) => {
           dialogs.setForwardSource(null);
           navigate(APP_ROUTES.chatConversation(targetConversationId));
@@ -677,10 +660,9 @@ export default function ChatPage() {
             : undefined
         }
         pinnedBar={
-          selectedConversation && selectedConversation.pinned_message_ids.length > 0
+          pinnedMessageIds.length > 0
             ? {
-                conversationId: selectedConversation.id,
-                pinnedMessageIds: selectedConversation.pinned_message_ids,
+                pinnedMessageIds,
                 canManagePins,
               }
             : undefined
@@ -702,6 +684,7 @@ export default function ChatPage() {
         onSwipeReply={(message) => handleSwipeReply(message, 'main')}
         onToggleReaction={handleToggleReaction}
         isTogglingReaction={isTogglingReaction}
+        canReact={canReact}
         onMediaClick={handleMainMediaClick}
         audioQueueKey={mainAudioQueueKey}
         audioQueue={mainAudioQueue}
@@ -720,7 +703,7 @@ export default function ChatPage() {
             onClearReplyTarget={() => setReplyTarget(null)}
             isUploading={isSending}
             contextLabel="main chat"
-            enableDraft
+            drafts={descriptor?.conversationOnly?.drafts ?? null}
           />
         }
         resizeHandle={
@@ -762,12 +745,14 @@ export default function ChatPage() {
               await handleToggleReaction(messageId, emoji);
             }}
             isTogglingReaction={isTogglingReaction}
+            canReact={canReact}
             onVisibleUnreadMessages={handleVisibleThreadMessageIds}
             onMediaClick={handleThreadMediaClick}
             audioQueueKey={threadAudioQueueKey}
             audioQueue={threadAudioQueue}
             isMobile={isMobileViewport}
             isMessageMenuOpen={!!activeMessage}
+            showReceipts={descriptor.presentation.showReadReceipts}
             style={{ width: threadPanelWidth }}
             composer={
               displayedThreadRootMessage ? (

@@ -1,7 +1,14 @@
 import type { QueryClient } from '@tanstack/react-query';
 import { resolveMessageContent } from '@/api/messageContent';
-import { messageQueryKey, threadMessageQueryKey } from '@/api/queryKeys';
+import {
+  channelKeys,
+  feedKeys,
+  inboxKeys,
+  messageQueryKey,
+  threadMessageQueryKey,
+} from '@/api/queryKeys';
 import type {
+  FeedPostView,
   MessageContainerRef,
   MessageDoc,
   MessageReactionGroup,
@@ -122,6 +129,117 @@ export const updateMessageEverywhere = (
   updateMessageAcrossGroup(queryClient, 'threadMessages', messageId, update);
 };
 
+// --- feed projections -------------------------------------------------------
+
+/**
+ * The caches that render a message as a `FeedPostView`. A post carries the same
+ * `MessageReactionGroup[]` a `MessageDoc` does, so a reaction has to reach both
+ * or the surface the viewer is looking at reverts.
+ *
+ * Two envelopes: the feeds are infinite (`pages[].data`), while a post's comment
+ * list is a plain query (`data`).
+ */
+const FEED_CACHE_KEYS = [['feeds'], ['channel-feed'], ['post-comments']] as const;
+
+interface FeedPage {
+  data?: FeedPostView[];
+}
+
+type FeedCache = FeedPage & { pages?: FeedPage[] };
+
+const updatePostAcrossFeeds = (
+  queryClient: QueryClient,
+  postId: string,
+  update: (post: FeedPostView) => FeedPostView
+): void => {
+  /** The mapped list, or null when the id was not in it — so nothing churns. */
+  const mapList = (posts: FeedPostView[] | undefined): FeedPostView[] | null => {
+    let changed = false;
+    const next = (posts ?? []).map((post) => {
+      if (post.id !== postId) return post;
+      changed = true;
+      return update(post);
+    });
+    return changed ? next : null;
+  };
+
+  for (const queryKey of FEED_CACHE_KEYS) {
+    queryClient.setQueriesData<FeedCache>({ queryKey }, (old) => {
+      if (!old) return old;
+
+      if (old.pages) {
+        let changed = false;
+        const pages = old.pages.map((page) => {
+          const next = mapList(page.data);
+          if (!next) return page;
+          changed = true;
+          return { ...page, data: next };
+        });
+        return changed ? { ...old, pages } : old;
+      }
+
+      const next = mapList(old.data);
+      return next ? { ...old, data: next } : old;
+    });
+  }
+};
+
+/** The first feed projection of this message, for reading its current state. */
+export const findCachedFeedPost = (
+  queryClient: QueryClient,
+  postId: string
+): FeedPostView | null => {
+  for (const queryKey of FEED_CACHE_KEYS) {
+    for (const [, cache] of queryClient.getQueriesData<FeedCache>({ queryKey })) {
+      const posts = cache?.pages
+        ? cache.pages.flatMap((page) => page.data ?? [])
+        : (cache?.data ?? []);
+      const found = posts.find((post) => post.id === postId);
+      if (found) return found;
+    }
+  }
+
+  return null;
+};
+
+/**
+ * Refetch every cache that projects a channel's messages as posts.
+ *
+ * A comment is a thread reply and a post is a root message, so one channel event
+ * can change a feed list, a post's comment list and a post's comment count at
+ * once — which of them is on screen is not the emitting handler's business.
+ */
+export const invalidateChannelFeeds = (
+  queryClient: QueryClient,
+  channelId: string
+): void => {
+  queryClient.invalidateQueries({ queryKey: feedKeys.all });
+  queryClient.invalidateQueries({ queryKey: feedKeys.channel(channelId) });
+  queryClient.invalidateQueries({ queryKey: feedKeys.postCommentsIn(channelId) });
+};
+
+export const applyReactionUpdateToFeeds = (
+  queryClient: QueryClient,
+  postId: string,
+  reactions: MessageReactionGroup[]
+): void => {
+  updatePostAcrossFeeds(queryClient, postId, (post) => ({ ...post, reactions }));
+  queryClient.setQueryData<MessageDoc>(postDocumentKey(postId), (old) =>
+    old ? { ...old, reactions } : old
+  );
+};
+
+/**
+ * The post detail route holds its post as a single document under this key,
+ * which the paginated writers and the feed projections both skip.
+ */
+const postDocumentKey = (postId: string) => ['messages', postId] as const;
+
+/** Refetch an open post, e.g. after a comment changed its reply count. */
+export const invalidatePostDocument = (queryClient: QueryClient, postId: string): void => {
+  void queryClient.invalidateQueries({ queryKey: postDocumentKey(postId), exact: true });
+};
+
 export const applyReactionUpdate = (
   queryClient: QueryClient,
   payload: MessageReactionsUpdate
@@ -131,6 +249,7 @@ export const applyReactionUpdate = (
     reactions: payload.reactions,
     updated_at: payload.updated_at,
   }));
+  applyReactionUpdateToFeeds(queryClient, payload.message_id, payload.reactions);
 };
 
 /**
@@ -187,6 +306,7 @@ interface ConversationRow {
   last_message?: { id?: string } | null;
   last_message_at?: string | null;
   unread_count?: number;
+  pinned_message_ids?: string[];
 }
 
 interface InfiniteConversations {
@@ -288,6 +408,37 @@ export const resetContainerUnreadCount = (
   mapConversations(queryClient, (row) =>
     row.conversation_id === container.container_id || row.id === container.container_id
       ? { ...row, unread_count: 0 }
+      : row
+  );
+};
+
+/**
+ * Applies a container's new pinned set to whichever caches hold it.
+ *
+ * The pinned bar keys itself on the id set it is given, so the container's own
+ * record is what has to change — invalidating the bar alone would refetch the
+ * same list. A conversation keeps that record in the inbox row and its detail;
+ * a channel keeps it in the detail `useContainer` resolves its source from.
+ */
+export const updateContainerPinnedMessages = (
+  queryClient: QueryClient,
+  container: MessageContainerRef,
+  pinnedMessageIds: string[]
+): void => {
+  const detailKey =
+    container.container_type === 'channel'
+      ? channelKeys.detail(container.container_id)
+      : inboxKeys.conversation(container.container_id);
+
+  queryClient.setQueryData<{ pinned_message_ids?: string[] }>(detailKey, (old) =>
+    old ? { ...old, pinned_message_ids: pinnedMessageIds } : old
+  );
+
+  if (container.container_type === 'channel') return;
+
+  mapConversations(queryClient, (row) =>
+    row.conversation_id === container.container_id || row.id === container.container_id
+      ? { ...row, pinned_message_ids: pinnedMessageIds }
       : row
   );
 };

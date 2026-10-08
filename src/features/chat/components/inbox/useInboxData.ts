@@ -90,7 +90,11 @@ export function useInboxData({
   const queryClient = useQueryClient();
   const socket = useSocketStore((state) => state.socket);
   const markConversationRead = useMutation({
-    mutationFn: (conversationId: string) => messagesApi.markConversationRead(conversationId),
+    mutationFn: (conversationId: string) =>
+      messagesApi.markContainerRead({
+        container_type: 'conversation',
+        container_id: conversationId,
+      }),
     onSuccess: (_result, conversationId) => {
       resetContainerUnreadCount(queryClient, { container_type: 'conversation', container_id: conversationId });
       socket?.emit(EVENTS.CONVERSATION_READ, { conversation_id: conversationId });
@@ -126,6 +130,7 @@ export function useInboxData({
             message_count: 0,
             follower_count: 0,
             last_message_id: null,
+            pinned_message_ids: [],
             last_activity_at: null,
             legacy_conversation_id: null,
             created_by: '',

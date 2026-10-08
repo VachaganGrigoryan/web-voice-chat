@@ -59,7 +59,8 @@ const openMenuAtCoordinates = (
 interface InboxPanelProps {
   className?: string;
   currentUserId: string | null;
-  typingUsers: Record<string, boolean>;
+  /** containerId -> the set of user ids currently typing there. */
+  typingUsers: Record<string, Record<string, true>>;
   presenceByUserId?: Record<string, PresenceStatus>;
   /**
    * The clear/delete mutations run in `ChatShell`, so their pending state has
@@ -175,7 +176,7 @@ export function InboxPanel({
         row={{ ...row, conversation }}
         isSelected={selectedContainerId === row.id}
         currentUserId={currentUserId}
-        isTyping={!!typingUsers[row.id]}
+        isTyping={Object.keys(typingUsers[row.id] ?? {}).length > 0}
         selectionMode={selection.selectionMode}
         isChecked={selection.selectedIds.includes(row.id)}
         selectionDisabled={selection.isSelectionDisabledFor(row.conversation.type, row.id)}

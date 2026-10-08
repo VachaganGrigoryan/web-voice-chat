@@ -160,7 +160,7 @@ test('smokes unified DM, follow, membership, channel, and feed flows', async ({
   expect(profileChannel).toBeDefined();
   const profileFeedPost = `Profile feed post ${Date.now()}`;
   await readData<Message>(
-    await api.post(`/channels/${profileChannel.id}/messages`, {
+    await api.post(`/messages/channel/${profileChannel.id}/text`, {
       headers: ownerHeaders,
       data: { text: profileFeedPost },
     })
@@ -180,7 +180,7 @@ test('smokes unified DM, follow, membership, channel, and feed flows', async ({
     })
   );
   await readData<Message>(
-    await api.post(`/channels/${channel.id}/messages`, {
+    await api.post(`/messages/channel/${channel.id}/text`, {
       headers: ownerHeaders,
       data: { text: 'Initial channel post' },
     })
@@ -249,7 +249,7 @@ test('smokes unified DM, follow, membership, channel, and feed flows', async ({
 
   const realtimePost = `Realtime channel post ${Date.now()}`;
   await readData<Message>(
-    await api.post(`/channels/${channel.id}/messages`, {
+    await api.post(`/messages/channel/${channel.id}/text`, {
       headers: ownerHeaders,
       data: { text: realtimePost },
     })

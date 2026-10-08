@@ -38,7 +38,10 @@ const operationCount = Object.values(spec.paths).reduce(
 // 209 -> 211: +2 for DELETE /channels/{id} and DELETE /spaces/{id}, added by
 // hard-delete-owned-resources. This assertion only caught them once the spec
 // stopped being curl-scraped from a possibly-stale server.
-assert.equal(operationCount, 211, 'Unexpected number of OpenAPI operations');
+// 211 -> 206: unify-messaging-surface replaced fifteen container-prefixed
+// message operations (ten under /conversations, five under /channels) with the
+// nine container-addressed ones plus DELETE /messages/{id}/scheduled.
+assert.equal(operationCount, 206, 'Unexpected number of OpenAPI operations');
 assert.equal(
   Object.keys(spec.paths).some((route) => route.startsWith('/pings')),
   false,
@@ -79,7 +82,7 @@ assert.equal(
   '#/components/schemas/SuccessResponse_list_MessageDoc__'
 );
 assert.equal(
-  getJsonResponseRef('post', '/conversations/{conversation_id}/messages/content', '201'),
+  getJsonResponseRef('post', '/messages/{container_type}/{container_id}/content', '201'),
   '#/components/schemas/SuccessResponse_MessageDoc_'
 );
 assert.equal(
@@ -187,7 +190,7 @@ assert.deepEqual(
   ['text', 'media', 'file', 'call', 'system', 'poll', 'sticker', 'voice', 'location', 'contact', 'link_preview']
 );
 assert.deepEqual(
-  getSchema('Body_send_media_conversations__conversation_id__messages_media_post').properties.type.enum,
+  getSchema('Body_send_container_media_messages__container_type___container_id__media_post').properties.type.enum,
   ['media', 'file']
 );
 assert.deepEqual(
@@ -195,7 +198,7 @@ assert.deepEqual(
   ['voice', 'audio', 'image', 'video', 'file']
 );
 assert.deepEqual(
-  getSchema('Body_send_media_conversations__conversation_id__messages_media_post').properties.media_kind.anyOf[0].enum,
+  getSchema('Body_send_container_media_messages__container_type___container_id__media_post').properties.media_kind.anyOf[0].enum,
   ['voice', 'audio', 'image', 'video']
 );
 assert.deepEqual(

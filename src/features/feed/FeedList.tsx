@@ -4,6 +4,7 @@ import { Loader2 } from 'lucide-react';
 import { feedsApi } from '@/api/endpoints';
 import { Button } from '@/components/ui/Button';
 import { ProfilePostCard } from '@/features/profile/components/ProfilePostCard';
+import { useRealtimeChannelPosts } from '@/socket/useChannelRooms';
 import { useAuthStore } from '@/store/authStore';
 import { useFeedPostCapabilities } from './useFeedPostCapabilities';
 
@@ -39,9 +40,11 @@ export function FeedList({ scope }: { scope: FeedScope }) {
   });
   const posts = query.data?.pages.flatMap((page) => page.data) ?? [];
   const currentUserId = useAuthStore((state) => state.userId);
-  const { for: capabilitiesFor } = useFeedPostCapabilities(
-    posts.map((post) => post.channel_id)
-  );
+  const channelIds = posts.map((post) => post.channel_id);
+  const { for: capabilitiesFor } = useFeedPostCapabilities(channelIds);
+  // A feed carries posts from many channels, and a channel broadcasts to its own
+  // room — so being shown one is what subscribes the viewer to it.
+  useRealtimeChannelPosts(channelIds);
 
   if (query.isLoading) {
     return (

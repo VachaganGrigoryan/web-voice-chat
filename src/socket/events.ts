@@ -14,7 +14,6 @@ export const EVENTS = {
   CONVERSATION_READ: 'conversation_read',
   CLIENT_TYPING_START: 'typing_start',
   CLIENT_TYPING_STOP: 'typing_stop',
-  CLIENT_PRESENCE_STATE: 'presence_state',
   CALL_JOIN: 'call.join',
   CALL_MEDIA_STATE: 'call.media_state',
   CALL_OFFER: 'call.offer',
@@ -30,7 +29,6 @@ export const EVENTS = {
   // Server -> Client
   RECEIVE_MESSAGE: 'receive_message',
   MESSAGE_STATUS: 'message_status',
-  MESSAGE_ACK: 'message_ack',
   MESSAGE_EDITED: 'message_edited',
   MESSAGE_DELETED: 'message_deleted',
   MESSAGE_REACTED: 'message_reacted',
@@ -39,6 +37,7 @@ export const EVENTS = {
   THREAD_SUMMARY_UPDATED: 'thread_summary_updated',
   CONVERSATION_PINS_UPDATED: 'conversation_pins_updated',
   CONVERSATION_HISTORY_CLEARED: 'conversation_history_cleared',
+  CHANNEL_READ: 'channel_read',
   PRESENCE_UPDATE: 'presence_update',
   USER_ONLINE: 'user_online', // Keeping these if they are part of presence_update or separate
   USER_OFFLINE: 'user_offline',

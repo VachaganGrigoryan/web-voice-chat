@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { MessageContainerRef } from '@/api/types';
+import type { ConversationOnlyAffordances } from '@/container/types';
 import type { SendTextInput } from '@/features/chat/types/sendInputs';
-import { conversationsApi } from '@/api/endpoints';
 import { getSocket } from '@/socket/socket';
 import { EVENTS } from '@/socket/events';
 
@@ -11,18 +11,24 @@ interface UseComposerTextInputParams {
   container: MessageContainerRef;
   onSendText: (data: SendTextInput) => Promise<unknown>;
   onClearReplyTarget?: () => void;
-  /** Persist/restore an unsent draft per conversation (main composer only). */
-  enableDraft?: boolean;
+  /** Persist/restore an unsent draft (main composer only); absent for a channel. */
+  drafts?: ConversationOnlyAffordances['drafts'] | null;
 }
 
 export function useComposerTextInput({
   container,
   onSendText,
   onClearReplyTarget,
-  enableDraft = false,
+  drafts = null,
 }: UseComposerTextInputParams) {
   const containerId = container.container_id;
-  const isConversation = container.container_type === 'conversation';
+  const containerType = container.container_type;
+  // The group is rebuilt whenever presence or the conversation changes; the
+  // effects below key on its presence, not its identity, so a presence update
+  // cannot re-run the restore mid-typing.
+  const draftsRef = useRef(drafts);
+  draftsRef.current = drafts;
+  const hasDrafts = !!drafts;
 
   const [text, setText] = useState('');
   const [isFocused, setIsFocused] = useState(false);
@@ -35,16 +41,14 @@ export function useComposerTextInput({
 
   // Restore any saved draft when the conversation changes.
   useEffect(() => {
-    // Drafts are stored on the conversation participant row; channels have no
-    // equivalent endpoint yet.
-    if (!enableDraft || !isConversation || !containerId) return;
+    // Drafts belong to the conversation-only group, which a channel lacks.
+    if (!hasDrafts || !containerId) return;
     let cancelled = false;
     hasUserEditedRef.current = false;
-    conversationsApi
-      .getDraft(containerId)
-      .then((participant) => {
+    draftsRef.current
+      ?.load()
+      .then((draft) => {
         if (cancelled) return;
-        const draft = participant.draft_text;
         if (draft) {
           setText((current) => (current ? current : draft));
         }
@@ -55,21 +59,23 @@ export function useComposerTextInput({
     return () => {
       cancelled = true;
     };
-  }, [enableDraft, isConversation, containerId]);
+  }, [hasDrafts, containerId]);
 
   // Debounced persistence of the current draft.
   useEffect(() => {
-    if (!enableDraft || !isConversation || !containerId || !hasUserEditedRef.current) return;
+    if (!hasDrafts || !containerId || !hasUserEditedRef.current) return;
     const timeout = setTimeout(() => {
       const trimmed = text.trim();
+      const current = draftsRef.current;
+      if (!current) return;
       if (trimmed) {
-        void conversationsApi.setDraft(containerId, trimmed).catch(() => {});
+        void current.save(trimmed).catch(() => {});
       } else {
-        void conversationsApi.clearDraft(containerId).catch(() => {});
+        void current.clear().catch(() => {});
       }
     }, DRAFT_SAVE_DEBOUNCE_MS);
     return () => clearTimeout(timeout);
-  }, [enableDraft, isConversation, containerId, text]);
+  }, [hasDrafts, containerId, text]);
 
   const resizeTextarea = () => {
     const textarea = textareaRef.current;
@@ -80,16 +86,20 @@ export function useComposerTextInput({
 
   const emitTypingStart = () => {
     const socket = getSocket();
-    // The typing events carry a conversation_id and the server resolves
-    // participants from it, so they do not apply to channels.
-    if (!isConversation) return;
-    socket?.emit(EVENTS.CLIENT_TYPING_START, { conversation_id: containerId });
+    if (!containerId) return;
+    socket?.emit(EVENTS.CLIENT_TYPING_START, {
+      container_type: containerType,
+      container_id: containerId,
+    });
   };
 
   const emitTypingStop = () => {
     const socket = getSocket();
-    if (!isConversation) return;
-    socket?.emit(EVENTS.CLIENT_TYPING_STOP, { conversation_id: containerId });
+    if (!containerId) return;
+    socket?.emit(EVENTS.CLIENT_TYPING_STOP, {
+      container_type: containerType,
+      container_id: containerId,
+    });
   };
 
   const resetTypingTimeout = () => {

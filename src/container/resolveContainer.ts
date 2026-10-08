@@ -140,18 +140,25 @@ const buildPresentation = (
     threadDisplay: 'side-panel',
     composer: capabilities.canPost ? 'inline-bar' : 'none',
     groupConsecutive: true,
-    // Receipts and typing are conversation-shaped; a channel has neither.
+    // Receipts are conversation-shaped; a channel has followers, not a
+    // recipient roster, so it can produce no per-message receipt. Typing is
+    // container-generic — a channel relays it to its room the same way it
+    // relays messages.
     showReadReceipts: source.kind === 'conversation',
-    showTypingIndicator: source.kind === 'conversation',
+    showTypingIndicator: true,
     emptyState,
   };
 };
 
 // --- realtime ---------------------------------------------------------------
 
-const buildRealtime = (source: ContainerSource): ContainerRealtime => {
-  const ref = refOf(source);
-  const isConversation = source.kind === 'conversation';
+/**
+ * Exported so a caller holding only a ref — a socket handler, whose container
+ * comes from the route rather than from a resolved descriptor — gets the
+ * descriptor's own predicates instead of writing a second set.
+ */
+export const realtimeFor = (ref: MessageContainerRef): ContainerRealtime => {
+  const isConversation = ref.container_type === 'conversation';
 
   /**
    * Tolerates the deprecated `conversation_id` mirror. Dropping it client-first
@@ -168,14 +175,21 @@ const buildRealtime = (source: ContainerSource): ContainerRealtime => {
   return {
     matchesMessage: matches,
     matchesStatus: matches,
-    matchesTyping: (event) => (isConversation ? matches(event) : false),
+    // Typing and pins are container-generic: a channel relays typing to its
+    // room and tracks a pinned set of its own.
+    matchesTyping: matches,
+    matchesPins: matches,
+    // Read stays conversation-only. `conversation_read` tells participants that
+    // one of them caught up; a channel's read is the personal `channel_read`.
     matchesRead: (event) => (isConversation ? matches(event) : false),
-    matchesPins: (event) => (isConversation ? matches(event) : false),
     // Channels broadcast to a per-container Socket.IO room now, so delivery
     // no longer depends on audience size the way a per-user fan-out loop did.
     reliability: 'live',
   };
 };
+
+const buildRealtime = (source: ContainerSource): ContainerRealtime =>
+  realtimeFor(refOf(source));
 
 // --- policy echo ------------------------------------------------------------
 

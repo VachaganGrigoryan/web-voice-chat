@@ -51,7 +51,7 @@ export default function ChatComposer({
   onClearReplyTarget,
   isUploading = false,
   contextLabel = 'chat',
-  enableDraft = false,
+  drafts = null,
   preset = 'inline-bar',
   onSent,
   submitLabel = 'Post',
@@ -74,7 +74,7 @@ export default function ChatComposer({
     container,
     onSendText,
     onClearReplyTarget,
-    enableDraft,
+    drafts,
   });
 
   const attachmentComposer = useAttachmentComposerController({

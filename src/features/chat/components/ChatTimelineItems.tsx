@@ -27,6 +27,7 @@ interface ChatTimelineItemsProps {
   onSwipeReply?: (message: ChatMessage) => void;
   onToggleReaction: (messageId: string, emoji: string) => Promise<void>;
   isTogglingReaction?: boolean;
+  canReact: boolean;
   onMediaClick?: (payload: MediaClickPayload) => void;
   audioQueueKey?: string | null;
   audioQueue?: ChatAudioQueueItem[];
@@ -34,6 +35,8 @@ interface ChatTimelineItemsProps {
   registerMessageElement?: (messageIds: string[], node: HTMLDivElement | null) => void;
   getBubbleFooter?: (message: ChatMessage) => React.ReactNode;
   standaloneSystemMessages?: boolean;
+  /** From the container's presentation — a channel has no per-recipient receipts to show. */
+  showReceipts: boolean;
 }
 
 export function ChatTimelineItems({
@@ -45,6 +48,7 @@ export function ChatTimelineItems({
   onSwipeReply,
   onToggleReaction,
   isTogglingReaction = false,
+  canReact,
   onMediaClick,
   audioQueueKey,
   audioQueue,
@@ -52,6 +56,7 @@ export function ChatTimelineItems({
   registerMessageElement,
   getBubbleFooter,
   standaloneSystemMessages = false,
+  showReceipts,
 }: ChatTimelineItemsProps) {
   return (
     <>
@@ -143,7 +148,11 @@ export function ChatTimelineItems({
                   groupedWithBelow={groupedWithBelow}
                   onMediaClick={onMediaClick}
                 />
-                <MessageMeta message={item.latestMessage} showTimestamp={!groupedWithBelow} />
+                <MessageMeta
+                  message={item.latestMessage}
+                  showTimestamp={!groupedWithBelow}
+                  showReceipts={showReceipts}
+                />
               </MessageItem>
             ) : (
               <MessageItem
@@ -171,10 +180,15 @@ export function ChatTimelineItems({
                 <MessageReactions
                   message={item.message}
                   currentUserId={currentUserId}
+                  canReact={canReact}
                   isBusy={isTogglingReaction}
                   onToggleReaction={(emoji) => onToggleReaction(item.message.id, emoji)}
                 />
-                <MessageMeta message={item.message} showTimestamp={!groupedWithBelow} />
+                <MessageMeta
+                  message={item.message}
+                  showTimestamp={!groupedWithBelow}
+                  showReceipts={showReceipts}
+                />
               </MessageItem>
             )}
           </div>

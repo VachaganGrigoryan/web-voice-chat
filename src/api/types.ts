@@ -99,6 +99,16 @@ export interface MessageContainerRef {
   container_id: string;
 }
 
+/**
+ * A container's pinned set. Pin and unpin answer with this for a conversation
+ * and a channel alike — the pinned set is what the call changed, so returning a
+ * whole conversation was both more than the caller needed and impossible for
+ * half the container types.
+ */
+export interface PinnedMessages extends MessageContainerRef {
+  readonly pinned_message_ids: string[];
+}
+
 export type ChannelKind = 'profile' | 'text' | 'announcement';
 export type ChannelVisibility = 'public' | 'members' | 'private';
 export type ChannelJoinPolicy = 'open' | 'approval' | 'invite_only' | 'closed';
@@ -126,6 +136,7 @@ export interface Channel {
   message_count: number;
   follower_count: number;
   last_message_id: string | null;
+  pinned_message_ids: string[];
   last_activity_at: string | null;
   legacy_conversation_id: string | null;
   created_by: string;

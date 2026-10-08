@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Channel, Conversation, MessageDoc, PaginatedResponse } from '@/api/types';
 import { fromPolicy } from './capabilities';
-import { refOf, resolveContainer } from './resolveContainer';
+import { realtimeFor, refOf, resolveContainer } from './resolveContainer';
 import type {
   ContainerEndpoints,
   ContainerSource,
@@ -148,10 +148,10 @@ describe('presentation follows the lens', () => {
     expect(resolve(source, 'feed', STRANGER).presentation.composer).toBe('none');
   });
 
-  it('never shows receipts or typing for a channel', () => {
+  it('never shows receipts for a channel, but does show typing', () => {
     const { presentation } = resolve(channel(), 'timeline');
     expect(presentation.showReadReceipts).toBe(false);
-    expect(presentation.showTypingIndicator).toBe(false);
+    expect(presentation.showTypingIndicator).toBe(true);
   });
 
   it('shows receipts and typing for a conversation timeline', () => {
@@ -187,11 +187,15 @@ describe('conversation-only affordances', () => {
   });
 });
 
-describe('pin and forward are hard-denied for channels', () => {
+describe('forward is hard-denied for channels', () => {
   it('regardless of viewer standing', () => {
     const { capabilities } = resolve(channel(), 'timeline', OWNER);
-    expect(capabilities.canPin).toBe(false);
     expect(capabilities.canForward).toBe(false);
+  });
+
+  it('but pinning is not — a channel tracks a pinned set of its own', () => {
+    const { capabilities } = resolve(channel(), 'timeline', OWNER);
+    expect(capabilities.canPin).toBe(true);
   });
 });
 
@@ -219,10 +223,36 @@ describe('realtime predicates', () => {
     ).toBe(false);
   });
 
-  it('never matches typing for a channel', () => {
+  it('matches typing for a channel, which relays it to its own room', () => {
     expect(
       realtime.matchesTyping({ container_type: 'channel', container_id: 'ch_1' })
+    ).toBe(true);
+  });
+
+  it('matches pins for a channel, which tracks a pinned set of its own', () => {
+    expect(
+      realtime.matchesPins({ container_type: 'channel', container_id: 'ch_1' })
+    ).toBe(true);
+  });
+
+  it('never matches a conversation read for a channel', () => {
+    expect(
+      realtime.matchesRead({ container_type: 'channel', container_id: 'ch_1' })
     ).toBe(false);
+    expect(
+      resolve(conversation(), 'timeline').realtime.matchesRead({
+        container_type: 'conversation',
+        container_id: 'cv_1',
+      })
+    ).toBe(true);
+  });
+
+  it('agrees with the standalone factory a socket handler uses', () => {
+    const standalone = realtimeFor({ container_type: 'channel', container_id: 'ch_1' });
+    const event = { container_type: 'channel', container_id: 'ch_1' };
+    expect(standalone.matchesMessage(event)).toBe(realtime.matchesMessage(event));
+    expect(standalone.matchesPins(event)).toBe(realtime.matchesPins(event));
+    expect(standalone.matchesRead(event)).toBe(realtime.matchesRead(event));
   });
 
   it('tolerates the legacy conversation_id mirror', () => {
@@ -233,6 +263,21 @@ describe('realtime predicates', () => {
     expect(conversationRealtime.matchesMessage({ conversation_id: 'cv_9' })).toBe(
       false
     );
+  });
+
+  it('does not claim an untyped legacy-mirror event for a channel', () => {
+    // An event with no container_type predates channels, so it is a
+    // conversation's — even when its mirror happens to carry this channel's id.
+    expect(realtime.matchesMessage({ conversation_id: 'ch_1' })).toBe(false);
+    expect(realtime.matchesPins({ conversation_id: 'ch_1' })).toBe(false);
+  });
+
+  it('matches a typed channel event whose mirror carries the channel id', () => {
+    // The backend's pin and clear events put the channel id in the mirror too.
+    const event = { container_type: 'channel', conversation_id: 'ch_1' };
+    expect(realtime.matchesPins(event)).toBe(true);
+    expect(realtime.matchesMessage(event)).toBe(true);
+    expect(realtime.matchesRead(event)).toBe(false);
   });
 });
 

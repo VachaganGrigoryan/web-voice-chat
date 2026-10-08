@@ -19,7 +19,10 @@ export function useConversationLifecycle() {
 
   const clear = useMutation({
     mutationFn: (conversationId: string) =>
-      messagesApi.clearConversation(conversationId),
+      messagesApi.clearContainer({
+        container_type: 'conversation',
+        container_id: conversationId,
+      }),
     onSuccess: (result, conversationId) => {
       clearConversationMessages(queryClient, conversationId, result.conversation_id);
       clearConversationRow(queryClient, conversationId, result.conversation_id);

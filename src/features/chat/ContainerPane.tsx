@@ -32,7 +32,6 @@ interface AccessGateProps {
 }
 
 interface PinnedBarProps {
-  conversationId: string;
   pinnedMessageIds: string[];
   canManagePins: boolean;
 }
@@ -97,6 +96,7 @@ interface ContainerPaneProps {
   onSwipeReply?: (message: ChatMessage) => void;
   onToggleReaction: (messageId: string, emoji: string) => Promise<void>;
   isTogglingReaction: boolean;
+  canReact: boolean;
   onMediaClick: (payload: { type: 'image' | 'video'; messageId: string; url: string; downloadName?: string }) => void;
   audioQueueKey?: string | null;
   audioQueue?: Array<{
@@ -173,6 +173,7 @@ export function ContainerPane({
   onSwipeReply,
   onToggleReaction,
   isTogglingReaction,
+  canReact,
   onMediaClick,
   audioQueueKey,
   audioQueue,
@@ -288,7 +289,7 @@ export function ContainerPane({
 
       {pinnedBar && pinnedBar.pinnedMessageIds.length > 0 ? (
         <PinnedMessagesBar
-          conversationId={pinnedBar.conversationId}
+          container={descriptor.ref}
           pinnedMessageIds={pinnedBar.pinnedMessageIds}
           canManagePins={pinnedBar.canManagePins}
         />
@@ -321,7 +322,7 @@ export function ContainerPane({
                 className="scrollbar-hidden flex-1 overflow-y-auto flex flex-col-reverse p-4 scroll-smooth overscroll-contain"
                 onScroll={(event) => handleScroll(event.currentTarget)}
               >
-                {isTyping ? (
+                {isTyping && descriptor.presentation.showTypingIndicator ? (
                   <div className="self-start mb-2 ml-1 animate-in fade-in slide-in-from-bottom-2 duration-300">
                     <div className="bg-secondary/50 rounded-2xl rounded-tl-none px-4 py-3 text-sm text-muted-foreground flex items-center gap-2 shadow-sm">
                       <div className="flex gap-1">
@@ -342,12 +343,14 @@ export function ContainerPane({
                   onSwipeReply={onSwipeReply}
                   onToggleReaction={onToggleReaction}
                   isTogglingReaction={isTogglingReaction}
+                  canReact={canReact}
                   onMediaClick={onMediaClick}
                   audioQueueKey={audioQueueKey}
                   audioQueue={audioQueue}
                   isMessageMenuOpen={isMessageMenuOpen}
                   registerMessageElement={registerMessageElement}
                   standaloneSystemMessages
+                  showReceipts={descriptor.presentation.showReadReceipts}
                   getBubbleFooter={(message) =>
                     message.isThreadRoot || message.threadReplyCount > 0 ? (
                       <ThreadReplyBadge message={message} onOpenThread={() => onOpenThread(message)} />

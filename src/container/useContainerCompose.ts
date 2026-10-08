@@ -9,6 +9,7 @@ import type {
   ReplyMode,
   SendRichContentRequest,
 } from '@/api/types';
+import { EVENTS } from '@/socket/events';
 import { useSocketStore } from '@/socket/socket';
 import { integrateCreatedMessage } from './messageCache';
 import type { ContainerDescriptor } from './types';
@@ -55,7 +56,7 @@ const emitOutgoing = (
 ) => {
   if (descriptor.ref.container_type !== 'conversation') return;
   const { socket } = useSocketStore.getState();
-  socket?.emit('send_message', {
+  socket?.emit(EVENTS.SEND_MESSAGE, {
     conversation_id: message.container_id,
     message_id: message.id,
     type,
