@@ -1,368 +1,131 @@
-# VoiceChat — Real-Time Voice Messaging
+<p align="center">
+  <img src="./public/brand/vogi-full-512x128.png" alt="Vogi" width="256">
+</p>
 
-VoiceChat is a **real-time voice messaging platform** built with:
+<p align="center"><strong>Voice, messages, media, and calls in one platform.</strong></p>
 
-- FastAPI backend
-- Socket.IO realtime communication
-- React + Vite + TypeScript frontend
-- MongoDB, Redis, RabbitMQ
-- Docker Compose deployment
+This is the web client for **Vogi**, built with React 19, TypeScript, Vite and Tailwind CSS v4. It talks to the FastAPI and Socket.IO backend in the sibling [`VoiceChat`](../VoiceChat) repository and also ships as an Android app through Capacitor ([`mobile/`](./mobile/README.md)).
 
-The system allows users to **register via email verification**, send **voice messages**, and receive them **instantly via realtime sockets**.
+<p align="center">
+  <img src="./docs/screenshots/chat-dm.png" alt="Direct message with a thread and reactions" width="100%">
+</p>
 
----
+## Features
 
-# Public Demo
+- **Chat**: DMs and groups with threads, reactions, pins, edits, forwarding, drafts, scheduled messages, voice notes, media and rich content.
+- **Spaces and channels**: a space groups channels and groups. Every channel opens in a **feed** lens (posts and comments) or a **chat** lens (timeline), over the same messages.
+- **Feed**: a home feed from the people and channels you follow, plus saved posts.
+- **Discover and People**: find people, channels, spaces and groups. Manage contacts, follows, followers and blocks.
+- **Activity**: notifications, mentions, connection requests and call logs.
+- **Calls**: 1:1 voice and video over WebRTC, with recovery after a reload.
+- **Management**: per-space, per-channel and per-group settings, roles and invites, available as a slide-over sheet or as deep-linkable `/manage` pages.
+- **Settings**: theme (light, dark or system), colour palette, font size, density, notifications, privacy, and passkeys.
+- **Realtime** throughout: messages, receipts, typing, presence and permission changes over Socket.IO.
 
-**Frontend**  
-https://chat.vachagan.dev
+## Screenshots
 
-**API Docs**  
-https://voice-chat.vachagan.dev/docs
+| | |
+|---|---|
+| ![Channel feed](./docs/screenshots/channel-feed.png) | ![Channel chat](./docs/screenshots/channel-chat.png) |
+| Channel, feed lens | Channel, chat lens |
+| ![Thread](./docs/screenshots/chat-thread.png) | ![Group](./docs/screenshots/chat-group.png) |
+| Thread panel | Group conversation |
+| ![Home feed](./docs/screenshots/feed-home.png) | ![Discover](./docs/screenshots/discover.png) |
+| Home feed | Discover |
+| ![Space](./docs/screenshots/space-home.png) | ![Manage channel](./docs/screenshots/manage-channel.png) |
+| Space home | Channel management |
+| ![Activity](./docs/screenshots/activity.png) | ![Settings](./docs/screenshots/settings-appearance.png) |
+| Activity | Settings |
+| ![Dark DM](./docs/screenshots/chat-dm-dark.png) | ![Dark channel feed](./docs/screenshots/channel-feed-dark.png) |
+| Dark theme | Dark theme |
 
-**Health Check**  
-https://voice-chat.vachagan.dev/health/live
+<p align="center">
+  <img src="./docs/screenshots/mobile-inbox.png" alt="Mobile inbox" width="30%">
+  &nbsp;
+  <img src="./docs/screenshots/mobile-chat.png" alt="Mobile chat" width="30%">
+</p>
 
----
+All screenshots are generated from seeded demo data by `npm run docs:screenshots`. See [docs/screenshots](./docs/screenshots/README.md).
 
-# Architecture
+## Quick start
 
-```
-Frontend (React + Vite)
-        │
-        │ REST API
-        ▼
-FastAPI Backend
-        │
-        ├── MongoDB (users, messages)
-        ├── Redis (rate limits, sessions)
-        ├── RabbitMQ (background jobs)
-        └── Socket.IO (realtime messaging)
-```
+1. Start the backend. In `../VoiceChat`, run `docker compose up -d` (see its [README](../VoiceChat/README.md)).
+2. Install dependencies:
 
----
+   ```bash
+   npm install
+   ```
 
-# Features
+3. Create `.env.local` with the backend URLs:
 
-### Authentication
+   ```bash
+   VITE_API_URL=http://localhost:8000
+   VITE_SOCKET_URL=http://localhost:8000
+   ```
 
-- Email based login
-- Verification code flow
-- Access + refresh token authentication
-- Token rotation
+4. Start the dev server:
 
-### Voice Messaging
+   ```bash
+   npm run dev     # http://localhost:3000
+   ```
 
-- Upload voice messages
-- Store audio files
-- Retrieve chat history
+5. Sign in with any email address. The verification code arrives in MailHog at <http://localhost:8025>.
 
-### Realtime Delivery
+## Scripts
 
-- WebSocket communication
-- Instant message delivery
-- Delivery status updates
+| Command | What it does |
+|---|---|
+| `npm run dev` | Vite dev server on port 3000 |
+| `npm run build` | Production build to `dist/` |
+| `npm run preview` | Serve the production build |
+| `npm run lint` | Type check (`tsc --noEmit`). There is no ESLint. |
+| `npm run test:unit` | Vitest unit tests |
+| `npm run test:e2e` | Playwright end-to-end tests (Chromium, Firefox, WebKit) |
+| `npm run docs:screenshots` | Regenerate the documentation screenshots |
+| `npm run sync:openapi` | Copy the backend's OpenAPI schema into `openapi/` |
+| `npm run generate:api-contract` | Regenerate `src/api/openapi-contract.ts` |
+| `npm run test:api-contract` | Check the client's API usage against the schema |
+| `npm run build:mobile`, `npm run sync:mobile:android` | Android build and sync. See [`mobile/README.md`](./mobile/README.md). |
 
-### Security
+## Testing
 
-- Rate limiting
-- JWT authentication
-- Refresh token rotation
-- CORS protection
-
----
-
-# Screenshots
-
-Place screenshots inside:
-
-```
-docs/screenshots
-```
-
-## Login / Register
-
-![Login Screen](docs/screenshots/login.png)
-
-*Email based authentication screen*
-
----
-
-## Code Verification
-
-![Verification Screen](docs/screenshots/verify.png)
-
-*User enters the verification code received via email*
-
----
-
-## Chat Interface
-
-![Chat UI](docs/screenshots/chat.png)
-
-*Realtime voice chat interface*
-
----
-
-## Mobile Interface
-
-![Mobile UI](docs/screenshots/mobile.png)
-
-*Mobile optimized layout with fixed voice button*
-
----
-
-# Frontend
-
-Frontend is built using:
-
-- Vite
-- React
-- TypeScript
-- Socket.IO client
-
-Example structure:
-
-```
-frontend/
-  src/
-    api/
-    auth/
-    chat/
-    components/
-    hooks/
-    sockets/
+```bash
+npm run lint                                   # type check
+npm run test:unit                              # all unit tests
+npx vitest run src/path/to/file.test.ts        # one file
+npm run test:e2e                               # Playwright
 ```
 
-Run locally:
+`tsconfig.json` has `strict` off, so `tsc` will not catch null dereferences. Guard optional fields by hand.
 
+Known Playwright baseline: **9 passed / 6 failed** across three browsers. `spaces.spec.ts` asserts stale `SpaceSwitcher` labels, and `fe-domain-smoke.spec.ts` needs a running backend whose verification emails reach MailHog. Check that the failure count has not grown, rather than expecting green.
+
+## Documentation
+
+| | |
+|---|---|
+| [Architecture](./docs/architecture.md) | Source layout, the container descriptor, capabilities, settings, realtime |
+| [Routes](./docs/routes.md) | Every route, its page, and legacy redirects |
+| [Screenshots](./docs/screenshots/README.md) | How the screenshot pipeline works and how to rerun it |
+| [`src/container/AGENTS.md`](./src/container/AGENTS.md) | Why containers are modelled as descriptors |
+| [`src/features/chat/AGENTS.md`](./src/features/chat/AGENTS.md) | Chat feature design notes |
+| [Mobile](./mobile/README.md) | Android companion app |
+| [Backend docs](../VoiceChat/docs/index.md) | API reference and realtime events |
+
+## Project layout
+
+```text
+src/
+  App.tsx       route table
+  app/          routes, app shell, legacy redirects
+  api/          HTTP client, endpoints, query keys, OpenAPI contract
+  container/    container descriptor, capabilities, message hooks
+  features/     auth · calls · channels · chat · discovery · feed · invite · landing
+                manage · notifications · profile · settings · settings-container · spaces
+  socket/       Socket.IO client and channel rooms
+  store/        Zustand stores
+mobile/         Android companion app (Capacitor)
+screenshots/    documentation screenshot pipeline
+tests/          Playwright specs
+docs/           this documentation
 ```
-npm install
-npm run dev
-```
-
-Frontend runs at:
-
-```
-http://localhost:5173
-```
-
-Mobile companion setup:
-
-```
-cd mobile
-npm install
-cd ..
-npm run build:mobile
-npm run sync:mobile:android
-```
-
----
-
-# Backend
-
-Backend uses:
-
-- FastAPI
-- Motor (MongoDB)
-- Redis
-- RabbitMQ
-- Socket.IO
-
-Run locally:
-
-```
-poetry install
-poetry run uvicorn app.main:app --reload
-```
-
-API available at:
-
-```
-http://localhost:8000
-```
-
-Docs:
-
-```
-http://localhost:8000/docs
-```
-
----
-
-# WebSocket Events
-
-Connection endpoint:
-
-```
-ws://voice-chat.vachagan.dev/socket.io
-```
-
-Authentication:
-
-```
-auth: {
-  token: ACCESS_TOKEN
-}
-```
-
----
-
-## Client → Server
-
-### send_voice_message
-
-```
-{
-  "receiver_id": "USER_ID",
-  "message_id": "MESSAGE_ID"
-}
-```
-
----
-
-## Server → Client
-
-### receive_voice_message
-
-```
-{
-  "message_id": "...",
-  "sender_id": "...",
-  "receiver_id": "...",
-  "audio_url": "...",
-  "created_at": "..."
-}
-```
-
-### voice_message_status
-
-```
-{
-  "message_id": "...",
-  "status": "delivered"
-}
-```
-
----
-
-# API Example
-
-## Register
-
-```
-POST /auth/register
-```
-
-```
-{
-  "email": "user@example.com"
-}
-```
-
----
-
-## Verify Code
-
-```
-POST /auth/verify
-```
-
-```
-{
-  "email": "user@example.com",
-  "code": "123456"
-}
-```
-
-Returns:
-
-```
-{
-  "access_token": "...",
-  "refresh_token": "..."
-}
-```
-
----
-
-# Docker Deployment
-
-Run the full stack:
-
-```
-docker compose up --build
-```
-
-Services started:
-
-- MongoDB
-- Redis
-- RabbitMQ
-- FastAPI
-- Frontend
-
----
-
-# Running Tests
-
-Run integration tests inside docker:
-
-```
-docker compose run --rm tests
-```
-
-Or locally:
-
-```
-pytest -v
-```
-
----
-
-# Environment Variables
-
-Example `.env`:
-
-```
-MONGO_URI=mongodb://mongo:27017/voicechat
-REDIS_URL=redis://redis:6379
-RABBITMQ_URL=amqp://rabbitmq
-JWT_SECRET=supersecret
-EMAIL_PROVIDER=mock
-CORS_ALLOWED_ORIGINS=http://localhost:5173
-```
-
----
-
-# Project Structure
-
-```
-app/
-  main.py
-  modules/
-    auth/
-    messages/
-    realtime/
-  db/
-  core/
-
-tests/
-  integration/
-  unit/
-
-frontend/
-docs/
-```
-
----
-
-# Author
-
-**Vachagan Grigoryan**
-
-Portfolio  
-https://vachagan.dev
-
-GitHub  
-https://github.com/VachaganGrigoryan
