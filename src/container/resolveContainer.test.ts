@@ -264,6 +264,21 @@ describe('realtime predicates', () => {
       false
     );
   });
+
+  it('does not claim an untyped legacy-mirror event for a channel', () => {
+    // An event with no container_type predates channels, so it is a
+    // conversation's — even when its mirror happens to carry this channel's id.
+    expect(realtime.matchesMessage({ conversation_id: 'ch_1' })).toBe(false);
+    expect(realtime.matchesPins({ conversation_id: 'ch_1' })).toBe(false);
+  });
+
+  it('matches a typed channel event whose mirror carries the channel id', () => {
+    // The backend's pin and clear events put the channel id in the mirror too.
+    const event = { container_type: 'channel', conversation_id: 'ch_1' };
+    expect(realtime.matchesPins(event)).toBe(true);
+    expect(realtime.matchesMessage(event)).toBe(true);
+    expect(realtime.matchesRead(event)).toBe(false);
+  });
 });
 
 describe('realtime reliability', () => {
