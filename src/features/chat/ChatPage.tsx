@@ -12,7 +12,6 @@ import type { MessageContainerRef } from '@/api/types';
 import { containerKeys } from '@/api/queryKeys';
 import { useConnections } from '@/hooks/useConnections';
 import { useContacts } from '@/hooks/useContacts';
-import { useGroupMembers } from '@/hooks/useGroupManagement';
 import { APP_ROUTES } from '@/app/routes';
 import { conversationsApi, messagesApi, notificationsApi, savedMessagesApi } from '@/api/endpoints';
 import { extractApiError } from '@/api/errors';
@@ -31,7 +30,7 @@ import {
 import { useChannelRooms } from '@/socket/useChannelRooms';
 import { startCall, useCallStore } from '@/features/calls/callController';
 import { useNotificationSoundStore } from '@/utils/notificationSound';
-import { NotificationLevel, ROLE_ADMIN, ROLE_MODERATOR } from '@/api/types';
+import { NotificationLevel } from '@/api/types';
 import { cn } from '@/lib/utils';
 import { useChatDialogs, CLOSED_MEDIA_VIEWER } from './ChatDialogsProvider';
 import { useChatRouteParams } from './hooks/useChatRouteParams';
@@ -330,26 +329,22 @@ export default function ChatPage() {
 
   const { activeMessage, activeMessageAnchor, mediaViewer } = dialogs.state;
 
-  // DMs allow either participant to manage message pins; larger conversations
-  // follow the owner/admin pin right.
-  const isPinCapableConversation = selectedConversation?.type === 'group';
-  const { data: pinMembers } = useGroupMembers(isPinCapableConversation ? selectedConversation?.id ?? null : null);
-  const canManagePins = useMemo(() => {
-    if (selectedConversation?.type === 'dm') {
-      return true;
-    }
-    if (selectedConversation?.owner_type === 'user' && selectedConversation.owner_id === userId) {
-      return true;
-    }
-    const role = pinMembers?.find((member) => member.user_id === userId)?.role;
-    return role === ROLE_ADMIN || role === ROLE_MODERATOR;
-  }, [pinMembers, selectedConversation?.type, selectedConversation?.owner_type, selectedConversation?.owner_id, userId]);
+  // The pin right is resolved by the server for both container types, and a
+  // channel tracks a pinned set of its own.
+  const canManagePins = !!descriptor?.capabilities.canPin;
+  const pinnedMessageIds = useMemo(() => {
+    const source = descriptor?.source;
+    if (!source) return [];
+    return source.kind === 'conversation'
+      ? source.conversation.pinned_message_ids ?? []
+      : source.channel.pinned_message_ids ?? [];
+  }, [descriptor?.source]);
 
-  const isActiveMessagePinned = !!(
-    activeMessage && selectedConversation?.pinned_message_ids.includes(activeMessage.id)
-  );
+  const isActiveMessagePinned = !!(activeMessage && pinnedMessageIds.includes(activeMessage.id));
   const canPinActiveMessage = !!(
-    canManagePins && activeMessage && activeMessage.chatId === selectedConversation?.id
+    canManagePins &&
+    activeMessage &&
+    (activeMessage.raw?.container_id ?? activeMessage.chatId) === container?.container_id
   );
 
   const handleTogglePinMessage = async () => {
@@ -664,9 +659,9 @@ export default function ChatPage() {
             : undefined
         }
         pinnedBar={
-          selectedConversation && selectedConversation.pinned_message_ids.length > 0
+          pinnedMessageIds.length > 0
             ? {
-                pinnedMessageIds: selectedConversation.pinned_message_ids,
+                pinnedMessageIds,
                 canManagePins,
               }
             : undefined

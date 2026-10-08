@@ -69,17 +69,10 @@ export function useConversationOnly(
       void queryClient.invalidateQueries({ queryKey: inboxKeys.folders });
     },
   });
-  const togglePin = useMutation({
-    mutationFn: (messageId: string) => messagesApi.pinMessage(messageId),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: inboxKeys.conversations });
-    },
-  });
 
   const saveDraftAsync = saveDraft.mutateAsync;
   const clearDraftAsync = clearDraft.mutateAsync;
   const moveFolderAsync = moveFolder.mutateAsync;
-  const togglePinAsync = togglePin.mutateAsync;
 
   return useMemo(() => {
     if (!conversationId) return null;
@@ -113,10 +106,6 @@ export function useConversationOnly(
         current: conversation?.folder ?? null,
         move: (folder: string | null) => moveFolderAsync(folder),
       },
-      pins: {
-        ids: conversation?.pinned_message_ids ?? [],
-        toggle: (messageId: string) => togglePinAsync(messageId),
-      },
       forward: (messageId: string, targetConversationId: string) =>
         messagesApi.forwardMessage(messageId, targetConversationId),
       presence: {
@@ -137,6 +126,5 @@ export function useConversationOnly(
     saveDraftAsync,
     clearDraftAsync,
     moveFolderAsync,
-    togglePinAsync,
   ]);
 }

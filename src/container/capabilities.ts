@@ -129,10 +129,9 @@ const joinAffordanceFor = (
 };
 
 /**
- * Pin and forward are hard-denied for channels regardless of what the server
- * says: `pinned_message_ids` is a conversation field and forward targets must be
- * conversations, so both return 400 on a channel container. Encoding the known
- * constraint beats rediscovering it as a failed request.
+ * Forward is hard-denied for channels regardless of what the server says:
+ * forward targets must be conversations. Pinning is not: a channel tracks a
+ * pinned set of its own, so `canPin` follows the server for both types.
  */
 const isChannel = (source: ContainerSource) => source.kind === 'channel';
 

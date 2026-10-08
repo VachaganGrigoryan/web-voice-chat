@@ -202,10 +202,6 @@ export interface ConversationOnlyAffordances {
     readonly current: string | null;
     readonly move: (folder: string | null) => Promise<unknown>;
   };
-  readonly pins: {
-    readonly ids: readonly string[];
-    readonly toggle: (messageId: string) => Promise<unknown>;
-  };
   readonly forward: (
     messageId: string,
     targetConversationId: string
