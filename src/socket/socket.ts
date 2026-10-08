@@ -19,6 +19,7 @@ import {
 import { resolveMessageContent } from '@/api/messageContent';
 import {
   applyReactionUpdateToFeeds,
+  containerIdOf,
   invalidateChannelFeeds,
   resetContainerUnreadCount,
   updateContainerPinnedMessages,
@@ -174,13 +175,13 @@ const setupSocketSync = () => {
     });
 
     socket.on(EVENTS.SERVER_TYPING_START, (payload: any) => {
-      const containerId = payload.container_id || payload.conversation_id;
+      const containerId = containerIdOf(payload);
       const userId = payload.from || payload.sender_id;
       if (containerId && userId) setTypingUser(containerId, userId, true);
     });
 
     socket.on(EVENTS.SERVER_TYPING_STOP, (payload: any) => {
-      const containerId = payload.container_id || payload.conversation_id;
+      const containerId = containerIdOf(payload);
       const userId = payload.from || payload.sender_id;
       if (containerId && userId) setTypingUser(containerId, userId, false);
     });
@@ -1022,7 +1023,7 @@ export const useRealtimeMessages = (
           if (conversationsData?.pages) {
             const allConversations = conversationsData.pages.flatMap((p: any) => p.data);
             const conv = allConversations.find(
-              (c: any) => c.conversation_id === message.conversation_id
+              (c: any) => c.conversation_id === containerIdOf(message)
             );
             if (conv) {
               senderName =
