@@ -5,6 +5,7 @@ import type { MessageReactionsUpdate } from '@/api/types';
 import {
   applyReactionUpdateToFeeds,
   invalidateChannelFeeds,
+  invalidatePostDocument,
 } from '@/container/messageCache';
 import { channelRooms } from './channelRooms';
 import { EVENTS } from './events';
@@ -14,6 +15,11 @@ import { useSocketStore } from './socket';
 interface ChannelEvent {
   container_type?: string;
   container_id?: string;
+  /** The message itself (`id`), or the one a delete names (`message_id`). */
+  id?: string;
+  message_id?: string;
+  /** Set on a comment: the post it belongs to. */
+  thread_root_id?: string | null;
   /** `thread_reply_created` sometimes wraps the message in a summary envelope. */
   message?: { container_type?: string; container_id?: string };
 }
@@ -64,7 +70,12 @@ export function useRealtimeChannelPosts(channelIds: readonly string[]): void {
 
     const refreshFeeds = (payload: ChannelEvent) => {
       const channelId = channelIdOf(payload);
-      if (channelId) invalidateChannelFeeds(queryClient, channelId);
+      if (!channelId) return;
+      invalidateChannelFeeds(queryClient, channelId);
+      // An open post is held as its own document: a comment changes its
+      // reply count, and an edit or delete may be the post itself.
+      const postId = payload.thread_root_id ?? payload.id ?? payload.message_id;
+      if (postId) invalidatePostDocument(queryClient, postId);
     };
 
     // Written in place rather than invalidated, so a post keeps its optimistic

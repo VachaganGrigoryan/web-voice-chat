@@ -15,6 +15,7 @@ import {
   findCachedFeedPost,
   integrateCreatedMessage,
   invalidateChannelFeeds,
+  invalidatePostDocument,
   prependMessage,
   removeConversationRow,
   resetContainerUnreadCount,
@@ -202,6 +203,30 @@ describe('applyReactionUpdateToFeeds', () => {
     applyReactionUpdateToFeeds(queryClient, 'p_1', thumbsUp);
 
     expect(queryClient.getQueryData(['channel-feed', 'ch_1'])).toBe(cache);
+  });
+
+  it('updates the single document an open post detail page reads', () => {
+    queryClient.setQueryData(['messages', 'p_1'], message({ id: 'p_1', reactions: [] }));
+
+    applyReactionUpdateToFeeds(queryClient, 'p_1', thumbsUp);
+
+    expect(queryClient.getQueryData<MessageDoc>(['messages', 'p_1'])?.reactions).toEqual(
+      thumbsUp
+    );
+  });
+});
+
+describe('invalidatePostDocument', () => {
+  it('marks only the open post stale, not a container timeline sharing the prefix', () => {
+    queryClient.setQueryData(['messages', 'p_1'], message({ id: 'p_1' }));
+    queryClient.setQueryData(['messages', 'channel', 'ch_1'], { pages: [] });
+
+    invalidatePostDocument(queryClient, 'p_1');
+
+    expect(queryClient.getQueryState(['messages', 'p_1'])?.isInvalidated).toBe(true);
+    expect(queryClient.getQueryState(['messages', 'channel', 'ch_1'])?.isInvalidated).toBe(
+      false
+    );
   });
 });
 

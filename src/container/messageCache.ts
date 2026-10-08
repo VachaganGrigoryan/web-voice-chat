@@ -224,6 +224,20 @@ export const applyReactionUpdateToFeeds = (
   reactions: MessageReactionGroup[]
 ): void => {
   updatePostAcrossFeeds(queryClient, postId, (post) => ({ ...post, reactions }));
+  queryClient.setQueryData<MessageDoc>(postDocumentKey(postId), (old) =>
+    old ? { ...old, reactions } : old
+  );
+};
+
+/**
+ * The post detail route holds its post as a single document under this key,
+ * which the paginated writers and the feed projections both skip.
+ */
+const postDocumentKey = (postId: string) => ['messages', postId] as const;
+
+/** Refetch an open post, e.g. after a comment changed its reply count. */
+export const invalidatePostDocument = (queryClient: QueryClient, postId: string): void => {
+  void queryClient.invalidateQueries({ queryKey: postDocumentKey(postId), exact: true });
 };
 
 export const applyReactionUpdate = (
