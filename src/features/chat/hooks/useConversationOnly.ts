@@ -99,6 +99,10 @@ export function useConversationOnly(
       },
       drafts: {
         value: draftText,
+        load: () =>
+          conversationsApi
+            .getDraft(conversationId)
+            .then((participant) => participant.draft_text ?? null),
         save: (text: string) => saveDraftAsync(text),
         clear: () => clearDraftAsync(),
       },

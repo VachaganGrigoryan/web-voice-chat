@@ -2,8 +2,8 @@ import { useMemo, useState } from 'react';
 import { Loader2, Send } from 'lucide-react';
 import { toast } from 'sonner';
 
-import { messagesApi } from '@/api/endpoints';
 import type { Conversation } from '@/api/types';
+import type { ConversationOnlyAffordances } from '@/container/types';
 import { extractApiError } from '@/api/errors';
 import { Button } from '@/components/ui/Button';
 import {
@@ -22,6 +22,8 @@ interface ForwardMessageDialogProps {
   conversations: Conversation[];
   sourceConversationId: string | null;
   messageId: string | null;
+  /** The open conversation's forward affordance; absent, nothing can be forwarded. */
+  forwardMessage: ConversationOnlyAffordances['forward'] | null;
   onForwarded?: (targetConversationId: string) => void;
 }
 
@@ -38,6 +40,7 @@ export function ForwardMessageDialog({
   conversations,
   sourceConversationId,
   messageId,
+  forwardMessage,
   onForwarded,
 }: ForwardMessageDialogProps) {
   const [filter, setFilter] = useState('');
@@ -53,10 +56,10 @@ export function ForwardMessageDialog({
   }, [conversations, filter, sourceConversationId]);
 
   const forward = async (targetConversationId: string) => {
-    if (!sourceConversationId || !messageId || pendingId) return;
+    if (!forwardMessage || !sourceConversationId || !messageId || pendingId) return;
     setPendingId(targetConversationId);
     try {
-      await messagesApi.forwardMessage(messageId, targetConversationId);
+      await forwardMessage(messageId, targetConversationId);
       toast.success('Message forwarded');
       onForwarded?.(targetConversationId);
       onOpenChange(false);

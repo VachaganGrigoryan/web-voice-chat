@@ -534,6 +534,7 @@ export default function ChatPage() {
         conversations={conversations}
         sourceConversationId={dialogs.state.forwardSource?.conversationId ?? null}
         messageId={dialogs.state.forwardSource?.messageId ?? null}
+        forwardMessage={descriptor?.conversationOnly?.forward ?? null}
         onForwarded={(targetConversationId) => {
           dialogs.setForwardSource(null);
           navigate(APP_ROUTES.chatConversation(targetConversationId));
@@ -702,7 +703,7 @@ export default function ChatPage() {
             onClearReplyTarget={() => setReplyTarget(null)}
             isUploading={isSending}
             contextLabel="main chat"
-            enableDraft
+            drafts={descriptor?.conversationOnly?.drafts ?? null}
           />
         }
         resizeHandle={

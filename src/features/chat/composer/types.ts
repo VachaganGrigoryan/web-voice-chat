@@ -3,6 +3,7 @@ import type {
   CreatePollRequest,
   MessageContainerRef,
 } from '@/api/types';
+import type { ConversationOnlyAffordances } from '@/container/types';
 import type { SendMediaInput, SendRichContentInput, SendTextInput } from '@/features/chat/types/sendInputs';
 import { ComposerReplyTarget } from '../types/message';
 
@@ -28,8 +29,11 @@ export interface ChatComposerProps {
   onClearReplyTarget?: () => void;
   isUploading?: boolean;
   contextLabel?: string;
-  /** Persist/restore an unsent draft per conversation (main composer only). */
-  enableDraft?: boolean;
+  /**
+   * Persist/restore an unsent draft (main composer only). The conversation-only
+   * draft affordance, so it is absent for a channel.
+   */
+  drafts?: ConversationOnlyAffordances['drafts'] | null;
   /** Defaults to the chat timeline's docked row. */
   preset?: ComposerPreset;
   /** `post-box` only: called after a successful send, to close the modal. */

@@ -195,6 +195,8 @@ export interface ConversationOnlyAffordances {
   };
   readonly drafts: {
     readonly value: string | null;
+    /** The stored draft, fetched fresh rather than read from a cached row. */
+    readonly load: () => Promise<string | null>;
     readonly save: (text: string) => Promise<unknown>;
     readonly clear: () => Promise<unknown>;
   };
