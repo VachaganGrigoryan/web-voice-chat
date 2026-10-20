@@ -18,7 +18,7 @@ self.addEventListener('push', (event) => {
 // Mirrors sameOriginTarget in src/features/notifications/push.ts (tested there); keep in sync.
 function sameOriginTarget(raw, origin) {
   try {
-    const u = new URL(raw, origin);
+    const u = new URL(typeof raw === 'string' ? raw : '', origin);
     return new URL(u.pathname + u.search + u.hash, origin).href;
   } catch {
     return new URL('/', origin).href;

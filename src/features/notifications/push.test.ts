@@ -45,6 +45,8 @@ describe('sameOriginTarget', () => {
   });
   it('falls back to root when missing or invalid', () => {
     expect(sameOriginTarget(undefined, o)).toBe('http://localhost:3000/');
+    expect(sameOriginTarget(42, o)).toBe('http://localhost:3000/');
+    expect(sameOriginTarget(null, o)).toBe('http://localhost:3000/');
     expect(sameOriginTarget('http://[bad', o)).toBe('http://localhost:3000/');
   });
 });

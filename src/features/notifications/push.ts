@@ -19,9 +19,9 @@ export function pushSupported(): boolean {
 }
 
 /** Same-origin absolute URL for a push click; anything foreign, relative-invalid or missing falls back to the root. */
-export function sameOriginTarget(raw: string | undefined, origin: string): string {
+export function sameOriginTarget(raw: unknown, origin: string): string {
   try {
-    const u = new URL(raw ?? '', origin);
+    const u = new URL(typeof raw === 'string' ? raw : '', origin);
     return new URL(u.pathname + u.search + u.hash, origin).href;
   } catch {
     return new URL('/', origin).href;
