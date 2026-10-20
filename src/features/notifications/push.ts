@@ -18,6 +18,26 @@ export function pushSupported(): boolean {
   );
 }
 
+export async function currentSubscription(): Promise<PushSubscription | null> {
+  if (!pushSupported()) return null;
+  const reg = await navigator.serviceWorker.getRegistration('/sw.js');
+  return reg ? reg.pushManager.getSubscription() : null;
+}
+
+/** Drops this browser's subscription without the server, which prunes the token on its next send; never rejects. */
+export async function unsubscribeLocally(): Promise<void> {
+  try {
+    await (await currentSubscription())?.unsubscribe();
+  } catch {
+    // Best effort: logout must not depend on it.
+  }
+}
+
+/** A subscribed browser gets the OS notification from the service worker, so the page raises none. */
+export function shouldRaisePageNotification(permission: string, pushSubscribed: boolean): boolean {
+  return permission === 'granted' && !pushSubscribed;
+}
+
 /** Same-origin absolute URL for a push click; anything foreign, relative-invalid or missing falls back to the root. */
 export function sameOriginTarget(raw: unknown, origin: string): string {
   try {

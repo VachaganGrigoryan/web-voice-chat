@@ -1,5 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { pushSupported, sameOriginTarget, toTokenPayload, urlBase64ToUint8Array } from './push';
+import {
+  pushSupported,
+  sameOriginTarget,
+  shouldRaisePageNotification,
+  toTokenPayload,
+  unsubscribeLocally,
+  urlBase64ToUint8Array,
+} from './push';
 
 // 65-byte uncompressed P-256 point (0x04 prefix) as url-safe base64 without padding.
 const KEY = 'BEl62iUYgUivxIkv69yViEuiBIa-ib37J8xQmrIXB4o0JNjSmbQbMFcMo8bQ3Yo4yDhaqb2ZdQHGBbFw7bZ4YI8';
@@ -48,5 +55,39 @@ describe('sameOriginTarget', () => {
     expect(sameOriginTarget(42, o)).toBe('http://localhost:3000/');
     expect(sameOriginTarget(null, o)).toBe('http://localhost:3000/');
     expect(sameOriginTarget('http://[bad', o)).toBe('http://localhost:3000/');
+  });
+});
+
+describe('shouldRaisePageNotification', () => {
+  it('raises only with permission and no push subscription in this browser', () => {
+    expect(shouldRaisePageNotification('granted', false)).toBe(true);
+    expect(shouldRaisePageNotification('granted', true)).toBe(false);
+    expect(shouldRaisePageNotification('denied', false)).toBe(false);
+    expect(shouldRaisePageNotification('default', false)).toBe(false);
+  });
+});
+
+describe('unsubscribeLocally', () => {
+  const supported = (getRegistration: () => Promise<unknown>) => {
+    vi.stubGlobal('window', { PushManager: class {}, Notification: class {} });
+    vi.stubGlobal('navigator', { serviceWorker: { getRegistration } });
+  };
+
+  it('unsubscribes the current subscription', async () => {
+    const unsubscribe = vi.fn().mockResolvedValue(true);
+    supported(() =>
+      Promise.resolve({ pushManager: { getSubscription: () => Promise.resolve({ unsubscribe }) } })
+    );
+    await unsubscribeLocally();
+    expect(unsubscribe).toHaveBeenCalledOnce();
+  });
+
+  it('resolves without a registration, on errors and without push support', async () => {
+    supported(() => Promise.resolve(undefined));
+    await expect(unsubscribeLocally()).resolves.toBeUndefined();
+    supported(() => Promise.reject(new Error('boom')));
+    await expect(unsubscribeLocally()).resolves.toBeUndefined();
+    vi.stubGlobal('window', {});
+    await expect(unsubscribeLocally()).resolves.toBeUndefined();
   });
 });

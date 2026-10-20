@@ -7,11 +7,17 @@ self.addEventListener('push', (event) => {
   }
   if (!data.title) return;
   event.waitUntil(
-    self.registration.showNotification(data.title, {
-      body: data.body,
-      data: { url: data.url },
-      tag: data.notification && data.notification.id,
-    })
+    self.clients
+      .matchAll({ type: 'window', includeUncontrolled: true })
+      .then((clients) => {
+        // A focused, visible tab already shows the in-app toast.
+        if (clients.some((c) => c.visibilityState === 'visible' && c.focused)) return;
+        return self.registration.showNotification(data.title, {
+          body: data.body,
+          data: { url: data.url },
+          tag: data.notification && data.notification.id,
+        });
+      })
   );
 });
 

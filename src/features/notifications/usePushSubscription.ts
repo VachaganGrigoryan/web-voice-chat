@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { notificationsApi } from '@/api/endpoints';
-import { pushSupported, toTokenPayload, urlBase64ToUint8Array } from './push';
+import { currentSubscription, pushSupported, toTokenPayload, urlBase64ToUint8Array } from './push';
 
 const VAPID_PUBLIC_KEY = import.meta.env.VITE_VAPID_PUBLIC_KEY || '';
 const DEVICE_ID_KEY = 'push_device_id';
@@ -16,11 +16,6 @@ function getDeviceId(): string {
   } catch {
     return 'web-unknown';
   }
-}
-
-async function currentSubscription(): Promise<PushSubscription | null> {
-  const reg = await navigator.serviceWorker.getRegistration('/sw.js');
-  return reg ? reg.pushManager.getSubscription() : null;
 }
 
 /** Best-effort and non-hook so logout can call it; resolves even when the server call fails. */
