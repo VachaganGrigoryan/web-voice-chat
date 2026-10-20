@@ -8,6 +8,7 @@ import {
   SoundCapability,
 } from '@/utils/notificationSound';
 import { usePushSubscription } from '@/features/notifications/usePushSubscription';
+import { useState } from 'react';
 import { Bell, Loader2, Save, Volume2 } from 'lucide-react';
 
 interface NotificationsSettingsTabProps {
@@ -80,6 +81,7 @@ export default function NotificationsSettingsTab({
   isSavingNotificationPreferences,
 }: NotificationsSettingsTabProps) {
   const push = usePushSubscription();
+  const [pushError, setPushError] = useState('');
   return (
     <div className="space-y-6">
       <PanelSection title="Sound Notifications" description="Control audible message alerts and in-app call tones.">
@@ -135,8 +137,19 @@ export default function NotificationsSettingsTab({
               title="Enable push notifications"
               description="Get alerts on this device even when the app is closed."
               checked={push.enabled}
-              onChange={(on) => void (on ? push.enable() : push.disable()).catch((err) => console.warn('Push toggle failed', err))}
+              onChange={(on) => {
+                setPushError('');
+                (on ? push.enable() : push.disable()).catch((err) => {
+                  console.warn('Push toggle failed', err);
+                  setPushError('Could not update push notifications. Please try again.');
+                });
+              }}
             />
+          ) : null}
+          {pushError ? (
+            <p role="alert" className="text-sm text-destructive">
+              {pushError}
+            </p>
           ) : null}
         </div>
       </PanelSection>

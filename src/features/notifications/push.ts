@@ -17,3 +17,13 @@ export function pushSupported(): boolean {
     'serviceWorker' in navigator
   );
 }
+
+/** Same-origin absolute URL for a push click; anything foreign, relative-invalid or missing falls back to the root. */
+export function sameOriginTarget(raw: string | undefined, origin: string): string {
+  try {
+    const u = new URL(raw ?? '', origin);
+    return new URL(u.pathname + u.search + u.hash, origin).href;
+  } catch {
+    return new URL('/', origin).href;
+  }
+}

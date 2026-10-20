@@ -57,7 +57,12 @@ export function usePushSubscription() {
       userVisibleOnly: true,
       applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY) as BufferSource,
     });
-    await notificationsApi.registerPushToken(toTokenPayload(sub, getDeviceId()));
+    try {
+      await notificationsApi.registerPushToken(toTokenPayload(sub, getDeviceId()));
+    } catch (err) {
+      await sub.unsubscribe().catch(() => undefined);
+      throw err;
+    }
     setEnabled(true);
   }, [supported]);
 

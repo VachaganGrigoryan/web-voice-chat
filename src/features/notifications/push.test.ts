@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { pushSupported, toTokenPayload, urlBase64ToUint8Array } from './push';
+import { pushSupported, sameOriginTarget, toTokenPayload, urlBase64ToUint8Array } from './push';
 
 // 65-byte uncompressed P-256 point (0x04 prefix) as url-safe base64 without padding.
 const KEY = 'BEl62iUYgUivxIkv69yViEuiBIa-ib37J8xQmrIXB4o0JNjSmbQbMFcMo8bQ3Yo4yDhaqb2ZdQHGBbFw7bZ4YI8';
@@ -32,5 +32,19 @@ describe('pushSupported', () => {
     vi.stubGlobal('window', { PushManager: class {}, Notification: class {} });
     vi.stubGlobal('navigator', { serviceWorker: {} });
     expect(pushSupported()).toBe(true);
+  });
+});
+
+describe('sameOriginTarget', () => {
+  const o = 'http://localhost:3000';
+  it('rebases a foreign absolute url onto the app origin', () => {
+    expect(sameOriginTarget('https://evil.example/c/1?x=2#m', o)).toBe('http://localhost:3000/c/1?x=2#m');
+  });
+  it('resolves relative urls', () => {
+    expect(sameOriginTarget('/chat/5', o)).toBe('http://localhost:3000/chat/5');
+  });
+  it('falls back to root when missing or invalid', () => {
+    expect(sameOriginTarget(undefined, o)).toBe('http://localhost:3000/');
+    expect(sameOriginTarget('http://[bad', o)).toBe('http://localhost:3000/');
   });
 });
