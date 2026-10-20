@@ -234,6 +234,10 @@ export const notificationsApi = {
     apiClient
       .post<SuccessResponse<{ updated: number }>>('/notifications/read-all')
       .then((res) => extractResponseData(res.data).updated),
+  registerPushToken: (data: { platform: 'web'; token: string; device_id: string }) =>
+    apiClient.post('/notifications/push-tokens', data).then(() => undefined),
+  deletePushToken: (token: string) =>
+    apiClient.delete('/notifications/push-tokens', { params: { token } }).then(() => undefined),
   updatePreferences: (data: {
     timezone?: string | null;
     dnd_from?: string | null;

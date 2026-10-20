@@ -7,6 +7,7 @@ import {
   BrowserNotificationState,
   SoundCapability,
 } from '@/utils/notificationSound';
+import { usePushSubscription } from '@/features/notifications/usePushSubscription';
 import { Bell, Loader2, Save, Volume2 } from 'lucide-react';
 
 interface NotificationsSettingsTabProps {
@@ -78,6 +79,7 @@ export default function NotificationsSettingsTab({
   onSaveNotificationPreferences,
   isSavingNotificationPreferences,
 }: NotificationsSettingsTabProps) {
+  const push = usePushSubscription();
   return (
     <div className="space-y-6">
       <PanelSection title="Sound Notifications" description="Control audible message alerts and in-app call tones.">
@@ -127,6 +129,15 @@ export default function NotificationsSettingsTab({
               ? 'Requesting browser permission...'
               : 'Enable browser notifications'}
           </Button>
+
+          {push.supported ? (
+            <SettingsToggleField
+              title="Enable push notifications"
+              description="Get alerts on this device even when the app is closed."
+              checked={push.enabled}
+              onChange={(on) => void (on ? push.enable() : push.disable()).catch((err) => console.warn('Push toggle failed', err))}
+            />
+          ) : null}
         </div>
       </PanelSection>
 

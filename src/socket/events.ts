@@ -50,6 +50,7 @@ export const EVENTS = {
   BLOCK_CREATED: 'block.created',
   BLOCK_REMOVED: 'block.removed',
   SPACE_INVITE: 'space:invite',
+  NOTIFICATION_CREATED: 'notification_created',
   CALL_INCOMING: 'call.incoming',
   CALL_ACCEPTED: 'call.accepted',
   CALL_PARTICIPANT_UPDATED: 'call.participant_updated',

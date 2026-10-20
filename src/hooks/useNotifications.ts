@@ -26,11 +26,13 @@ export function useNotifications(limit = 50) {
     socket.on(EVENTS.RELATIONSHIP_REQUESTED, invalidate);
     socket.on(EVENTS.RELATIONSHIP_ACTIVATED, invalidate);
     socket.on(EVENTS.SPACE_INVITE, invalidateSpaces);
+    socket.on(EVENTS.NOTIFICATION_CREATED, invalidate);
 
     return () => {
       socket.off(EVENTS.RELATIONSHIP_REQUESTED, invalidate);
       socket.off(EVENTS.RELATIONSHIP_ACTIVATED, invalidate);
       socket.off(EVENTS.SPACE_INVITE, invalidateSpaces);
+      socket.off(EVENTS.NOTIFICATION_CREATED, invalidate);
     };
   }, [socket, queryClient]);
 
