@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { toast } from 'sonner';
+import { currentSubscription, shouldRaisePageNotification } from '@/features/notifications/push';
 
 export type SoundCapability = 'unknown' | 'enabled' | 'blocked' | 'unsupported' | 'error';
 export type BrowserNotificationState = NotificationPermission | 'unsupported';
@@ -25,6 +26,8 @@ interface NotificationSoundState {
 interface SendNotificationOptions {
   playInAppCue?: boolean;
   withSound?: boolean;
+  /** The server also sends this alert by Web Push, so a subscribed browser skips the page one. */
+  pushCovered?: boolean;
 }
 
 const SOUND_ENABLED_STORAGE_KEY = 'soundEnabled';
@@ -391,7 +394,13 @@ export const sendNotification = (
 
   const notificationState = useNotificationSoundStore.getState().syncBrowserNotificationState();
   if (notificationState === 'granted') {
-    new Notification(title, { body: message });
+    void currentSubscription()
+      .then((sub) => !!sub, () => false)
+      .then((subscribed) => {
+        if (shouldRaisePageNotification(notificationState, subscribed, options.pushCovered === true)) {
+          new Notification(title, { body: message });
+        }
+      });
   }
 
   if (options.playInAppCue !== false) {

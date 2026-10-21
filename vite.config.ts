@@ -23,6 +23,8 @@ export default defineConfig(({mode}) => {
         ],
         workbox: {
           cleanupOutdatedCaches: true,
+          // Push handlers live in public/push-sw.js; the plugin owns /sw.js.
+          importScripts: ['push-sw.js'],
           globPatterns: ['**/*.{js,css,html,svg,png,webmanifest,mp3}'],
           navigateFallback: 'index.html',
           runtimeCaching: [],

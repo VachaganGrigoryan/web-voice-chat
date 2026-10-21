@@ -1,6 +1,8 @@
 import { tokenStore } from './tokenStore';
 import { APP_ROUTES, getAbsoluteAppUrl } from '@/app/routes';
 import { socketClient } from '@/socket/socketClient';
+import { disablePush } from '@/features/notifications/usePushSubscription';
+import { unsubscribeLocally } from '@/features/notifications/push';
 import { apiClient, setTokenUpdateCallback, setLogoutCallback } from '@/api/httpClient';
 
 type AuthStateListener = (isAuthenticated: boolean) => void;
@@ -24,8 +26,11 @@ class SessionManager {
       // But we might want to update the token in memory if authStore keeps a copy
     });
 
-    setLogoutCallback(() => {
+    setLogoutCallback(async () => {
       console.log('Session: Logout triggered by refresh failure');
+      // No token left to delete it server-side, so stop this browser receiving the old account's
+      // pushes; capped like logout() so it never holds the redirect.
+      await Promise.race([unsubscribeLocally(), new Promise((r) => setTimeout(r, 2000))]);
       this.handleLogoutInternal();
     });
 
@@ -58,7 +63,10 @@ class SessionManager {
   async logout() {
     console.log('Session: Logging out...');
     const refreshToken = tokenStore.getRefreshToken();
-    
+
+    // Needs the access token, so run before clearing; capped so it never blocks logout.
+    await Promise.race([disablePush(), new Promise((r) => setTimeout(r, 2000))]);
+
     // Attempt to notify server, but don't block
     if (refreshToken) {
       try {
