@@ -234,10 +234,13 @@ export default function ChatComposer({
   };
 
   const handleSendPoll = async (values: PollComposerValues) => {
-    // The polls API is keyed on conversation_id; the bot is hidden for channels
-    // (see `bots` below) so this cannot be reached from one.
+    // The bot is only offered in conversations (see `bots` below), so a channel never reaches here.
     if (container.container_type !== 'conversation') return;
-    await onCreatePoll({ conversation_id: container.container_id, ...values });
+    await onCreatePoll({
+      container_type: container.container_type,
+      container_id: container.container_id,
+      ...values,
+    });
     setActiveBotId(null);
     onClearReplyTarget?.();
   };
