@@ -437,7 +437,8 @@ export interface PollOptionInput {
 }
 
 export interface CreatePollRequest {
-  conversation_id: string;
+  container_type: MessageContainerType;
+  container_id: string;
   question: string;
   options: PollOptionInput[];
   allows_multiple?: boolean;
