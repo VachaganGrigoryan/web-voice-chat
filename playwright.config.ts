@@ -5,6 +5,8 @@ if (!/^\d+$/.test(webPort)) {
   throw new Error('PLAYWRIGHT_WEB_PORT must be a numeric port');
 }
 const webUrl = `http://localhost:${webPort}`;
+// E2E_API_URL points the app (and tests/support/api.ts) at another backend, e.g. vogi-server's dev stack.
+const apiUrl = process.env.E2E_API_URL;
 
 /**
  * Read environment variables from file.
@@ -81,5 +83,6 @@ export default defineConfig({
     command: `npm run dev -- --port ${webPort}`,
     url: webUrl,
     reuseExistingServer: !process.env.CI,
+    env: apiUrl ? { VITE_API_URL: apiUrl, VITE_SOCKET_URL: process.env.E2E_SOCKET_URL ?? apiUrl } : undefined,
   },
 });

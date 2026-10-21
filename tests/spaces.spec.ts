@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { isApiRequest } from './support/api';
 
 test.describe('Spaces UI E2E Tests', () => {
   test.beforeEach(async ({ page }) => {
@@ -18,9 +19,9 @@ test.describe('Spaces UI E2E Tests', () => {
     // Capture and mock all API calls
     await page.route('**/*', async (route) => {
       const url = route.request().url();
-      const isApiRequest = url.includes('localhost:8000') || url.includes('voca-api.notallow.cc');
+      const isApi = isApiRequest(url);
       
-      if (isApiRequest) {
+      if (isApi) {
         if (url.includes('/users/me')) {
           await route.fulfill({
             status: 200,

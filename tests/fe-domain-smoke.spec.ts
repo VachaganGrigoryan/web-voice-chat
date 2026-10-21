@@ -6,8 +6,8 @@ import {
   type APIResponse,
   type Page,
 } from '@playwright/test';
+import { API_URL, DEV_SECRET } from './support/api';
 
-const API_URL = 'http://127.0.0.1:8001';
 const MAILHOG_URL = 'http://127.0.0.1:8025';
 
 interface ApiEnvelope<T> {
@@ -95,19 +95,14 @@ async function createSession(
   const username = `fe-${label}-${nonce.replaceAll('-', '').slice(-10)}`;
   const rateLimitHeaders = { 'x-forwarded-for': `fe-smoke-${nonce}` };
 
-  const startResponse = await api.post('/auth/start', {
-    headers: rateLimitHeaders,
-    data: { method: 'email', identifier: email },
-  });
-  expect(startResponse.ok(), await startResponse.text()).toBe(true);
-
-  const code = await findVerificationCode(mailhog, email);
-  const tokens = await readData<AuthTokens>(
-    await api.post('/auth/finish', {
-      headers: rateLimitHeaders,
-      data: { method: 'email', identifier: email, code },
-    })
-  );
+  const tokens = DEV_SECRET
+    ? await readData<AuthTokens>(
+        await api.post('/dev/token', {
+          headers: { 'x-dev-secret': DEV_SECRET },
+          data: { email },
+        })
+      )
+    : await emailCodeTokens(api, mailhog, email, rateLimitHeaders);
   const headers = { Authorization: `Bearer ${tokens.access_token}` };
   await readData<TestUser>(
     await api.patch('/users/me/username', {
@@ -119,6 +114,27 @@ async function createSession(
     await api.get('/users/me', { headers })
   );
   return { tokens, user };
+}
+
+async function emailCodeTokens(
+  api: APIRequestContext,
+  mailhog: APIRequestContext,
+  email: string,
+  rateLimitHeaders: Record<string, string>
+): Promise<AuthTokens> {
+  const startResponse = await api.post('/auth/start', {
+    headers: rateLimitHeaders,
+    data: { method: 'email', identifier: email },
+  });
+  expect(startResponse.ok(), await startResponse.text()).toBe(true);
+
+  const code = await findVerificationCode(mailhog, email);
+  return readData<AuthTokens>(
+    await api.post('/auth/finish', {
+      headers: rateLimitHeaders,
+      data: { method: 'email', identifier: email, code },
+    })
+  );
 }
 
 async function authenticatePage(
