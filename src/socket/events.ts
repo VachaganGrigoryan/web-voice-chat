@@ -1,4 +1,4 @@
-export const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'https://voice-chat.vachagan.dev';
+export const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'https://vogi-api.notallow.cc';
 
 export const EVENTS = {
   // Connection
