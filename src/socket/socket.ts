@@ -1053,7 +1053,8 @@ export const useRealtimeMessages = (
                     : presentedKind === 'file'
                       ? '📎 File'
                       : getMessageTypeLabel(message.type, resolved.media?.kind));
-          sendNotification(title, body);
+          // notify pushes messages but never call summaries.
+          sendNotification(title, body, { pushCovered: message.type !== 'call' });
         }
       }
     };

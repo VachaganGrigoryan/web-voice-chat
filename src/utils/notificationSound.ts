@@ -26,6 +26,8 @@ interface NotificationSoundState {
 interface SendNotificationOptions {
   playInAppCue?: boolean;
   withSound?: boolean;
+  /** The server also sends this alert by Web Push, so a subscribed browser skips the page one. */
+  pushCovered?: boolean;
 }
 
 const SOUND_ENABLED_STORAGE_KEY = 'soundEnabled';
@@ -395,7 +397,7 @@ export const sendNotification = (
     void currentSubscription()
       .then((sub) => !!sub, () => false)
       .then((subscribed) => {
-        if (shouldRaisePageNotification(notificationState, subscribed)) {
+        if (shouldRaisePageNotification(notificationState, subscribed, options.pushCovered === true)) {
           new Notification(title, { body: message });
         }
       });

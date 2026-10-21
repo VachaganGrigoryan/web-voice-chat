@@ -33,9 +33,16 @@ export async function unsubscribeLocally(): Promise<void> {
   }
 }
 
-/** A subscribed browser gets the OS notification from the service worker, so the page raises none. */
-export function shouldRaisePageNotification(permission: string, pushSubscribed: boolean): boolean {
-  return permission === 'granted' && !pushSubscribed;
+/**
+ * A subscribed browser gets the OS notification from the service worker, so the page raises none —
+ * but only for alerts the server pushes (messages); calls are never pushed and always raise here.
+ */
+export function shouldRaisePageNotification(
+  permission: string,
+  pushSubscribed: boolean,
+  pushCovered: boolean,
+): boolean {
+  return permission === 'granted' && !(pushCovered && pushSubscribed);
 }
 
 /** Same-origin absolute URL for a push click; anything foreign, relative-invalid or missing falls back to the root. */

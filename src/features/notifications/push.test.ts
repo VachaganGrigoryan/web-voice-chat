@@ -59,11 +59,16 @@ describe('sameOriginTarget', () => {
 });
 
 describe('shouldRaisePageNotification', () => {
-  it('raises only with permission and no push subscription in this browser', () => {
-    expect(shouldRaisePageNotification('granted', false)).toBe(true);
-    expect(shouldRaisePageNotification('granted', true)).toBe(false);
-    expect(shouldRaisePageNotification('denied', false)).toBe(false);
-    expect(shouldRaisePageNotification('default', false)).toBe(false);
+  it('defers to push only for alerts the server also pushes', () => {
+    expect(shouldRaisePageNotification('granted', false, true)).toBe(true);
+    expect(shouldRaisePageNotification('granted', true, true)).toBe(false);
+    expect(shouldRaisePageNotification('denied', false, true)).toBe(false);
+    expect(shouldRaisePageNotification('default', false, true)).toBe(false);
+  });
+
+  it('always raises alerts push never carries, such as calls', () => {
+    expect(shouldRaisePageNotification('granted', true, false)).toBe(true);
+    expect(shouldRaisePageNotification('denied', true, false)).toBe(false);
   });
 });
 
