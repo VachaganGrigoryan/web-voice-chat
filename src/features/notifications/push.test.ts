@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   pushSupported,
+  resyncPushSubscription,
   sameOriginTarget,
   shouldRaisePageNotification,
   toTokenPayload,
@@ -94,5 +95,41 @@ describe('unsubscribeLocally', () => {
     await expect(unsubscribeLocally()).resolves.toBeUndefined();
     vi.stubGlobal('window', {});
     await expect(unsubscribeLocally()).resolves.toBeUndefined();
+  });
+});
+
+describe('resyncPushSubscription', () => {
+  const json = { endpoint: 'https://push.example/abc', keys: { p256dh: 'p', auth: 'a' } };
+  const sub = { toJSON: () => json } as unknown as PushSubscription;
+  const deps = (over: Partial<Parameters<typeof resyncPushSubscription>[0]> = {}) => ({
+    current: async () => sub,
+    permission: () => 'granted' as NotificationPermission,
+    register: vi.fn(async () => undefined),
+    deviceId: 'dev-1',
+    ...over,
+  });
+
+  it('re-registers an existing granted subscription', async () => {
+    const d = deps();
+    expect(await resyncPushSubscription(d)).toBe(true);
+    expect(d.register).toHaveBeenCalledTimes(1);
+    expect(d.register).toHaveBeenCalledWith({ platform: 'web', token: JSON.stringify(json), device_id: 'dev-1' });
+  });
+
+  it('does nothing without a subscription', async () => {
+    const d = deps({ current: async () => null });
+    expect(await resyncPushSubscription(d)).toBe(false);
+    expect(d.register).not.toHaveBeenCalled();
+  });
+
+  it('does nothing when permission is not granted', async () => {
+    const d = deps({ permission: () => 'denied' });
+    expect(await resyncPushSubscription(d)).toBe(false);
+    expect(d.register).not.toHaveBeenCalled();
+  });
+
+  it('a failed register does not throw', async () => {
+    const d = deps({ register: vi.fn(async () => { throw new Error('offline'); }) });
+    await expect(resyncPushSubscription(d)).resolves.toBe(false);
   });
 });
