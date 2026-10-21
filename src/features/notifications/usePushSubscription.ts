@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
 import { notificationsApi } from '@/api/endpoints';
-import { currentSubscription, pushSupported, toTokenPayload, urlBase64ToUint8Array } from './push';
+import {
+  currentSubscription,
+  pushSupported,
+  resyncPushSubscription,
+  toTokenPayload,
+  urlBase64ToUint8Array,
+} from './push';
 
 const VAPID_PUBLIC_KEY = import.meta.env.VITE_VAPID_PUBLIC_KEY || '';
 const DEVICE_ID_KEY = 'push_device_id';
@@ -30,6 +36,17 @@ export async function disablePush(): Promise<void> {
   } catch (err) {
     console.warn('Push: disable failed', err);
   }
+}
+
+/** Non-hook so the signed-in shell can call it once on load; never rejects. */
+export async function resyncPush(): Promise<void> {
+  if (!pushSupported() || !VAPID_PUBLIC_KEY) return;
+  await resyncPushSubscription({
+    current: currentSubscription,
+    permission: () => Notification.permission,
+    register: notificationsApi.registerPushToken,
+    deviceId: getDeviceId(),
+  });
 }
 
 export function usePushSubscription() {

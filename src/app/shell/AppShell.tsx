@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { authApi, spacesApi } from '@/api/endpoints';
 import { APP_ROUTES } from '@/app/routes';
 import { CommandPalette } from '@/components/command/CommandPalette';
+import { resyncPush } from '@/features/notifications/usePushSubscription';
 import { useProfile } from '@/hooks/useProfile';
 import { useAuthStore } from '@/store/authStore';
 import { AppRail } from './AppRail';
@@ -52,6 +53,11 @@ export default function AppShell() {
     const stillMember = spacesQuery.data.some((space) => space.id === activeSpaceId);
     if (!stillMember) setActiveSpaceId(null);
   }, [activeSpaceId, spacesQuery.data, setActiveSpaceId]);
+
+  // A browser that is already subscribed re-sends its subscription on each load.
+  useEffect(() => {
+    void resyncPush();
+  }, []);
 
   const handleCreate = useCallback(
     (actionId: string) => {

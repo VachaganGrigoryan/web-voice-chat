@@ -24,6 +24,28 @@ export async function currentSubscription(): Promise<PushSubscription | null> {
   return reg ? reg.pushManager.getSubscription() : null;
 }
 
+/**
+ * Re-sends this browser's existing subscription so the server's copy stays current (and newest,
+ * so the per-user token cap never evicts it). Resolves `true` only when it was registered; never rejects.
+ */
+export async function resyncPushSubscription(deps: {
+  current: () => Promise<PushSubscription | null>;
+  permission: () => NotificationPermission;
+  register: (payload: ReturnType<typeof toTokenPayload>) => Promise<void>;
+  deviceId: string;
+}): Promise<boolean> {
+  try {
+    if (deps.permission() !== 'granted') return false;
+    const sub = await deps.current();
+    if (!sub) return false;
+    await deps.register(toTokenPayload(sub, deps.deviceId));
+    return true;
+  } catch (err) {
+    console.warn('Push: resync failed', err);
+    return false;
+  }
+}
+
 /** Drops this browser's subscription without the server, which prunes the token on its next send; never rejects. */
 export async function unsubscribeLocally(): Promise<void> {
   try {

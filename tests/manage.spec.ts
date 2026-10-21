@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { isApiRequest } from './support/api';
 
 const CHANNEL_ID = 'channel-1';
 
@@ -17,9 +18,9 @@ test.describe('Management subtree permission guard', () => {
     await page.route('**/*', async (route) => {
       const url = route.request().url();
       const method = route.request().method();
-      const isApiRequest = url.includes('localhost:8000') || url.includes('voca-api.notallow.cc');
+      const isApi = isApiRequest(url);
 
-      if (!isApiRequest) {
+      if (!isApi) {
         await route.continue();
         return;
       }
